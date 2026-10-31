@@ -1,0 +1,28 @@
+[
+  {
+    "video": "before",
+    "whole_frame_luma_ssim_to_prepared": 0.9535949230194092,
+    "fixed_face_luma_ssim_to_prepared": 0.9366981983184814,
+    "fixed_face_xyxy": [
+      168,
+      406,
+      532,
+      771
+    ],
+    "face_luma_mae": 2.543782929399368,
+    "limits": "Identical ROI for both videos. Summed preprocessing, VAE/conditioning, output and transport effects; no isolated VAE attribution and no identity metric."
+  },
+  {
+    "video": "after",
+    "whole_frame_luma_ssim_to_prepared": 0.9536016583442688,
+    "fixed_face_luma_ssim_to_prepared": 0.9366810321807861,
+    "fixed_face_xyxy": [
+      168,
+      406,
+      532,
+      771
+    ],
+    "face_luma_mae": 2.543120578052085,
+    "limits": "Identical ROI for both videos. Summed preprocessing, VAE/conditioning, output and transport effects; no isolated VAE attribution and no identity metric."
+  }
+]

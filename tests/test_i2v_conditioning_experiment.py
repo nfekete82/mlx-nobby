@@ -146,3 +146,7 @@ def test_real_worker_function_sends_one_explicit_anchor_to_pipeline(tmp_path,mon
     assert recorded[0]['image'] is None
     assert recorded[0]['images']==[NativeImage('prepared.png',0,1.0,0)]
     assert recorded[0]['stage1_steps']==8 and recorded[0]['stage2_steps']==3
+    # Reusing the process must not carry the experimental input into the next job.
+    namespace['_generate'](dict(payload,i2v_image_crf=None))
+    assert recorded[1]['image']=='prepared.png'
+    assert 'images' not in recorded[1]

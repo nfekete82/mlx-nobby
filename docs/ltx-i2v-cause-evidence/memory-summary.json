@@ -1,0 +1,28 @@
+{
+  "crf0": {
+    "samples": 194,
+    "first_timestamp": 1793427834.38516,
+    "last_timestamp": 1793428223.912828,
+    "minimum_active_available_percent": 67.0,
+    "minimum_active_headroom_gb": 26.16,
+    "swap_first_gb": 9.71,
+    "swap_last_gb": 9.71,
+    "max_active_swap_gb": 9.71,
+    "observed_pressure": [
+      "normal"
+    ]
+  },
+  "guidance-off": {
+    "samples": 201,
+    "first_timestamp": 1793428321.484179,
+    "last_timestamp": 1793428725.627945,
+    "minimum_active_available_percent": 58.0,
+    "minimum_active_headroom_gb": 21.84,
+    "swap_first_gb": 9.71,
+    "swap_last_gb": 9.69,
+    "max_active_swap_gb": 9.71,
+    "observed_pressure": [
+      "normal"
+    ]
+  }
+}

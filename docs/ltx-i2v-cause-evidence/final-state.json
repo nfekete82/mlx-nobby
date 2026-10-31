@@ -1,0 +1,19 @@
+{
+  "video": {
+    "ok": true,
+    "status": "ready",
+    "active_job_id": null,
+    "active_generation": false,
+    "offline": true
+  },
+  "web": {
+    "ok": true
+  },
+  "native_runtime_clean": true,
+  "default_i2v_image_crf": null,
+  "default_identity_lock": true,
+  "automatic_quality_acceptance": false,
+  "agent_restarted": false,
+  "web_rebuilt": false,
+  "new_full_videos": 2
+}

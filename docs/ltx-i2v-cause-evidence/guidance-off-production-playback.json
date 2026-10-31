@@ -1,0 +1,38 @@
+{
+  "width": 704,
+  "height": 1280,
+  "duration": 10.041667,
+  "error": null,
+  "seek_positions": [
+    {
+      "requested": 0,
+      "actual": 0
+    },
+    {
+      "requested": 3,
+      "actual": 3
+    },
+    {
+      "requested": 5.9,
+      "actual": 5.9
+    },
+    {
+      "requested": 6.1,
+      "actual": 6.1
+    },
+    {
+      "requested": 7.9,
+      "actual": 7.9
+    },
+    {
+      "requested": 8.1,
+      "actual": 8.1
+    },
+    {
+      "requested": 9.9,
+      "actual": 9.9
+    }
+  ],
+  "played_to": 0.460188,
+  "decoded_frames": 1026
+}

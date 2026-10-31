@@ -281,7 +281,12 @@ def write_report(out,results):
             a,b=left.get('job') or {},right.get('job') or {}
             checks={key:(a.get(key)==b.get(key) if a.get(key) is not None and b.get(key) is not None else None)
                     for key in ('source_sha256','prompt_sha256','settings','resolved_model')}
+            left_settings,right_settings=a.get('settings') or {},b.get('settings') or {}
+            changes={key:{'left':left_settings.get(key),'right':right_settings.get(key)}
+                     for key in sorted(set(left_settings)|set(right_settings))
+                     if left_settings.get(key)!=right_settings.get(key)}
             comparisons.append({'left':left['label'],'right':right['label'], 'input_checks':checks,
+                'recorded_setting_changes':changes,
                 'matched_recorded_inputs':all(value is True for value in checks.values()),
                 'limits':'Runtime, hardware and effective conditioning must also match; inspect provenance and implementation.'})
     report={'schema_version':1,'ffmpeg_version':run(['ffmpeg','-version']).decode().splitlines()[0],

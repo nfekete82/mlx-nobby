@@ -1,0 +1,24 @@
+{
+  "original_dimensions": [
+    1097,
+    1434
+  ],
+  "mode": "RGB",
+  "embedded_icc": false,
+  "exif_orientation": null,
+  "source_unchanged_sha256": "4296d2d80c753633525d6dded18d3d7d95fa876585ca894273c6d2b0273e17d6",
+  "nonblack_xyxy": [
+    0,
+    180,
+    704,
+    1100
+  ],
+  "prepared_dimensions": [
+    704,
+    1280
+  ],
+  "half_stage_dimensions": [
+    352,
+    640
+  ]
+}
