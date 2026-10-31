@@ -390,7 +390,8 @@ def test_rolling_transport_change_invalidates_old_checkpoint(rolling_checkpoints
     [(None, True, "full"), (None, False, "off"),
      ("off", True, "off"), ("off", False, "off"),
      ("minimal", True, "minimal"), ("minimal", False, "minimal"),
-     ("full", True, "full"), ("full", False, "full")],
+     ("full", True, "full"), ("full", False, "full"),
+     ("initial_off", True, "initial_off"), ("initial_off", False, "initial_off")],
 )
 def test_rolling_guidance_modes_are_independent_of_legacy_identity_lock(
         explicit, legacy_lock, expected):
@@ -405,6 +406,9 @@ def test_rolling_guidance_modes_are_independent_of_legacy_identity_lock(
     elif expected == "minimal":
         assert initial.startswith(video_rolling.MINIMAL_INITIAL_FACE_GUIDANCE)
         assert continued.startswith(video_rolling.MINIMAL_EXTEND_FACE_GUIDANCE)
+    elif expected == "initial_off":
+        assert initial == params["prompt"]
+        assert continued.startswith(video_rolling.EXTEND_FACE_GUIDANCE)
     else:
         assert initial.startswith(video_rolling.INITIAL_FACE_GUIDANCE)
         assert continued.startswith(video_rolling.EXTEND_FACE_GUIDANCE)
@@ -438,6 +442,7 @@ def test_face_guidance_api_accepts_only_rolling_i2v_or_6s_720p_pilot(monkeypatch
     assert req(face_guidance="off").payload.face_guidance == "off"
     assert req(face_guidance="minimal").payload.face_guidance == "minimal"
     assert req(face_guidance="full").payload.face_guidance == "full"
+    assert req(face_guidance="initial_off").payload.face_guidance == "initial_off"
     assert req().payload.face_guidance is None
     assert req(duration=6, continuation="segmented", face_guidance="minimal").payload.duration == 6
     with pytest.raises(ValueError):
@@ -479,6 +484,8 @@ def test_6s_720p_guidance_changes_prompt_only_with_explicit_opt_in(monkeypatch):
 
     no_guidance = make("off")
     assert video_service._direct_generation_params(no_guidance)["prompt"] == original
+    # The six-second direct probe has no Extend stage.
+    assert video_service._direct_generation_params(make("initial_off"))["prompt"] == original
 
     minimal = make("minimal")
     minimal_params = video_service._direct_generation_params(minimal)
