@@ -72,6 +72,13 @@ assert.match(source, /continuation_mode: 'rolling'/);
 assert.match(source, /rolling\[\\s-\]\?window/);
 
 assert.equal(api.__test.isVideoRequest("erstelle ein video: The person slowly turns their head, smiles naturally and looks directly into the camera. Smooth continuous movement, fixed camera, consistent facial features, hairstyle and clothing, realistic facial expressions, no scene changes."), true);
+assert.match(chatHtml, /id="videoFaceGuidanceField"[\\s\\S]*?id="videoFaceGuidance"/);
+assert.match(chatHtml, /value="off"/);
+assert.match(chatHtml, /value="minimal"/);
+assert.match(chatHtml, /value="full"/);
+assert.match(source, /selectedFaceGuidance/);
+assert.match(source, /rollingWindowRequested[\\s\\S]*?face_guidance: selectedFaceGuidance/);
+assert.match(source, /faceGuidanceSelect\\.value/);
 assert.match(source, /const explicitVideoAnimateRequest = !alwaysGenerateImage && isVideoRequest\(prompt\)/);
 assert.match(source, /action: explicitVideoAnimateRequest \? 'video_generate'/);
 assert.equal(api.__test.isVideoRequest('Animiere dieses Bild'), true);
