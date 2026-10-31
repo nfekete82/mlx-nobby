@@ -78,7 +78,7 @@ assert.match(chatHtml, /value="minimal"/);
 assert.match(chatHtml, /value="full"/);
 assert.match(source, /selectedFaceGuidance/);
 assert.match(source, /rollingWindowRequested[\s\S]*?face_guidance: selectedFaceGuidance/);
-assert.match(source, /faceGuidanceSelect\\.value/);
+assert.match(source, /faceGuidanceSelect\.value/);
 assert.match(source, /const explicitVideoAnimateRequest = !alwaysGenerateImage && isVideoRequest\(prompt\)/);
 assert.match(source, /action: explicitVideoAnimateRequest \? 'video_generate'/);
 assert.equal(api.__test.isVideoRequest('Animiere dieses Bild'), true);
