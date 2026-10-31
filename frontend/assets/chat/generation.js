@@ -3376,6 +3376,9 @@ const imageFiles =
             }
             selectedMediaQuality = normalizedMediaQuality;
             let selectedVideoProfile = 'standard';
+            // Empty means legacy behavior; never silently change existing jobs.
+            let selectedFaceGuidance = ['off', 'minimal', 'full'].includes(options?.video?.face_guidance)
+                ? options.video.face_guidance : '';
             let multiVideoSelection = null;
             let selectedVideoDuration = VIDEO_DURATIONS.has(
                 Number(options?.video?.duration)
@@ -3451,6 +3454,13 @@ const imageFiles =
                     document.getElementById('videoDuration');
                 const profileField = document.getElementById('videoProfileField');
                 const profileSelect = document.getElementById('videoProfile');
+                const faceGuidanceField = document.getElementById('videoFaceGuidanceField');
+                const faceGuidanceSelect = document.getElementById('videoFaceGuidance');
+                if (faceGuidanceField && faceGuidanceSelect) {
+                    // Only relevant when Rolling I2V has a real original image.
+                    faceGuidanceField.hidden = !(rollingWindowRequested && preferredVideoSource?.source);
+                    faceGuidanceSelect.value = selectedFaceGuidance;
+                }
                 window.MLXMultiImageVideo?.configure(mediaQualityKind, imageFiles, prompt);
                 if (profileField && profileSelect) {
                     profileField.hidden = mediaQualityKind !== 'video';
@@ -3948,6 +3958,9 @@ const imageFiles =
                             if (mediaQualityKind === 'video' && profileSelect) {
                                 selectedVideoProfile = profileSelect.value;
                             }
+                            if (faceGuidanceSelect && faceGuidanceField && !faceGuidanceField.hidden) {
+                                selectedFaceGuidance = faceGuidanceSelect.value;
+                            }
 
                             if (
                                 imageModelSelectable &&
@@ -4159,7 +4172,9 @@ const imageFiles =
                     ),
                     // Deliberate opt-in; never switch all long videos to this
                     // experimental native Extend path without user consent.
-                    ...(rollingWindowRequested ? { continuation_mode: 'rolling' } : {})
+                    ...(rollingWindowRequested ? { continuation_mode: 'rolling' } : {}),
+                    ...(rollingWindowRequested && preferredVideoSource?.source && selectedFaceGuidance
+                        ? { face_guidance: selectedFaceGuidance } : {})
                 },
                 quality: selectedMediaQuality,
                 resolved_target: resolvedTarget,
