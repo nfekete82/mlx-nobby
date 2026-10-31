@@ -1,0 +1,10 @@
+{
+  "native_class": "ImageConditioningInput",
+  "image_shorthand": null,
+  "path": "prepared.png",
+  "frame_idx": 0,
+  "strength": 1.0,
+  "crf": 0,
+  "replaces": true,
+  "mlX_imported": false
+}

@@ -114,3 +114,53 @@ and [automated results](lifecycle-video-edit-validation.json).
   GPU retry and no image-model `tested` status promotion. Exactly two complete
   new videos were produced. [Full report](LTX_QUALITY_REPORT_2026-10-31.md) ·
   [matched measurements and memory evidence](ltx-quality-evidence/comparison.json).
+
+### 2026-10-31: LTX I2V cause isolation, CPU phase
+
+Existing installed `dgrauet/ltx-2.5-mlx-q4` / LTX-2.5 22B distilled int4,
+native MLX 0.18.0 at `b82b97e3d000e01361f8cfcb745244b15b89a521`, retained.
+Actual test date 2026-10-31 CET. CPU analysis decoded the two existing 704×1280,
+241-frame / 24 FPS / seed-0 videos and ran CPU Vision landmarks; **no new GPU
+load or generation** in this phase. Native still-preprocessing definitions were
+executed on CPU at CRF 18 versus 0, at 352×640 and 704×1280. The pure CPU native
+factory contract was checked without importing MLX. Render time, denoising
+steps/CFG/scheduler for these CPU probes: N/A; existing videos used 8+3 distilled
+ancestral steps, CFG N/A. Pixel preservation improves, generated quality is
+unassessed. Decision: retain default preprocessing; configure an API-only
+CRF-0 experiment, not a tested quality improvement. No image-model status
+promotion. [Cause analysis and evidence](LTX_I2V_CAUSE_ISOLATION_2026-10-31.md).
+
+- Native CRF-0 I2V trial on **2026-10-31 CET**: real GPU load/render passed,
+  job `1a5c36b2c257a912fcf29bf5`, output `4b46644eefe0c229ff0c6412.mp4`,
+  418.473 s wall time. Same installed LTX-2.5 22B
+  distilled int4 checkpoint and pinned 0.18 runtime above; 704×1280, 241 frames,
+  24 FPS, seed 0, 8+3 native distilled ancestral steps, CFG N/A. Explicit
+  initial still CRF 0 in both spatial stages, normal rolling/audio unchanged.
+  Initial native samples still show the long early eye closure; final dense
+  assessment pending. Retain default; no quality acceptance or status promotion.
+
+- Soft-guidance-off trial on **2026-10-31 CET**: real GPU load/render passed,
+  job `cf06686b4e2819f004233ccd`, output `f56615b625f61f177bd42125.mp4`,
+  433.791 s wall time. Same installed LTX-2.5 22B
+  distilled int4 checkpoint/provider and pinned 0.18 runtime; 704×1280,
+  241 frames, 24 FPS, seed 0, 8+3 ancestral steps, CFG N/A. Native still CRF 18,
+  original frame-zero image anchor retained; only existing soft text guidance
+  disabled via `identity_lock=false`. Initial motion differs; dense final
+  assessment pending. Exactly two new complete videos, no generation retries.
+  No automatic quality acceptance or default change.
+
+- Final assessment for these two 2026-10-31 trials: exact installed checkpoint
+  `transformer-distilled.safetensors` from `dgrauet/ltx-2.5-mlx-q4`, revision
+  `e9a20add8c5937fcab635fb8e7a52926487a5776`, actual previously verified SHA256
+  `413479747a7ecd39c71460c3b0e4c872399c64fdaff85f4ef2a28c435a45f21d`.
+  No installation/runtime/weight changes. CRF 0 **rejected as an eye-motion fix**:
+  initial low-aperture windows 43/21 frames versus 41/21 baseline. Guidance-off
+  yields 20/7 frames and visibly earlier reopening, a **limited positive finding
+  for this source/seed**, not general identity acceptance. Native join review
+  does not establish an isolated identity jump despite lower temporal SSIM.
+  Both real videos have 241 frames, no exact duplicates or PTS anomalies,
+  aligned A/V stream timing and passing real browser playback. Observed active
+  availability minima 67% / 58%, normal pressure; swap stable/decreasing.
+  Decision: retain model and default rolling behavior; keep CRF 0 research-only,
+  manually review guidance opt-out; no automatic approval or image `tested`
+  status promotion. [Final comparative evidence](ltx-i2v-cause-evidence/gpu-comparison.json).

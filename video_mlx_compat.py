@@ -7,6 +7,21 @@ utils.args, and requires .at()/.guide()/.replace() factory methods.
 from __future__ import annotations
 
 
+def initial_image_inputs(image, anchors, crf, image_cls):
+    """Opt-in native 0.18 CRF=0 still; preserve the default shorthand exactly.
+
+    Both native distilled stages receive the same explicit replacement at frame
+    zero. This changes image preprocessing only, with no extra temporal anchor.
+    """
+    if crf is None:
+        return image, image_conditioning_inputs(anchors, image_cls) if anchors else []
+    if type(crf) is not int or crf != 0 or not image or anchors:
+        raise ValueError("Experimental image CRF requires a single initial image and CRF 0")
+    if not hasattr(image_cls, "replace"):
+        raise ValueError("Explicit image CRF requires LTX-MLX v0.18")
+    return None, [image_cls.replace(str(image), 0, 1.0, crf=crf)]
+
+
 def image_conditioning_inputs(anchors, image_cls):
     """Build positional pixel-frame anchors while preserving 'auto' semantics.
 

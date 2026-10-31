@@ -245,6 +245,8 @@ def job_telemetry(path):
     result['generation_seconds']=(d['finished_at']-d['started_at']
         if d.get('finished_at') and d.get('started_at') else None)
     result['settings']={k:payload.get(k) for k in ('seed','resolution','aspect_ratio','fps','duration','identity_lock','resize_mode')}
+    if payload.get('i2v_image_crf') is not None:
+        result['settings']['i2v_image_crf']=payload['i2v_image_crf']
     result['prompt_sha256']=hashlib.sha256(payload.get('prompt','').encode()).hexdigest()
     source=payload.get('first_frame')
     result['source_sha256']=sha256(source) if source and Path(source).is_file() else None
@@ -279,7 +281,12 @@ def write_report(out,results):
             a,b=left.get('job') or {},right.get('job') or {}
             checks={key:(a.get(key)==b.get(key) if a.get(key) is not None and b.get(key) is not None else None)
                     for key in ('source_sha256','prompt_sha256','settings','resolved_model')}
+            left_settings,right_settings=a.get('settings') or {},b.get('settings') or {}
+            changes={key:{'left':left_settings.get(key),'right':right_settings.get(key)}
+                     for key in sorted(set(left_settings)|set(right_settings))
+                     if left_settings.get(key)!=right_settings.get(key)}
             comparisons.append({'left':left['label'],'right':right['label'], 'input_checks':checks,
+                'recorded_setting_changes':changes,
                 'matched_recorded_inputs':all(value is True for value in checks.values()),
                 'limits':'Runtime, hardware and effective conditioning must also match; inspect provenance and implementation.'})
     report={'schema_version':1,'ffmpeg_version':run(['ffmpeg','-version']).decode().splitlines()[0],

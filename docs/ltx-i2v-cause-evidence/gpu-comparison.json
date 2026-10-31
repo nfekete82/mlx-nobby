@@ -1,0 +1,1350 @@
+{
+  "actual_date": "2026-10-31",
+  "native_runtime": "b82b97e3d000e01361f8cfcb745244b15b89a521",
+  "budget": {
+    "maximum_new_full_videos": 2,
+    "completed": 2,
+    "failed_attempts": 0,
+    "generation_retries": 0
+  },
+  "cases": [
+    {
+      "label": "baseline",
+      "file_name": "b6731ecfcbbf3114a32b5c01.mp4",
+      "sha256": "d01437f80ff3aa9f28a907f90105a0ba9d66e2c1ed335acc811d8ed18e8acf53",
+      "bytes": 7019153,
+      "technical": {
+        "width": 704,
+        "height": 1280,
+        "fps": 24.0,
+        "frames": 241,
+        "video_duration": 10.041667,
+        "container_duration": 10.041667,
+        "video_start": 0.0,
+        "audio_start": 0.0,
+        "audio_duration": 10.041667,
+        "av_start_offset_seconds": 0.0,
+        "av_end_offset_seconds": 0.0,
+        "audio_sample_rate": "48000",
+        "codec": "h264",
+        "pixel_format": "yuv420p",
+        "pts_anomalies": []
+      },
+      "job": {
+        "id": "cb0127c78f871c3878512788",
+        "status": "completed",
+        "error": null,
+        "resolved_model": "ltx-2.5-mlx-q4",
+        "memory_before": {
+          "ram_used_bytes": 50201657344,
+          "swap_used_bytes": 7769298042
+        },
+        "memory_peak": {
+          "ram_used_bytes": 50460164096,
+          "swap_used_bytes": 7769298042
+        },
+        "memory_after": {
+          "ram_used_bytes": 41829974016,
+          "swap_used_bytes": 7752520826
+        },
+        "memory_admission": {
+          "available_estimate_gb": 38.4,
+          "free_percent": 80.0,
+          "headroom_gb": 32.4,
+          "pressure": "normal",
+          "reserve_gb": 6.0,
+          "swap_total_gb": 8.0,
+          "swap_used_gb": 7.24,
+          "total_gb": 48.0,
+          "used_estimate_gb": 9.6
+        },
+        "memory_before_admission": {
+          "available_estimate_gb": 20.64,
+          "free_percent": 43.0,
+          "headroom_gb": 14.64,
+          "pressure": "normal",
+          "reserve_gb": 6.0,
+          "swap_total_gb": 8.0,
+          "swap_used_gb": 7.24,
+          "total_gb": 48.0,
+          "used_estimate_gb": 27.36
+        },
+        "runtime_handoff": {
+          "chat_released": true,
+          "duration_ms": 908.92,
+          "image_preserved": false,
+          "image_released": false,
+          "musetalk_released": false,
+          "speech_released": false,
+          "timings_ms": {
+            "chat_stop": 861.06,
+            "image_release": 13.87,
+            "lease_wait": 0.4,
+            "musetalk_release": 0.14,
+            "speech_release": 7.99,
+            "total": 907.59
+          },
+          "version": 2
+        },
+        "rolling_stage_memory": [
+          {
+            "after_free_percent": 79.0,
+            "after_headroom_gb": 31.92,
+            "after_pressure": "normal",
+            "after_swap_gb": 7.22,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 80.0,
+            "before_headroom_gb": 32.4,
+            "before_swap_gb": 7.24,
+            "elapsed_seconds": 209.97,
+            "resolution": "720p",
+            "stage": 1
+          },
+          {
+            "after_free_percent": 79.0,
+            "after_headroom_gb": 31.92,
+            "after_pressure": "normal",
+            "after_swap_gb": 7.22,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 79.0,
+            "before_headroom_gb": 31.92,
+            "before_swap_gb": 7.22,
+            "elapsed_seconds": 103.81,
+            "resolution": "720p",
+            "stage": 2
+          },
+          {
+            "after_free_percent": 79.0,
+            "after_headroom_gb": 31.92,
+            "after_pressure": "normal",
+            "after_swap_gb": 7.22,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 79.0,
+            "before_headroom_gb": 31.92,
+            "before_swap_gb": 7.22,
+            "elapsed_seconds": 103.34,
+            "resolution": "720p",
+            "stage": 3
+          }
+        ],
+        "generation_seconds": 420.9562621116638,
+        "settings": {
+          "seed": 0,
+          "resolution": "720p",
+          "aspect_ratio": "9:16",
+          "fps": 24,
+          "duration": 10,
+          "identity_lock": true,
+          "resize_mode": "contain"
+        },
+        "prompt_sha256": "390aa121ffc4ea2da6f62ca3ea6b1227209936ac08cc2f73de406036e902e4c1",
+        "source_sha256": "4296d2d80c753633525d6dded18d3d7d95fa876585ca894273c6d2b0273e17d6"
+      },
+      "adjacent_ssim": {
+        "min": 0.859251856803894,
+        "median": 0.9860284924507141,
+        "p95": 0.9984789371490479,
+        "max": 0.9988231658935547
+      },
+      "exact_duplicate_frames": [],
+      "boundaries": [
+        {
+          "frame": 145,
+          "time": 6.041667,
+          "laplacian_variance": 159.61048889160156,
+          "mean_luma": 59.2032773714539,
+          "adjacent_ssim": 0.987768828868866,
+          "adjacent_mae": 1.2621204853057861,
+          "previous_frame": 144,
+          "mae_to_nonboundary_median_ratio": 0.6809956330782304
+        },
+        {
+          "frame": 193,
+          "time": 8.041667,
+          "laplacian_variance": 177.04644775390625,
+          "mean_luma": 58.441184618794324,
+          "adjacent_ssim": 0.9919201731681824,
+          "adjacent_mae": 0.9892231822013855,
+          "previous_frame": 192,
+          "mae_to_nonboundary_median_ratio": 0.5337498876390402
+        }
+      ],
+      "segment_geometry": [
+        {
+          "first_frame": 0,
+          "last_frame": 144,
+          "frames": 145,
+          "face_count_histogram": {
+            "1": 145
+          },
+          "left_eye_open_ratio": {
+            "min": 0.06121437607095314,
+            "median": 0.1743986304409132,
+            "p95": 0.3703751057857799,
+            "max": 0.3793205425187432
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 5.2745982861812646e-05,
+            "median": 0.003678988950861342,
+            "p95": 0.027973229691117308,
+            "max": 0.08270501828276217
+          },
+          "right_eye_open_ratio": {
+            "min": 0.0377198620631821,
+            "median": 0.18815965989644887,
+            "p95": 0.3210412724795356,
+            "max": 0.32773017775940433
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00021389341104988135,
+            "median": 0.004699977907509742,
+            "p95": 0.03690308743870103,
+            "max": 0.08416285581388475
+          },
+          "interocular_over_box_width": {
+            "min": 0.3687362069693868,
+            "median": 0.3826767311392561,
+            "p95": 0.40592524978668193,
+            "max": 0.409623423778151
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 3.479291172392429e-06,
+            "median": 0.0018065233960444238,
+            "p95": 0.006668935480298441,
+            "max": 0.014123381497718912
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.520411044194571,
+            "median": 0.5980357552263141,
+            "p95": 0.6991049250236447,
+            "max": 0.7011947420059917
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 8.415956493446064e-05,
+            "median": 0.0034678664390327407,
+            "p95": 0.012135554118132032,
+            "max": 0.02733562729971528
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.8670407450392407,
+            "median": 0.9076624066706526,
+            "p95": 1.1105277121753632,
+            "max": 1.1232239472235004
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 2.453560596693549e-06,
+            "median": 0.0047115487266111145,
+            "p95": 0.01564276064043715,
+            "max": 0.034434627691043884
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 24,
+              "last_frame": 64,
+              "frames": 41,
+              "duration_seconds": 1.7083333333333333
+            },
+            {
+              "first_frame": 102,
+              "last_frame": 122,
+              "frames": 21,
+              "duration_seconds": 0.875
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.36331450552784156,
+            "right": 0.3182232251208643
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.859251856803894,
+            "median": 0.9403639435768127,
+            "p95": 0.9976371437311172,
+            "max": 0.9987696409225464
+          },
+          "within_segment_laplacian_variance": {
+            "min": 104.38227081298828,
+            "median": 162.1970672607422,
+            "p95": 197.92320556640624,
+            "max": 204.97535705566406
+          }
+        },
+        {
+          "first_frame": 145,
+          "last_frame": 192,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.08250673929530158,
+            "median": 0.2578406215468835,
+            "p95": 0.27805614251507904,
+            "max": 0.28437769869472934
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00019025890932916623,
+            "median": 0.004642448815350947,
+            "p95": 0.039790933367073913,
+            "max": 0.07562487283520955
+          },
+          "right_eye_open_ratio": {
+            "min": 0.09714014143976636,
+            "median": 0.23931800879637788,
+            "p95": 0.25847901508245086,
+            "max": 0.26016897271721656
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00013232798330742312,
+            "median": 0.0035893644068885344,
+            "p95": 0.03458580045263817,
+            "max": 0.06139890474975593
+          },
+          "interocular_over_box_width": {
+            "min": 0.37792148702533107,
+            "median": 0.3810883369476244,
+            "p95": 0.3955876604426382,
+            "max": 0.3993578111985861
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 2.803162703529649e-05,
+            "median": 0.001431600719071724,
+            "p95": 0.004343814743235391,
+            "max": 0.007809846942862297
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5749680253771589,
+            "median": 0.6155960227479957,
+            "p95": 0.6275093682319722,
+            "max": 0.6292657388372492
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 3.089638344977441e-05,
+            "median": 0.0017519906385354833,
+            "p95": 0.012752864889239213,
+            "max": 0.01874345777601205
+          },
+          "mouth_width_over_interocular": {
+            "min": 1.0274704386952869,
+            "median": 1.0632926863105299,
+            "p95": 1.0985911157571613,
+            "max": 1.1084212781220308
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 1.5049056536264871e-05,
+            "median": 0.0038000921444654168,
+            "p95": 0.014499976257643897,
+            "max": 0.026611062040938327
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 169,
+              "last_frame": 171,
+              "frames": 3,
+              "duration_seconds": 0.125
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.27554418338975556,
+            "right": 0.2567354611285872
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9922909736633301,
+            "median": 0.9967226386070251,
+            "p95": 0.9985599279403686,
+            "max": 0.9987150430679321
+          },
+          "within_segment_laplacian_variance": {
+            "min": 154.49969482421875,
+            "median": 177.9155502319336,
+            "p95": 184.34334182739258,
+            "max": 185.10513305664062
+          }
+        },
+        {
+          "first_frame": 193,
+          "last_frame": 240,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.055819007716361314,
+            "median": 0.2443992965524653,
+            "p95": 0.27324805518336626,
+            "max": 0.2809544314766215
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00013534691160960177,
+            "median": 0.008613184446342424,
+            "p95": 0.05843334970967395,
+            "max": 0.09906272020234545
+          },
+          "right_eye_open_ratio": {
+            "min": 0.06443501613739411,
+            "median": 0.23504173223800368,
+            "p95": 0.2592158918101311,
+            "max": 0.260340384066225
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 4.680124692685306e-05,
+            "median": 0.007526550226076456,
+            "p95": 0.05046497881947776,
+            "max": 0.08880022999122579
+          },
+          "interocular_over_box_width": {
+            "min": 0.3803048027412456,
+            "median": 0.3884513059818211,
+            "p95": 0.41006007022975566,
+            "max": 0.41183322042751286
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 1.085571877224023e-06,
+            "median": 0.001407042153112159,
+            "p95": 0.007729581664206087,
+            "max": 0.013054521252094164
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5564601854226157,
+            "median": 0.6124596456357572,
+            "p95": 0.6267642674088194,
+            "max": 0.6280492207037133
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 8.439496712020489e-05,
+            "median": 0.003167275795174951,
+            "p95": 0.017486620872467492,
+            "max": 0.032675162472321606
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.9685531707005551,
+            "median": 1.0304297296107663,
+            "p95": 1.0466505314262804,
+            "max": 1.0504041053710012
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 0.000403631000463367,
+            "median": 0.005425720899183473,
+            "p95": 0.01481836900672586,
+            "max": 0.023379361581679414
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 197,
+              "last_frame": 197,
+              "frames": 1,
+              "duration_seconds": 0.041666666666666664
+            },
+            {
+              "first_frame": 223,
+              "last_frame": 229,
+              "frames": 7,
+              "duration_seconds": 0.2916666666666667
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.2725594445383543,
+            "right": 0.2574008087696168
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9143561124801636,
+            "median": 0.9960983395576477,
+            "p95": 0.9987241685390472,
+            "max": 0.9988231658935547
+          },
+          "within_segment_laplacian_variance": {
+            "min": 129.03517150878906,
+            "median": 175.98361206054688,
+            "p95": 197.7689292907715,
+            "max": 198.28826904296875
+          }
+        }
+      ]
+    },
+    {
+      "label": "image_crf0",
+      "file_name": "4b46644eefe0c229ff0c6412.mp4",
+      "sha256": "8ece36732d49350f3518421b37eff2d35578c0eb4e5873bb112c42f2bb23e550",
+      "bytes": 7491169,
+      "technical": {
+        "width": 704,
+        "height": 1280,
+        "fps": 24.0,
+        "frames": 241,
+        "video_duration": 10.041667,
+        "container_duration": 10.041667,
+        "video_start": 0.0,
+        "audio_start": 0.0,
+        "audio_duration": 10.041667,
+        "av_start_offset_seconds": 0.0,
+        "av_end_offset_seconds": 0.0,
+        "audio_sample_rate": "48000",
+        "codec": "h264",
+        "pixel_format": "yuv420p",
+        "pts_anomalies": []
+      },
+      "job": {
+        "id": "1a5c36b2c257a912fcf29bf5",
+        "status": "completed",
+        "error": null,
+        "resolved_model": "ltx-2.5-mlx-q4",
+        "memory_before": {
+          "ram_used_bytes": 49911857152,
+          "swap_used_bytes": 10438699909
+        },
+        "memory_peak": {
+          "ram_used_bytes": 50400968704,
+          "swap_used_bytes": 10438699909
+        },
+        "memory_after": {
+          "ram_used_bytes": 42242244608,
+          "swap_used_bytes": 10430311301
+        },
+        "memory_admission": {
+          "available_estimate_gb": 42.24,
+          "free_percent": 88.0,
+          "headroom_gb": 36.24,
+          "pressure": "normal",
+          "reserve_gb": 6.0,
+          "swap_total_gb": 11.0,
+          "swap_used_gb": 9.72,
+          "total_gb": 48.0,
+          "used_estimate_gb": 5.76
+        },
+        "memory_before_admission": {
+          "available_estimate_gb": 21.12,
+          "free_percent": 44.0,
+          "headroom_gb": 15.12,
+          "pressure": "normal",
+          "reserve_gb": 6.0,
+          "swap_total_gb": 11.0,
+          "swap_used_gb": 9.72,
+          "total_gb": 48.0,
+          "used_estimate_gb": 26.88
+        },
+        "runtime_handoff": {
+          "chat_released": true,
+          "duration_ms": 1403.53,
+          "image_preserved": false,
+          "image_released": false,
+          "musetalk_released": false,
+          "speech_released": false,
+          "timings_ms": {
+            "chat_stop": 274.73,
+            "image_release": 21.95,
+            "lease_wait": 0.49,
+            "musetalk_release": 0.13,
+            "speech_release": 8.31,
+            "total": 1401.08
+          },
+          "version": 2
+        },
+        "rolling_stage_memory": [
+          {
+            "after_free_percent": 87.0,
+            "after_headroom_gb": 35.76,
+            "after_pressure": "normal",
+            "after_swap_gb": 9.71,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 88.0,
+            "before_headroom_gb": 36.24,
+            "before_swap_gb": 9.72,
+            "elapsed_seconds": 216.0,
+            "resolution": "720p",
+            "stage": 1
+          },
+          {
+            "after_free_percent": 88.0,
+            "after_headroom_gb": 36.24,
+            "after_pressure": "normal",
+            "after_swap_gb": 9.71,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 87.0,
+            "before_headroom_gb": 35.76,
+            "before_swap_gb": 9.71,
+            "elapsed_seconds": 97.47,
+            "resolution": "720p",
+            "stage": 2
+          },
+          {
+            "after_free_percent": 88.0,
+            "after_headroom_gb": 36.24,
+            "after_pressure": "normal",
+            "after_swap_gb": 9.71,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 88.0,
+            "before_headroom_gb": 36.24,
+            "before_swap_gb": 9.71,
+            "elapsed_seconds": 100.13,
+            "resolution": "720p",
+            "stage": 3
+          }
+        ],
+        "generation_seconds": 418.47280406951904,
+        "settings": {
+          "seed": 0,
+          "resolution": "720p",
+          "aspect_ratio": "9:16",
+          "fps": 24,
+          "duration": 10,
+          "identity_lock": true,
+          "resize_mode": "contain",
+          "i2v_image_crf": 0
+        },
+        "prompt_sha256": "390aa121ffc4ea2da6f62ca3ea6b1227209936ac08cc2f73de406036e902e4c1",
+        "source_sha256": "4296d2d80c753633525d6dded18d3d7d95fa876585ca894273c6d2b0273e17d6"
+      },
+      "adjacent_ssim": {
+        "min": 0.8549771904945374,
+        "median": 0.9611173868179321,
+        "p95": 0.9985303372144699,
+        "max": 0.9990140795707703
+      },
+      "exact_duplicate_frames": [],
+      "boundaries": [
+        {
+          "frame": 145,
+          "time": 6.041667,
+          "laplacian_variance": 163.31112670898438,
+          "mean_luma": 59.71511386303192,
+          "adjacent_ssim": 0.9862498641014099,
+          "adjacent_mae": 1.2607698440551758,
+          "previous_frame": 144,
+          "mae_to_nonboundary_median_ratio": 0.568734055934681
+        },
+        {
+          "frame": 193,
+          "time": 8.041667,
+          "laplacian_variance": 179.75575256347656,
+          "mean_luma": 59.706546431737586,
+          "adjacent_ssim": 0.9922055602073669,
+          "adjacent_mae": 1.010195016860962,
+          "previous_frame": 192,
+          "mae_to_nonboundary_median_ratio": 0.45569959650715974
+        }
+      ],
+      "segment_geometry": [
+        {
+          "first_frame": 0,
+          "last_frame": 144,
+          "frames": 145,
+          "face_count_histogram": {
+            "1": 145
+          },
+          "left_eye_open_ratio": {
+            "min": 0.0595932569116815,
+            "median": 0.1886940608178177,
+            "p95": 0.36735632491419723,
+            "max": 0.3708209109229176
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 5.142859440671055e-05,
+            "median": 0.00407169141041154,
+            "p95": 0.02774907397364863,
+            "max": 0.10893971506606895
+          },
+          "right_eye_open_ratio": {
+            "min": 0.03751995256834175,
+            "median": 0.2009679756575415,
+            "p95": 0.32179623874327534,
+            "max": 0.3237591175889263
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00011640591506534292,
+            "median": 0.004522391328775056,
+            "p95": 0.03542553872557329,
+            "max": 0.09969147331990094
+          },
+          "interocular_over_box_width": {
+            "min": 0.36841029745481957,
+            "median": 0.3919514347376183,
+            "p95": 0.40651536461316135,
+            "max": 0.4098195382140251
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 5.298896501321204e-05,
+            "median": 0.001980019638508107,
+            "p95": 0.006350312714543104,
+            "max": 0.017374541531977206
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5060304178212232,
+            "median": 0.5946145399101012,
+            "p95": 0.6987578338091726,
+            "max": 0.7031634079375708
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 5.938857860854352e-05,
+            "median": 0.002706171888966824,
+            "p95": 0.012064176254847275,
+            "max": 0.03823538531033355
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.8826861673103783,
+            "median": 0.9190037482404252,
+            "p95": 1.004129472065587,
+            "max": 1.0124785668630818
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 5.40180696738668e-05,
+            "median": 0.004371736395752945,
+            "p95": 0.01358894335177872,
+            "max": 0.02257704271114569
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 23,
+              "last_frame": 65,
+              "frames": 43,
+              "duration_seconds": 1.7916666666666667
+            },
+            {
+              "first_frame": 103,
+              "last_frame": 123,
+              "frames": 21,
+              "duration_seconds": 0.875
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.36320813425413745,
+            "right": 0.3185160266129022
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.8549771904945374,
+            "median": 0.9418102204799652,
+            "p95": 0.9980033099651336,
+            "max": 0.9989449381828308
+          },
+          "within_segment_laplacian_variance": {
+            "min": 102.25204467773438,
+            "median": 163.96315002441406,
+            "p95": 203.18096008300782,
+            "max": 210.26156616210938
+          }
+        },
+        {
+          "first_frame": 145,
+          "last_frame": 192,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.11539368430180222,
+            "median": 0.27314654214723055,
+            "p95": 0.2833112970542341,
+            "max": 0.28385023551020844
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00015412107150569732,
+            "median": 0.004469602158058139,
+            "p95": 0.041782415970769954,
+            "max": 0.09360556929148672
+          },
+          "right_eye_open_ratio": {
+            "min": 0.13062247820226852,
+            "median": 0.26156314375258705,
+            "p95": 0.27002990263518656,
+            "max": 0.27217597194903004
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00014116292319232837,
+            "median": 0.0037419762199407125,
+            "p95": 0.036582327601736714,
+            "max": 0.07249829436148472
+          },
+          "interocular_over_box_width": {
+            "min": 0.3787327960098838,
+            "median": 0.39047250292066643,
+            "p95": 0.40563548537635424,
+            "max": 0.40961524737628846
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 1.4349941608871042e-05,
+            "median": 0.0016648036301535885,
+            "p95": 0.0045077048790411346,
+            "max": 0.012084781255742194
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5639692166370985,
+            "median": 0.6228090970108655,
+            "p95": 0.6337969249038031,
+            "max": 0.6347518071628725
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 8.637750544271405e-06,
+            "median": 0.002074645654694618,
+            "p95": 0.01640236134561871,
+            "max": 0.03342322933328423
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.9371499295162102,
+            "median": 0.9727626042298987,
+            "p95": 1.0301193096534902,
+            "max": 1.036969263705548
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 6.403815019428993e-05,
+            "median": 0.004051108673016612,
+            "p95": 0.012497558544564424,
+            "max": 0.017485041761901354
+          },
+          "bilateral_low_aperture_candidates": [],
+          "aperture_reference_p90": {
+            "left": 0.2822456620381296,
+            "right": 0.2684998823028531
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9927766919136047,
+            "median": 0.997787356376648,
+            "p95": 0.9989456236362457,
+            "max": 0.9990140795707703
+          },
+          "within_segment_laplacian_variance": {
+            "min": 157.5332489013672,
+            "median": 181.6957778930664,
+            "p95": 188.3987892150879,
+            "max": 190.3403778076172
+          }
+        },
+        {
+          "first_frame": 193,
+          "last_frame": 240,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.05196099311090156,
+            "median": 0.21283566475619356,
+            "p95": 0.2823953758082267,
+            "max": 0.28614798575395006
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00010782699909783755,
+            "median": 0.006968769475720504,
+            "p95": 0.02749177781798881,
+            "max": 0.08293085497622196
+          },
+          "right_eye_open_ratio": {
+            "min": 0.05723547605110217,
+            "median": 0.21578925725395853,
+            "p95": 0.2688924969638306,
+            "max": 0.27202867007708104
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00015564492070332947,
+            "median": 0.0053762978565844305,
+            "p95": 0.025757621423203165,
+            "max": 0.07452071801260698
+          },
+          "interocular_over_box_width": {
+            "min": 0.38068899597319183,
+            "median": 0.3925348778060214,
+            "p95": 0.4171118954900548,
+            "max": 0.4212565146379925
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 3.2006679012874795e-05,
+            "median": 0.0017783187567233516,
+            "p95": 0.008314529426522851,
+            "max": 0.010202469000892667
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5540359620733225,
+            "median": 0.6005346965890999,
+            "p95": 0.6313297086882504,
+            "max": 0.6337542091020467
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 0.000192323117756521,
+            "median": 0.0024846664153105325,
+            "p95": 0.011611164870658787,
+            "max": 0.030203821697843414
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.9750606881254053,
+            "median": 1.024058973068727,
+            "p95": 1.0318450931960559,
+            "max": 1.0399874653736965
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 0.0002773765592549715,
+            "median": 0.004250454051078378,
+            "p95": 0.011320905489907359,
+            "max": 0.01860777071363251
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 213,
+              "last_frame": 220,
+              "frames": 8,
+              "duration_seconds": 0.3333333333333333
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.2787670554010049,
+            "right": 0.26569176461728705
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.8774903416633606,
+            "median": 0.9325728416442871,
+            "p95": 0.9982110559940338,
+            "max": 0.998607337474823
+          },
+          "within_segment_laplacian_variance": {
+            "min": 156.14389038085938,
+            "median": 186.13524627685547,
+            "p95": 201.07048645019532,
+            "max": 210.35104370117188
+          }
+        }
+      ]
+    },
+    {
+      "label": "guidance_off",
+      "file_name": "f56615b625f61f177bd42125.mp4",
+      "sha256": "e9dfe703a13b1389d09d9c8646a5a6ec9b12e38804b22cf28c0e28def4b77d84",
+      "bytes": 7524766,
+      "technical": {
+        "width": 704,
+        "height": 1280,
+        "fps": 24.0,
+        "frames": 241,
+        "video_duration": 10.041667,
+        "container_duration": 10.041667,
+        "video_start": 0.0,
+        "audio_start": 0.0,
+        "audio_duration": 10.041667,
+        "av_start_offset_seconds": 0.0,
+        "av_end_offset_seconds": 0.0,
+        "audio_sample_rate": "48000",
+        "codec": "h264",
+        "pixel_format": "yuv420p",
+        "pts_anomalies": []
+      },
+      "job": {
+        "id": "cf06686b4e2819f004233ccd",
+        "status": "completed",
+        "error": null,
+        "resolved_model": "ltx-2.5-mlx-q4",
+        "memory_before": {
+          "ram_used_bytes": 49720885248,
+          "swap_used_bytes": 10421922693
+        },
+        "memory_peak": {
+          "ram_used_bytes": 50455052288,
+          "swap_used_bytes": 10421922693
+        },
+        "memory_after": {
+          "ram_used_bytes": 42120380416,
+          "swap_used_bytes": 10405145477
+        },
+        "memory_admission": {
+          "available_estimate_gb": 42.24,
+          "free_percent": 88.0,
+          "headroom_gb": 36.24,
+          "pressure": "normal",
+          "reserve_gb": 6.0,
+          "swap_total_gb": 11.0,
+          "swap_used_gb": 9.71,
+          "total_gb": 48.0,
+          "used_estimate_gb": 5.76
+        },
+        "memory_before_admission": {
+          "available_estimate_gb": 22.08,
+          "free_percent": 46.0,
+          "headroom_gb": 16.08,
+          "pressure": "normal",
+          "reserve_gb": 6.0,
+          "swap_total_gb": 11.0,
+          "swap_used_gb": 9.71,
+          "total_gb": 48.0,
+          "used_estimate_gb": 25.92
+        },
+        "runtime_handoff": {
+          "chat_released": true,
+          "duration_ms": 1433.04,
+          "image_preserved": false,
+          "image_released": false,
+          "musetalk_released": false,
+          "speech_released": false,
+          "timings_ms": {
+            "chat_stop": 327.21,
+            "image_release": 10.5,
+            "lease_wait": 0.43,
+            "musetalk_release": 0.13,
+            "speech_release": 5.14,
+            "total": 1431.08
+          },
+          "version": 2
+        },
+        "rolling_stage_memory": [
+          {
+            "after_free_percent": 84.0,
+            "after_headroom_gb": 34.32,
+            "after_pressure": "normal",
+            "after_swap_gb": 9.71,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 88.0,
+            "before_headroom_gb": 36.24,
+            "before_swap_gb": 9.71,
+            "elapsed_seconds": 218.65,
+            "resolution": "720p",
+            "stage": 1
+          },
+          {
+            "after_free_percent": 84.0,
+            "after_headroom_gb": 34.32,
+            "after_pressure": "normal",
+            "after_swap_gb": 9.69,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 84.0,
+            "before_headroom_gb": 34.32,
+            "before_swap_gb": 9.71,
+            "elapsed_seconds": 106.59,
+            "resolution": "720p",
+            "stage": 2
+          },
+          {
+            "after_free_percent": 86.0,
+            "after_headroom_gb": 35.28,
+            "after_pressure": "normal",
+            "after_swap_gb": 9.69,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 84.0,
+            "before_headroom_gb": 34.32,
+            "before_swap_gb": 9.69,
+            "elapsed_seconds": 103.92,
+            "resolution": "720p",
+            "stage": 3
+          }
+        ],
+        "generation_seconds": 433.790931224823,
+        "settings": {
+          "seed": 0,
+          "resolution": "720p",
+          "aspect_ratio": "9:16",
+          "fps": 24,
+          "duration": 10,
+          "identity_lock": false,
+          "resize_mode": "contain"
+        },
+        "prompt_sha256": "390aa121ffc4ea2da6f62ca3ea6b1227209936ac08cc2f73de406036e902e4c1",
+        "source_sha256": "4296d2d80c753633525d6dded18d3d7d95fa876585ca894273c6d2b0273e17d6"
+      },
+      "adjacent_ssim": {
+        "min": 0.8875242471694946,
+        "median": 0.9817641079425812,
+        "p95": 0.9972002893686295,
+        "max": 0.9985922574996948
+      },
+      "exact_duplicate_frames": [],
+      "boundaries": [
+        {
+          "frame": 145,
+          "time": 6.041667,
+          "laplacian_variance": 149.64324951171875,
+          "mean_luma": 59.834358377659576,
+          "adjacent_ssim": 0.9476293921470642,
+          "adjacent_mae": 2.406963348388672,
+          "previous_frame": 144,
+          "mae_to_nonboundary_median_ratio": 1.9811251673478651
+        },
+        {
+          "frame": 193,
+          "time": 8.041667,
+          "laplacian_variance": 183.24095153808594,
+          "mean_luma": 60.24219442597518,
+          "adjacent_ssim": 0.99088054895401,
+          "adjacent_mae": 1.0794202089309692,
+          "previous_frame": 192,
+          "mae_to_nonboundary_median_ratio": 0.8884499813794915
+        }
+      ],
+      "segment_geometry": [
+        {
+          "first_frame": 0,
+          "last_frame": 144,
+          "frames": 145,
+          "face_count_histogram": {
+            "1": 145
+          },
+          "left_eye_open_ratio": {
+            "min": 0.054479897522037204,
+            "median": 0.2225279462694237,
+            "p95": 0.3655075039313683,
+            "max": 0.3705424526595828
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 5.824191310516147e-05,
+            "median": 0.0045078561328622535,
+            "p95": 0.028001597553303174,
+            "max": 0.16459572879767947
+          },
+          "right_eye_open_ratio": {
+            "min": 0.044327538379124676,
+            "median": 0.23052372825993628,
+            "p95": 0.3207547882369326,
+            "max": 0.32424517040507783
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 3.0818311946789745e-05,
+            "median": 0.00444198502115567,
+            "p95": 0.029208285409096996,
+            "max": 0.16465944608310534
+          },
+          "interocular_over_box_width": {
+            "min": 0.36449420180746905,
+            "median": 0.38646636969929904,
+            "p95": 0.40897603548065514,
+            "max": 0.4141633742804111
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 8.495153908438802e-06,
+            "median": 0.0016403273504075055,
+            "p95": 0.004889551246656619,
+            "max": 0.022740446451094132
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5115686265894707,
+            "median": 0.5980795991903884,
+            "p95": 0.6975990517351072,
+            "max": 0.6997266752816579
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 2.0912587993193732e-05,
+            "median": 0.0022995418165789316,
+            "p95": 0.010287361842337504,
+            "max": 0.06010564950852648
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.8777940934494032,
+            "median": 0.9329806988770435,
+            "p95": 1.0776706826382945,
+            "max": 1.0867120242236505
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 0.00010514189719712519,
+            "median": 0.003722894246869002,
+            "p95": 0.0147769793508041,
+            "max": 0.03823143844739507
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 24,
+              "last_frame": 43,
+              "frames": 20,
+              "duration_seconds": 0.8333333333333334
+            },
+            {
+              "first_frame": 101,
+              "last_frame": 107,
+              "frames": 7,
+              "duration_seconds": 0.2916666666666667
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.3614048077386484,
+            "right": 0.3176650956796141
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.8875242471694946,
+            "median": 0.9326401352882385,
+            "p95": 0.9971724838018418,
+            "max": 0.9985922574996948
+          },
+          "within_segment_laplacian_variance": {
+            "min": 112.18314361572266,
+            "median": 151.05636596679688,
+            "p95": 198.25086669921876,
+            "max": 204.5990447998047
+          }
+        },
+        {
+          "first_frame": 145,
+          "last_frame": 192,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.06709089764416383,
+            "median": 0.22069805319091385,
+            "p95": 0.23556605595575925,
+            "max": 0.2369850707906721
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.0003308961973094715,
+            "median": 0.007613739573923722,
+            "p95": 0.05220931109926,
+            "max": 0.0883002938214404
+          },
+          "right_eye_open_ratio": {
+            "min": 0.053006051685540206,
+            "median": 0.20893135850936484,
+            "p95": 0.2208713483745168,
+            "max": 0.228299836891866
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.0003408429559285109,
+            "median": 0.007770940567250945,
+            "p95": 0.04654632996059958,
+            "max": 0.07897994929617672
+          },
+          "interocular_over_box_width": {
+            "min": 0.37030174217293627,
+            "median": 0.3788411331013759,
+            "p95": 0.3899085538351726,
+            "max": 0.3927719591521716
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 8.471903804080361e-05,
+            "median": 0.001884483252705682,
+            "p95": 0.0067177684421785115,
+            "max": 0.013888466531775334
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5322915512743647,
+            "median": 0.5825258629781023,
+            "p95": 0.608101687363526,
+            "max": 0.6088612997002367
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 8.856545382474046e-05,
+            "median": 0.00297340820685299,
+            "p95": 0.018120878017798023,
+            "max": 0.03099475310652544
+          },
+          "mouth_width_over_interocular": {
+            "min": 1.0212879485755706,
+            "median": 1.0544414810516989,
+            "p95": 1.0718506678373128,
+            "max": 1.0755453921207345
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 0.00018703214516846423,
+            "median": 0.0033872861738695192,
+            "p95": 0.01153960388680872,
+            "max": 0.01750258470220456
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 158,
+              "last_frame": 161,
+              "frames": 4,
+              "duration_seconds": 0.16666666666666666
+            },
+            {
+              "first_frame": 179,
+              "last_frame": 180,
+              "frames": 2,
+              "duration_seconds": 0.08333333333333333
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.23385063104774795,
+            "right": 0.22024080152727896
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9503906965255737,
+            "median": 0.9874921441078186,
+            "p95": 0.9964321553707123,
+            "max": 0.9973506927490234
+          },
+          "within_segment_laplacian_variance": {
+            "min": 139.80661010742188,
+            "median": 180.5372772216797,
+            "p95": 202.86635513305663,
+            "max": 205.34068298339844
+          }
+        },
+        {
+          "first_frame": 193,
+          "last_frame": 240,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.22717490390124565,
+            "median": 0.2558889313431937,
+            "p95": 0.26748967297922,
+            "max": 0.27156451288880207
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 7.776680759055687e-05,
+            "median": 0.0027209195281156506,
+            "p95": 0.009305526838154365,
+            "max": 0.013103635611118658
+          },
+          "right_eye_open_ratio": {
+            "min": 0.2148322550437082,
+            "median": 0.24495157524145905,
+            "p95": 0.25203723982652787,
+            "max": 0.2536237067423014
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 4.926830698742668e-05,
+            "median": 0.0021701220839789592,
+            "p95": 0.008221951064344115,
+            "max": 0.010526601972997512
+          },
+          "interocular_over_box_width": {
+            "min": 0.37282770946765786,
+            "median": 0.38189823557537117,
+            "p95": 0.3885458759657858,
+            "max": 0.39045429411601995
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 8.386016924560868e-05,
+            "median": 0.0015014827498596173,
+            "p95": 0.004250636150799286,
+            "max": 0.006236023244943045
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5812458049366269,
+            "median": 0.5951871286830932,
+            "p95": 0.6018989393860851,
+            "max": 0.603072327740355
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 1.4104147800453326e-05,
+            "median": 0.0015214990682346219,
+            "p95": 0.00540719070490702,
+            "max": 0.007401591024169263
+          },
+          "mouth_width_over_interocular": {
+            "min": 1.0067857153917283,
+            "median": 1.0239717778259334,
+            "p95": 1.045240903278919,
+            "max": 1.0515831177552002
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 0.0002815133124036695,
+            "median": 0.0034532215078337813,
+            "p95": 0.008298395149064268,
+            "max": 0.011312472982373922
+          },
+          "bilateral_low_aperture_candidates": [],
+          "aperture_reference_p90": {
+            "left": 0.26505724690223087,
+            "right": 0.25082111394254714
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9827576279640198,
+            "median": 0.9887595772743225,
+            "p95": 0.9975324213504791,
+            "max": 0.9982588291168213
+          },
+          "within_segment_laplacian_variance": {
+            "min": 183.24095153808594,
+            "median": 213.56878662109375,
+            "p95": 228.55020599365236,
+            "max": 230.1981201171875
+          }
+        }
+      ]
+    }
+  ],
+  "causal_limits": "One portrait and seed; pixel metrics, geometry and native visual observations are distinct. No default acceptance."
+}

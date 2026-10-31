@@ -1,0 +1,34 @@
+{
+  "runtime": "b82b97e3d000e01361f8cfcb745244b15b89a521",
+  "native_media_io_sha256": "3dcf359275770d89c2b6f0d0a692fda677c7f38fe55e9de0e1bdde6166d9281b",
+  "source_sha256": "4296d2d80c753633525d6dded18d3d7d95fa876585ca894273c6d2b0273e17d6",
+  "prepared_size": [
+    704,
+    1280
+  ],
+  "pixel_roundtrip": [
+    {
+      "crf": 18,
+      "source_rgb_mae": 0.9108542702414772
+    },
+    {
+      "crf": 0,
+      "source_rgb_mae": 0.0
+    }
+  ],
+  "stages": {
+    "half": {
+      "crf18_vs_no_recompression_ssim": 0.9968712329864502,
+      "luma_mae": 0.4150612571022727,
+      "crf0_laplacian_variance": 196.35137939453125,
+      "crf18_laplacian_variance": 190.57028198242188
+    },
+    "full": {
+      "crf18_vs_no_recompression_ssim": 0.9925759434700012,
+      "luma_mae": 0.5912653142755682,
+      "crf0_laplacian_variance": 88.0844955444336,
+      "crf18_laplacian_variance": 85.39678192138672
+    }
+  },
+  "limits": "CPU pixels only; no MLX module import, tensor, model or VAE execution. Lower pixel error does not prove better generated faces; CRF 18 is the model training-aligned default."
+}
