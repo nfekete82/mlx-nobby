@@ -96,6 +96,8 @@ class VideoPayload(BaseModel):
     # Applies only to segmented image-to-video jobs with an original still.
     identity_lock: bool = True
     identity_strength: float = Field(default=0.30, ge=0.10, le=0.60)
+    # Rolling I2V text-only conditioning; None inherits the legacy identity_lock behavior.
+    face_guidance: Literal["off", "minimal", "full"] | None = None
     # API-only experiment; None preserves checkpoint-native still preprocessing.
     i2v_image_crf: int | None = Field(default=None, strict=True, ge=0, le=0)
     continuation_mode: Literal["segmented", "rolling"] = "segmented"
@@ -178,6 +180,17 @@ class JobCreate(BaseModel):
             video_rolling.plan(self.payload.duration, self.payload.resolution or profile["resolution"], self.payload.fps)
             if multi or self.payload.profile != "standard" or registry.get_model(self.payload.model).get("provider") != "ltx-mlx":
                 raise ValueError("Rolling-Window benötigt ein einzelnes Standard-LTX-MLX-Video")
+        if self.payload.face_guidance is not None:
+            direct_six_second_pilot = (
+                self.payload.continuation_mode != "rolling"
+                and self.payload.duration == 6
+                and (self.payload.resolution or profile["resolution"]) == "720p"
+                and self.payload.profile == "standard"
+                and registry.get_model(self.payload.model).get("provider") == "ltx-mlx"
+            )
+            if self.operation != "i2v" or not (
+                    self.payload.continuation_mode == "rolling" or direct_six_second_pilot):
+                raise ValueError("Gesichtstextführung nur für Rolling-I2V oder 6s/720p-I2V-Test")
         if self.payload.i2v_image_crf is not None and (
                 self.operation != "i2v" or self.payload.continuation_mode != "rolling"):
             raise ValueError("Experimentelles Bild-CRF ist nur für Rolling-I2V verfügbar")
@@ -285,6 +298,15 @@ def _video_dimensions(resolution, aspect_ratio):
 
 def _job_total_steps(payload):
     return 2 if payload.quality == "preview" else 8
+
+
+def _direct_generation_params(request):
+    """Opt-in 6s I2V prompt-only experiment, no changes to the saved request."""
+    params = request.payload.model_dump()
+    if (request.operation == "i2v" and request.payload.face_guidance is not None
+            and request.payload.duration == 6):
+        params["prompt"] = video_rolling._face_prompt(params, extension=False)
+    return params
 
 
 def _public(job):
@@ -627,7 +649,7 @@ def _run(job_id, request):
                     update=lambda **changes: _update(job_id, **changes), **callbacks,
                 )
             else:
-                media = generate(model, request.payload.model_dump(), output, **callbacks)
+                media = generate(model, _direct_generation_params(request), output, **callbacks)
             if cancel.is_set():
                 raise ProviderCancelled("Video job was cancelled")
             after = _memory_snapshot()
@@ -758,6 +780,7 @@ def preflight(request: JobCreate):
         old_payload.pop("resume_from", None)
         # Jobs created before this opt-in field keep their default resume contract.
         old_payload.setdefault("i2v_image_crf", None)
+        old_payload.setdefault("face_guidance", None)
         if (not previous or previous.get("status") not in {"failed", "cancelled"}
                 or previous.get("chat_id") != request.chat_id or payload != old_payload):
             raise HTTPException(422, "Fortsetzen benötigt einen fehlgeschlagenen Job mit unveränderten Einstellungen und Quellen")

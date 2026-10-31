@@ -48,6 +48,14 @@ EXTEND_FACE_GUIDANCE = (
     "Maintain consistent facial proportions, eye shape and spacing, eyelids, "
     "iris placement, skin texture and hairstyle with natural blinking. "
 )
+MINIMAL_INITIAL_FACE_GUIDANCE = (
+    "Maintain the same person's identity and natural facial proportions. "
+    "Allow realistic blinking, relaxed eye movement, natural smiling and subtle expressions. "
+)
+MINIMAL_EXTEND_FACE_GUIDANCE = (
+    "Continue the same person's natural movement and facial identity from the video. "
+    "Allow realistic blinking, relaxed eye movement and subtle expressions. "
+)
 WARNING = (
     "Experimentelles Rolling-Window-Extend: 25 Frames Bewegungs- und Audiokontext "
     "statt nur eines Standbilds. I2V-Gesichtshinweise sind kein harter Identity Lock; "
@@ -59,12 +67,28 @@ def needed(params):
     return params.get("continuation_mode", "segmented") == "rolling"
 
 
+def _face_guidance_mode(params):
+    """Explicit rolling-only text choice; None preserves all previous defaults."""
+    if not params.get("first_frame"):
+        return "off"
+    explicit = params.get("face_guidance")
+    if explicit is None:
+        return "full" if params.get("identity_lock", True) else "off"
+    if explicit not in {"off", "minimal", "full"}:
+        raise ValueError("Unbekannter Rolling-Gesichtshinweismodus")
+    return explicit
+
+
 def _face_prompt(params, *, extension):
-    """Only guide I2V when identity_lock is enabled; never alter T2V or opt-out."""
+    """Only change positive text conditioning, never the native first-frame anchor."""
     prompt = params["prompt"]
-    if not params.get("first_frame") or not params.get("identity_lock", True):
+    mode = _face_guidance_mode(params)
+    if mode == "off":
         return prompt
-    guidance = EXTEND_FACE_GUIDANCE if extension else INITIAL_FACE_GUIDANCE
+    if mode == "minimal":
+        guidance = MINIMAL_EXTEND_FACE_GUIDANCE if extension else MINIMAL_INITIAL_FACE_GUIDANCE
+    else:
+        guidance = EXTEND_FACE_GUIDANCE if extension else INITIAL_FACE_GUIDANCE
     return guidance + prompt
 
 
@@ -202,7 +226,7 @@ def _fingerprint(model, params, planner, version):
         "model": model["id"], "runtime": version,
         "config": video_long.digest(config), "plan": planner,
         "params": {k: v for k, v in params.items() if k != "resume_from"
-                   and not (k == "i2v_image_crf" and v is None)},
+                   and not (k in {"i2v_image_crf", "face_guidance"} and v is None)},
         "source": video_long.digest(source) if source else None,
         "weights": [(str(p.relative_to(root)), p.stat().st_size, p.stat().st_mtime_ns)
                     for p in sorted(root.rglob("*.safetensors"))],
@@ -215,7 +239,8 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
     if model.get("provider") != "ltx-mlx" or params.get("profile", "standard") != "standard":
         raise ValueError("Rolling-Window benötigt natives Standard-LTX-MLX")
     planner = plan(params["duration"], params["resolution"], params["fps"])
-    face_guidance = bool(params.get("first_frame")) and bool(params.get("identity_lock", True))
+    guidance_mode = _face_guidance_mode(params)
+    face_guidance = guidance_mode != "off"
     _validate_canvas(params)
     version = video_long.runtime_version()
     fingerprint = _fingerprint(model, params, planner, version)
@@ -256,6 +281,7 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
            continuity_warning=WARNING,
            rolling_window_frames=CONTEXT_FRAMES,
            rolling_identity_prompt_guidance=face_guidance,
+           rolling_face_guidance_mode=guidance_mode,
            rolling_stage_memory=stage_memory)
 
     for index, stage in enumerate(planner["stages"]):
@@ -349,4 +375,5 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
             "stage_count": len(SEGMENT_SECONDS), "rolling_window_frames": CONTEXT_FRAMES,
             "rolling_stage_memory": stage_memory,
             "rolling_identity_prompt_guidance": face_guidance,
+            "rolling_face_guidance_mode": guidance_mode,
             "continuity_warning": WARNING}

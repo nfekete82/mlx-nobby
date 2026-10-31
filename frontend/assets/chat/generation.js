@@ -3376,6 +3376,9 @@ const imageFiles =
             }
             selectedMediaQuality = normalizedMediaQuality;
             let selectedVideoProfile = 'standard';
+            // Empty means legacy behavior; never silently change existing jobs.
+            let selectedFaceGuidance = ['off', 'minimal', 'full'].includes(options?.video?.face_guidance)
+                ? options.video.face_guidance : '';
             let multiVideoSelection = null;
             let selectedVideoDuration = VIDEO_DURATIONS.has(
                 Number(options?.video?.duration)
@@ -3451,6 +3454,13 @@ const imageFiles =
                     document.getElementById('videoDuration');
                 const profileField = document.getElementById('videoProfileField');
                 const profileSelect = document.getElementById('videoProfile');
+                const faceGuidanceField = document.getElementById('videoFaceGuidanceField');
+                const faceGuidanceSelect = document.getElementById('videoFaceGuidance');
+                if (faceGuidanceField && faceGuidanceSelect) {
+                    // Only relevant when Rolling I2V has a real original image.
+                    faceGuidanceField.hidden = !(rollingWindowRequested && preferredVideoSource?.source);
+                    faceGuidanceSelect.value = selectedFaceGuidance;
+                }
                 window.MLXMultiImageVideo?.configure(mediaQualityKind, imageFiles, prompt);
                 if (profileField && profileSelect) {
                     profileField.hidden = mediaQualityKind !== 'video';
@@ -3683,6 +3693,13 @@ const imageFiles =
 
                         durationSelect.value =
                             String(selectedVideoDuration);
+                        if (faceGuidanceField) {
+                            faceGuidanceField.hidden = !(
+                                preferredVideoSource?.source &&
+                                (rollingWindowRequested ||
+                                    (selectedVideoDuration === 6 && choice === 'standard'))
+                            );
+                        }
                     };
 
                     const renderChoice = () => {
@@ -3803,6 +3820,8 @@ const imageFiles =
                             samplingSteps?.removeEventListener?.('input', onSamplingInput);
                             samplingCfg?.removeEventListener?.('input', onSamplingInput);
 
+                            durationSelect?.removeEventListener?.('change', onFaceDurationChange);
+
                             cancel.removeEventListener(
                                 'click',
                                 onCancel
@@ -3869,9 +3888,23 @@ const imageFiles =
                             renderChoice();
                         };
 
+                        const onFaceDurationChange = () => {
+                            const duration = Number(durationSelect?.value);
+                            if (VIDEO_DURATIONS.has(duration)) selectedVideoDuration = duration;
+                            if (faceGuidanceField) {
+                                faceGuidanceField.hidden = !(
+                                    preferredVideoSource?.source &&
+                                    (rollingWindowRequested ||
+                                        (selectedVideoDuration === 6 && choice === 'standard'))
+                                );
+                            }
+                        };
+
                         const onCancel = () => {
                             finish(null);
                         };
+
+                        durationSelect?.addEventListener?.('change', onFaceDurationChange);
 
                         const onImageModelChange = () => {
                             if (!imageModelSelectable) return;
@@ -3947,6 +3980,9 @@ const imageFiles =
                             }
                             if (mediaQualityKind === 'video' && profileSelect) {
                                 selectedVideoProfile = profileSelect.value;
+                            }
+                            if (faceGuidanceSelect && faceGuidanceField && !faceGuidanceField.hidden) {
+                                selectedFaceGuidance = faceGuidanceSelect.value;
                             }
 
                             if (
@@ -4159,7 +4195,11 @@ const imageFiles =
                     ),
                     // Deliberate opt-in; never switch all long videos to this
                     // experimental native Extend path without user consent.
-                    ...(rollingWindowRequested ? { continuation_mode: 'rolling' } : {})
+                    ...(rollingWindowRequested ? { continuation_mode: 'rolling' } : {}),
+                    ...(preferredVideoSource?.source && selectedFaceGuidance &&
+                        (rollingWindowRequested ||
+                            (selectedVideoDuration === 6 && selectedMediaQuality === 'standard'))
+                        ? { face_guidance: selectedFaceGuidance } : {})
                 },
                 quality: selectedMediaQuality,
                 resolved_target: resolvedTarget,

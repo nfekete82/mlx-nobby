@@ -383,3 +383,113 @@ def test_rolling_transport_change_invalidates_old_checkpoint(rolling_checkpoints
     monkeypatch.setattr(video_rolling,'CONDITIONING_VERSION',2)
     with pytest.raises(ValueError,match='anderen Konfiguration'):
         run('b'*24,{'id':'a'*24,'status':'failed'})
+
+
+@pytest.mark.parametrize(
+    "explicit,legacy_lock,expected",
+    [(None, True, "full"), (None, False, "off"),
+     ("off", True, "off"), ("off", False, "off"),
+     ("minimal", True, "minimal"), ("minimal", False, "minimal"),
+     ("full", True, "full"), ("full", False, "full")],
+)
+def test_rolling_guidance_modes_are_independent_of_legacy_identity_lock(
+        explicit, legacy_lock, expected):
+    params = {"prompt": "Person smiles and naturally blinks",
+              "first_frame": "/managed/original.png",
+              "identity_lock": legacy_lock, "face_guidance": explicit}
+    assert video_rolling._face_guidance_mode(params) == expected
+    initial = video_rolling._face_prompt(params, extension=False)
+    continued = video_rolling._face_prompt(params, extension=True)
+    if expected == "off":
+        assert initial == continued == params["prompt"]
+    elif expected == "minimal":
+        assert initial.startswith(video_rolling.MINIMAL_INITIAL_FACE_GUIDANCE)
+        assert continued.startswith(video_rolling.MINIMAL_EXTEND_FACE_GUIDANCE)
+    else:
+        assert initial.startswith(video_rolling.INITIAL_FACE_GUIDANCE)
+        assert continued.startswith(video_rolling.EXTEND_FACE_GUIDANCE)
+    assert initial.endswith(params["prompt"])
+    assert continued.endswith(params["prompt"])
+    assert params["prompt"] == "Person smiles and naturally blinks"
+
+
+def test_rolling_guidance_never_affects_text_to_video():
+    params = {"prompt": "A beach with waves", "face_guidance": "full",
+              "first_frame": None}
+    assert video_rolling._face_prompt(params, extension=False) == params["prompt"]
+    assert video_rolling._face_prompt(params, extension=True) == params["prompt"]
+
+
+def test_face_guidance_api_accepts_only_rolling_i2v_or_6s_720p_pilot(monkeypatch):
+    monkeypatch.setattr(video_service, "validate_first_frame",
+                        lambda _: Path("/managed/source.png"))
+    monkeypatch.setattr(video_service, "i2v_source_size", lambda _: (704, 1280))
+
+    def req(duration=10, quality="standard", continuation="rolling", **options):
+        return video_service.JobCreate(
+            operation="i2v", chat_id="probe", chat_revision=0,
+            payload={"prompt": "A person smiles and naturally blinks",
+                     "quality": quality, "duration": duration,
+                     "continuation_mode": continuation,
+                     "first_frame": "/managed/source.png",
+                     "aspect_ratio": "9:16", **options},
+        )
+
+    assert req(face_guidance="off").payload.face_guidance == "off"
+    assert req(face_guidance="minimal").payload.face_guidance == "minimal"
+    assert req(face_guidance="full").payload.face_guidance == "full"
+    assert req().payload.face_guidance is None
+    assert req(duration=6, continuation="segmented", face_guidance="minimal").payload.duration == 6
+    with pytest.raises(ValueError):
+        req(duration=10, continuation="segmented", face_guidance="minimal")
+    with pytest.raises(ValueError):
+        req(duration=6, quality="fast", continuation="segmented", face_guidance="minimal")
+    with pytest.raises(ValueError):
+        req(duration=5, continuation="segmented", face_guidance="minimal")
+    for invalid in ["auto", "", "MINIMAL", False, 0, "none"]:
+        with pytest.raises(ValueError):
+            req(face_guidance=invalid)
+    with pytest.raises(ValueError):
+        video_service.JobCreate(
+            operation="t2v", chat_id="probe", chat_revision=0,
+            payload={"prompt": "A beach scene", "quality": "standard",
+                     "duration": 10, "continuation_mode": "rolling",
+                     "face_guidance": "minimal"},
+        )
+
+
+def test_6s_720p_guidance_changes_prompt_only_with_explicit_opt_in(monkeypatch):
+    monkeypatch.setattr(video_service, "validate_first_frame",
+                        lambda _: Path("/managed/source.png"))
+    monkeypatch.setattr(video_service, "i2v_source_size", lambda _: (704, 1280))
+    original = "The person blinks naturally while smiling."
+
+    def make(mode=None):
+        options = {"face_guidance": mode} if mode is not None else {}
+        return video_service.JobCreate(
+            operation="i2v", chat_id="probe", chat_revision=0,
+            payload={"prompt": original, "quality": "standard", "duration": 6,
+                     "first_frame": "/managed/source.png",
+                     "aspect_ratio": "9:16", **options},
+        )
+    default_request = make()
+    default_params = video_service._direct_generation_params(default_request)
+    assert default_params["prompt"] == original
+    assert default_request.payload.prompt == original
+
+    no_guidance = make("off")
+    assert video_service._direct_generation_params(no_guidance)["prompt"] == original
+
+    minimal = make("minimal")
+    minimal_params = video_service._direct_generation_params(minimal)
+    assert minimal_params["prompt"].startswith(video_rolling.MINIMAL_INITIAL_FACE_GUIDANCE)
+    assert minimal_params["prompt"].endswith(original)
+    assert minimal.payload.prompt == original
+    assert minimal_params["first_frame"] == default_params["first_frame"]
+    for key in ("seed", "frames", "fps", "width", "height", "steps",
+                "aspect_ratio", "resolution", "quality", "resize_mode"):
+        assert minimal_params[key] == default_params[key]
+
+    full = make("full")
+    assert video_service._direct_generation_params(full)["prompt"].startswith(
+        video_rolling.INITIAL_FACE_GUIDANCE)

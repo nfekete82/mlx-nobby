@@ -199,7 +199,8 @@ def _fingerprint(model, params):
     original = Path(params["first_frame"]) if params.get("first_frame") else None
     signature = {
         "model": model["id"], "conditioning_version": 2,
-        "params": {k: v for k, v in params.items() if k != "resume_from"},
+        "params": {k: v for k, v in params.items()
+                   if k != "resume_from" and not (k == "face_guidance" and v is None)},
         "model_config_sha256": video_long.digest(config),
         "weights": [
             (str(p.relative_to(model_path)), p.stat().st_size, p.stat().st_mtime_ns)
