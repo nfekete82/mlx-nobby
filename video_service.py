@@ -97,7 +97,7 @@ class VideoPayload(BaseModel):
     identity_lock: bool = True
     identity_strength: float = Field(default=0.30, ge=0.10, le=0.60)
     # Rolling I2V text-only conditioning; None inherits the legacy identity_lock behavior.
-    face_guidance: Literal["off", "minimal", "full"] | None = None
+    face_guidance: Literal["off", "minimal", "full", "initial_off"] | None = None
     # API-only experiment; None preserves checkpoint-native still preprocessing.
     i2v_image_crf: int | None = Field(default=None, strict=True, ge=0, le=0)
     continuation_mode: Literal["segmented", "rolling"] = "segmented"
