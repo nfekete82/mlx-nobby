@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import threading
 from pathlib import Path
+from fractions import Fraction
 from unittest import mock
 
 import pytest
@@ -264,8 +265,12 @@ def test_rolling_trim_uses_lossless_transport_without_spatial_filters(tmp_path, 
     assert "scale=" not in command[command.index("-vf") + 1]
 
 
-@pytest.mark.skipif(not shutil.which('ffmpeg'), reason='FFmpeg required')
+@pytest.mark.skipif(not shutil.which('ffmpeg') or not shutil.which('ffprobe'),
+                    reason='FFmpeg and FFprobe required')
 def test_lossless_tail_keeps_decoded_pixels_and_concat_has_exact_av_clocks(tmp_path, monkeypatch):
+    # Provider defaults point to Homebrew on macOS; resolve tools from the
+    # active test runner so the smoke test also works on Ubuntu Actions.
+    monkeypatch.setattr(video_providers, 'FFPROBE', shutil.which('ffprobe'))
     monkeypatch.setattr(video_rolling.gate, 'blocked', lambda: False)
     monkeypatch.setattr(video_rolling, 'FFMPEG', shutil.which('ffmpeg'))
     monkeypatch.setattr(video_rolling, '_ffmpeg',
@@ -297,7 +302,12 @@ def test_lossless_tail_keeps_decoded_pixels_and_concat_has_exact_av_clocks(tmp_p
         '-of','json',str(output)]))['streams']
     audio=next(s for s in streams if s['codec_type']=='audio')
     assert float(audio['start_time'])==0
-    assert abs(float(audio['duration'])-241/24)<1/48000
+    # AAC has 1024-sample access units and FFmpeg muxers may report a
+    # sub-millisecond duration rounding difference across platforms.
+    # Use exact stream ticks and a strict 1 ms end alignment requirement;
+    # do not confuse container duration with individual PCM sample accuracy.
+    audio_end = int(audio['duration_ts']) * Fraction(audio['time_base'])
+    assert abs(audio_end - Fraction(241, 24)) < Fraction(1, 1000)
     assert audio['codec_name']=='aac'
     assert probe['streams'][0]['pix_fmt']=='yuv420p'
     assert probe['streams'][0]['profile']!='High 4:4:4 Predictive'
