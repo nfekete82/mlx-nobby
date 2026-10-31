@@ -1,0 +1,35 @@
+{
+  "result": "6 test bodies passed; 6 teardown errors due existing fixture missing edit discovery route",
+  "runs": [
+    {
+      "file": "test-results/test_video_profile_progress_controls_desktop-False_/network.json",
+      "errors": [
+        {
+          "method": "GET",
+          "url": "http://127.0.0.1:64998/api/mlx/video/edit/jobs",
+          "status": 501
+        },
+        {
+          "method": "GET",
+          "url": "http://127.0.0.1:64998/api/mlx/video/edit/jobs",
+          "status": 501
+        }
+      ]
+    },
+    {
+      "file": "test-results/test_video_profile_progress_controls_desktop-False_-w2_q5lr3/network.json",
+      "errors": [
+        {
+          "method": "GET",
+          "url": "http://127.0.0.1:58132/api/mlx/video/edit/jobs",
+          "status": 501
+        },
+        {
+          "method": "GET",
+          "url": "http://127.0.0.1:58132/api/mlx/video/edit/jobs",
+          "status": 501
+        }
+      ]
+    }
+  ]
+}

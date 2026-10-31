@@ -411,3 +411,44 @@ def test_failed_process_cleanup_is_visible_and_blocks_new_jobs(tmp_path, monkeyp
     job = edit._jobs[job_id]
     assert job["status"] == "failed" and job["cleanup_failed"]
     assert "identity unavailable" in job["error"] and gate.blocked()
+
+
+def test_startup_waits_for_exec_argv_without_accepting_bare_process_name():
+    child=mock.Mock(pid=123)
+    child.poll.return_value=None
+    with mock.patch.object(processes,'identity',side_effect=['(python3.11)',None,'birth python guard ownership-token']) as probe, \
+         mock.patch.object(processes.time,'sleep') as sleep:
+        assert processes._startup_identity(child,'ownership-token')=='birth python guard ownership-token'
+    assert probe.call_count==3 and sleep.call_count==2
+
+
+def test_startup_missing_token_still_fails_closed_and_exited_guard_never_retries():
+    child=mock.Mock(pid=123)
+    child.poll.return_value=None
+    with mock.patch.object(processes,'identity',return_value='foreign or incomplete argv'):
+        assert processes._startup_identity(child,'ownership-token',timeout=0) is None
+    child.poll.return_value=125
+    with mock.patch.object(processes,'identity',return_value=None), \
+         mock.patch.object(processes.time,'sleep') as sleep:
+        assert processes._startup_identity(child,'ownership-token') is None
+    sleep.assert_not_called()
+
+
+def test_real_spawn_after_incomplete_identity_registers_before_workload(tmp_path,monkeypatch):
+    original=processes.identity
+    observations=[]
+    ready=tmp_path/'workload-started'
+    def transient(pid):
+        observations.append(ready.exists())
+        if len(observations)==1:return '(python3.11)'
+        return original(pid)
+    monkeypatch.setattr(processes,'identity',transient)
+    process=processes.spawn([sys.executable,'-c',
+        f'from pathlib import Path; import time; Path({str(ready)!r}).touch(); time.sleep(60)'],
+        stdout=subprocess.DEVNULL)
+    try:
+        assert observations[:2]==[False,False]
+        assert process._nobby_record_path.is_file()
+        wait_for(ready.exists)
+    finally:
+        processes.terminate(process,term_timeout=2)

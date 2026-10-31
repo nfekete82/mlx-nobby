@@ -200,3 +200,6 @@ FRONTEND_REFACTOR_PLAN.md
 
 # Private runtime configuration backups from opt-in coding benchmarks.
 /artifacts/**/private-config-backup-*/
+
+# Local video quality reports contain private source photos, frames and videos.
+artifacts/ltx-quality-*/

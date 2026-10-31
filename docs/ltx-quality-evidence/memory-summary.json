@@ -1,0 +1,44 @@
+{
+  "baseline-late-memory": {
+    "sample_count": 83,
+    "active_sample_count": 82,
+    "first_timestamp": 1793401510.391016,
+    "last_timestamp": 1793401676.1538718,
+    "minimum_active_free_percent": 63.0,
+    "minimum_active_headroom_gb": 24.24,
+    "swap_first_gb": 7.27,
+    "swap_last_gb": 7.26,
+    "maximum_active_swap_gb": 7.27,
+    "active_pressures": [
+      "normal"
+    ]
+  },
+  "candidate-memory": {
+    "sample_count": 4,
+    "active_sample_count": 3,
+    "first_timestamp": 1793401754.558964,
+    "last_timestamp": 1793401760.625806,
+    "minimum_active_free_percent": 43.0,
+    "minimum_active_headroom_gb": 14.64,
+    "swap_first_gb": 7.24,
+    "swap_last_gb": 7.24,
+    "maximum_active_swap_gb": 7.24,
+    "active_pressures": [
+      "normal"
+    ]
+  },
+  "candidate-resumed-memory": {
+    "sample_count": 207,
+    "active_sample_count": 206,
+    "first_timestamp": 1793401898.603401,
+    "last_timestamp": 1793402315.060111,
+    "minimum_active_free_percent": 58.0,
+    "minimum_active_headroom_gb": 21.84,
+    "swap_first_gb": 7.24,
+    "swap_last_gb": 7.22,
+    "maximum_active_swap_gb": 7.24,
+    "active_pressures": [
+      "normal"
+    ]
+  }
+}

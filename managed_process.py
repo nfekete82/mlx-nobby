@@ -57,6 +57,23 @@ def identity(pid):
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def _startup_identity(process, token, timeout=0.5):
+    """Wait briefly for exec to publish argv; the guardian has no GO yet.
+
+    On macOS the first ps can see only ``(python3.11)`` while our freshly
+    spawned child is still entering exec. Never accept that incomplete identity
+    or launch the workload before the unpredictable ownership token is visible.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        actual = identity(process.pid)
+        if actual and token in actual:
+            return actual
+        if process.poll() is not None or time.monotonic() >= deadline:
+            return None
+        time.sleep(0.01)
+
+
 def _path(pid):
     return gate.ROOT / "processes" / f"{pid}.json"
 
@@ -93,7 +110,7 @@ def spawn(command, *, owner=None, **kwargs):
         os.close(read_fd)
     writer = None
     try:
-        record = {"pid": process.pid, "token": token, "identity": identity(process.pid), "owner": owner or "nobby:subprocess",
+        record = {"pid": process.pid, "token": token, "identity": _startup_identity(process, token), "owner": owner or "nobby:subprocess",
                   "leader": identities.table().get(process.pid), "state": "registered"}
         if not record["identity"] or token not in record["identity"]:
             raise RuntimeError("Prozessidentität konnte nicht bestätigt werden")
