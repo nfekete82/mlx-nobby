@@ -264,8 +264,12 @@ def test_rolling_trim_uses_lossless_transport_without_spatial_filters(tmp_path, 
     assert "scale=" not in command[command.index("-vf") + 1]
 
 
-@pytest.mark.skipif(not shutil.which('ffmpeg'), reason='FFmpeg required')
+@pytest.mark.skipif(not shutil.which('ffmpeg') or not shutil.which('ffprobe'),
+                    reason='FFmpeg and FFprobe required')
 def test_lossless_tail_keeps_decoded_pixels_and_concat_has_exact_av_clocks(tmp_path, monkeypatch):
+    # Provider defaults point to Homebrew on macOS; resolve tools from the
+    # active test runner so the smoke test also works on Ubuntu Actions.
+    monkeypatch.setattr(video_providers, 'FFPROBE', shutil.which('ffprobe'))
     monkeypatch.setattr(video_rolling.gate, 'blocked', lambda: False)
     monkeypatch.setattr(video_rolling, 'FFMPEG', shutil.which('ffmpeg'))
     monkeypatch.setattr(video_rolling, '_ffmpeg',
