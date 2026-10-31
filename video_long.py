@@ -203,6 +203,9 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate, can
     # Checkpoint identity includes effective options, model installation and CLI version.
     effective = {**params, "model_path": str(model_path)}
     effective.pop("resume_from", None)
+    # A default, unused rolling-only option must not invalidate old checkpoints.
+    if effective.get("face_guidance") is None:
+        effective.pop("face_guidance", None)
     config = model_path / "embedded_config.json"
     identity = {"params": effective, "runtime": version, "model": model["id"],
                 "model_config_sha256": digest(config),
