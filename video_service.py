@@ -300,6 +300,15 @@ def _job_total_steps(payload):
     return 2 if payload.quality == "preview" else 8
 
 
+def _direct_generation_params(request):
+    """Opt-in 6s I2V prompt-only experiment, no changes to the saved request."""
+    params = request.payload.model_dump()
+    if (request.operation == "i2v" and request.payload.face_guidance is not None
+            and request.payload.duration == 6):
+        params["prompt"] = video_rolling._face_prompt(params, extension=False)
+    return params
+
+
 def _public(job):
     return {key: value for key, value in job.items() if not key.startswith("_")}
 
@@ -640,14 +649,7 @@ def _run(job_id, request):
                     update=lambda **changes: _update(job_id, **changes), **callbacks,
                 )
             else:
-                direct_params = request.payload.model_dump()
-                # Only an explicitly requested 6s portrait probe gets text
-                # conditioning. Default direct-I2V remains byte-for-byte unchanged.
-                if (request.operation == "i2v" and request.payload.face_guidance is not None
-                        and request.payload.duration == 6):
-                    direct_params["prompt"] = video_rolling._face_prompt(
-                        direct_params, extension=False)
-                media = generate(model, direct_params, output, **callbacks)
+                media = generate(model, _direct_generation_params(request), output, **callbacks)
             if cancel.is_set():
                 raise ProviderCancelled("Video job was cancelled")
             after = _memory_snapshot()
