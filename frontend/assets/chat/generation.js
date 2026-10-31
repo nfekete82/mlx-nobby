@@ -3693,6 +3693,13 @@ const imageFiles =
 
                         durationSelect.value =
                             String(selectedVideoDuration);
+                        if (faceGuidanceField) {
+                            faceGuidanceField.hidden = !(
+                                preferredVideoSource?.source &&
+                                (rollingWindowRequested ||
+                                    (selectedVideoDuration === 6 && choice === 'standard'))
+                            );
+                        }
                     };
 
                     const renderChoice = () => {
@@ -3813,6 +3820,8 @@ const imageFiles =
                             samplingSteps?.removeEventListener?.('input', onSamplingInput);
                             samplingCfg?.removeEventListener?.('input', onSamplingInput);
 
+                            durationSelect?.removeEventListener?.('change', onFaceDurationChange);
+
                             cancel.removeEventListener(
                                 'click',
                                 onCancel
@@ -3879,9 +3888,23 @@ const imageFiles =
                             renderChoice();
                         };
 
+                        const onFaceDurationChange = () => {
+                            const duration = Number(durationSelect?.value);
+                            if (VIDEO_DURATIONS.has(duration)) selectedVideoDuration = duration;
+                            if (faceGuidanceField) {
+                                faceGuidanceField.hidden = !(
+                                    preferredVideoSource?.source &&
+                                    (rollingWindowRequested ||
+                                        (selectedVideoDuration === 6 && choice === 'standard'))
+                                );
+                            }
+                        };
+
                         const onCancel = () => {
                             finish(null);
                         };
+
+                        durationSelect?.addEventListener?.('change', onFaceDurationChange);
 
                         const onImageModelChange = () => {
                             if (!imageModelSelectable) return;
@@ -4173,7 +4196,9 @@ const imageFiles =
                     // Deliberate opt-in; never switch all long videos to this
                     // experimental native Extend path without user consent.
                     ...(rollingWindowRequested ? { continuation_mode: 'rolling' } : {}),
-                    ...(rollingWindowRequested && preferredVideoSource?.source && selectedFaceGuidance
+                    ...(preferredVideoSource?.source && selectedFaceGuidance &&
+                        (rollingWindowRequested ||
+                            (selectedVideoDuration === 6 && selectedMediaQuality === 'standard'))
                         ? { face_guidance: selectedFaceGuidance } : {})
                 },
                 quality: selectedMediaQuality,
