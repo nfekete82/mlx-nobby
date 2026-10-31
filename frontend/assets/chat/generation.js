@@ -3377,7 +3377,7 @@ const imageFiles =
             selectedMediaQuality = normalizedMediaQuality;
             let selectedVideoProfile = 'standard';
             // Empty means legacy behavior; never silently change existing jobs.
-            let selectedFaceGuidance = ['off', 'minimal', 'full'].includes(options?.video?.face_guidance)
+            let selectedFaceGuidance = ['off', 'minimal', 'full', 'initial_off'].includes(options?.video?.face_guidance)
                 ? options.video.face_guidance : '';
             let multiVideoSelection = null;
             let selectedVideoDuration = VIDEO_DURATIONS.has(

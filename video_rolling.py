@@ -74,7 +74,7 @@ def _face_guidance_mode(params):
     explicit = params.get("face_guidance")
     if explicit is None:
         return "full" if params.get("identity_lock", True) else "off"
-    if explicit not in {"off", "minimal", "full"}:
+    if explicit not in {"off", "minimal", "full", "initial_off"}:
         raise ValueError("Unbekannter Rolling-Gesichtshinweismodus")
     return explicit
 
@@ -83,7 +83,7 @@ def _face_prompt(params, *, extension):
     """Only change positive text conditioning, never the native first-frame anchor."""
     prompt = params["prompt"]
     mode = _face_guidance_mode(params)
-    if mode == "off":
+    if mode == "off" or (mode == "initial_off" and not extension):
         return prompt
     if mode == "minimal":
         guidance = MINIMAL_EXTEND_FACE_GUIDANCE if extension else MINIMAL_INITIAL_FACE_GUIDANCE
@@ -240,7 +240,9 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
         raise ValueError("Rolling-Window benötigt natives Standard-LTX-MLX")
     planner = plan(params["duration"], params["resolution"], params["fps"])
     guidance_mode = _face_guidance_mode(params)
-    face_guidance = guidance_mode != "off"
+    # Differentiate text guidance of the initial clip and its extensions.
+    face_guidance = guidance_mode in {"minimal", "full"}
+    extend_face_guidance = guidance_mode != "off"
     _validate_canvas(params)
     version = video_long.runtime_version()
     fingerprint = _fingerprint(model, params, planner, version)
@@ -281,6 +283,7 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
            continuity_warning=WARNING,
            rolling_window_frames=CONTEXT_FRAMES,
            rolling_identity_prompt_guidance=face_guidance,
+           rolling_extend_prompt_guidance=extend_face_guidance,
            rolling_face_guidance_mode=guidance_mode,
            rolling_stage_memory=stage_memory)
 
@@ -375,5 +378,6 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
             "stage_count": len(SEGMENT_SECONDS), "rolling_window_frames": CONTEXT_FRAMES,
             "rolling_stage_memory": stage_memory,
             "rolling_identity_prompt_guidance": face_guidance,
+            "rolling_extend_prompt_guidance": extend_face_guidance,
             "rolling_face_guidance_mode": guidance_mode,
             "continuity_warning": WARNING}

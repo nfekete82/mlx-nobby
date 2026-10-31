@@ -71,8 +71,9 @@ def test_default_checkpoint_fingerprint_unchanged_but_opt_in_is_distinct(tmp_pat
     assert rolling._fingerprint(model,dict(params,face_guidance='off'),plan,'pinned')!=base
     assert rolling._fingerprint(model,dict(params,face_guidance='minimal'),plan,'pinned')!=base
     assert rolling._fingerprint(model,dict(params,face_guidance='full'),plan,'pinned')!=base
+    assert rolling._fingerprint(model,dict(params,face_guidance='initial_off'),plan,'pinned')!=base
     assert len({rolling._fingerprint(model,dict(params,face_guidance=value),plan,'pinned')
-                for value in ('off','minimal','full')})==3
+                for value in ('off','minimal','full','initial_off')})==4
 
 
 def test_old_default_job_payload_remains_eligible_for_resume(photo,monkeypatch):
@@ -86,6 +87,8 @@ def test_old_default_job_payload_remains_eligible_for_resume(photo,monkeypatch):
         service.preflight(request(resume_from='a'*24,i2v_image_crf=0))
     with pytest.raises(service.HTTPException):
         service.preflight(request(resume_from='a'*24,face_guidance='minimal'))
+    with pytest.raises(service.HTTPException):
+        service.preflight(request(resume_from='a'*24,face_guidance='initial_off'))
 
 
 def test_cli_rejects_experiment_instead_of_inventing_a_flag():

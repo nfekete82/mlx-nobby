@@ -1,4 +1,4 @@
-# LTX I2V facial text guidance: off / minimal / full
+# LTX I2V facial text guidance: off / minimal / full / initial_off
 
 ## Why
 
@@ -20,6 +20,7 @@ Neither latent carry nor face restoration is warranted from this evidence.
 | `"off"` | Original prompt only; **the first-frame image is still supplied** |
 | `"minimal"` | Short positive guidance for natural identity, blinking and facial expressions; original prompt preserved |
 | `"full"` | Existing longer descriptive face prompts; original prompt preserved |
+| `"initial_off"` | The initial 6-second I2V segment uses the original prompt only; both 2-second rolling extensions retain the **unchanged full** face guidance. On direct 6s I2V this is identical to `off`. |
 
 The explicit value is **independent** of `identity_lock` in Rolling I2V.
 In segmented 9/30/60s videos, `identity_lock` continues to control its
@@ -48,6 +49,8 @@ distilled 8+3 steps. Compare **off** against **minimal**, optionally
 at 0–6 seconds. A shorter low-aperture window is not automatically
 better if blinking is unnaturally rapid or eye/pupil geometry degrades.
 
+The `initial_off` experiment isolates the initial face prompt **without** changing the extension prompts. Compare 10s Rolling `full` against 10s Rolling `initial_off` using the same original, seed, prompt, 720p portrait resolution, 24fps and native runtime. Review native frames for eyelid movement in 0–6s and face/head motion at both 6s and 8s seams. Keep other guidance options and the default untouched; the new value has a distinct checkpoint fingerprint. **No GPU render has been run for this new mode.**
+
 At least two matched seeds and visual human review should precede
 any default promotion. There is **no automatic GPU generation** in
 this code-only PR, and no claim of improved eye quality from tests
@@ -58,12 +61,13 @@ alone. GPU generation must honor the existing memory gates.
 - `face_guidance=None` is ignored by rolling, segmented and
   accumulated-long fingerprint calculations so old default checkpoints
   retain their hashes.
-- Explicit `off`, `minimal`, `full` values are included in the
+- Explicit `off`, `minimal`, `full`, `initial_off` values are included in the
   rolling fingerprint to prohibit cross-mode continuation.
 - Service resume preflight normalizes the absent legacy option to
   `None` only; settings mismatches are rejected.
-- Rolling MP4 metadata reports `rolling_face_guidance_mode` plus
-  the existing boolean guidance field, without changing user prompts.
+- Rolling MP4 metadata reports `rolling_face_guidance_mode`, initial-segment
+  `rolling_identity_prompt_guidance` and `rolling_extend_prompt_guidance`
+  separately, without changing user prompts.
 
 ## Verification
 

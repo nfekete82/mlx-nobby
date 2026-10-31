@@ -76,6 +76,8 @@ assert.match(chatHtml, /id="videoFaceGuidanceField"[\s\S]*?id="videoFaceGuidance
 assert.match(chatHtml, /value="off"/);
 assert.match(chatHtml, /value="minimal"/);
 assert.match(chatHtml, /value="full"/);
+assert.match(chatHtml, /value="initial_off"/);
+assert.match(source, /'initial_off'\].includes\(options\?\.video\?\.face_guidance\)/);
 assert.match(source, /selectedFaceGuidance/);
 assert.match(source, /rollingWindowRequested[\s\S]*?face_guidance: selectedFaceGuidance/);
 assert.match(source, /faceGuidanceSelect\.value/);
