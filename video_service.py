@@ -180,9 +180,17 @@ class JobCreate(BaseModel):
             video_rolling.plan(self.payload.duration, self.payload.resolution or profile["resolution"], self.payload.fps)
             if multi or self.payload.profile != "standard" or registry.get_model(self.payload.model).get("provider") != "ltx-mlx":
                 raise ValueError("Rolling-Window benötigt ein einzelnes Standard-LTX-MLX-Video")
-        if self.payload.face_guidance is not None and (
-                self.operation != "i2v" or self.payload.continuation_mode != "rolling"):
-            raise ValueError("Gesichtstextführung ist nur für Rolling-I2V verfügbar")
+        if self.payload.face_guidance is not None:
+            direct_six_second_pilot = (
+                self.payload.continuation_mode != "rolling"
+                and self.payload.duration == 6
+                and (self.payload.resolution or profile["resolution"]) == "720p"
+                and self.payload.profile == "standard"
+                and registry.get_model(self.payload.model).get("provider") == "ltx-mlx"
+            )
+            if self.operation != "i2v" or not (
+                    self.payload.continuation_mode == "rolling" or direct_six_second_pilot):
+                raise ValueError("Gesichtstextführung nur für Rolling-I2V oder 6s/720p-I2V-Test")
         if self.payload.i2v_image_crf is not None and (
                 self.operation != "i2v" or self.payload.continuation_mode != "rolling"):
             raise ValueError("Experimentelles Bild-CRF ist nur für Rolling-I2V verfügbar")
@@ -632,7 +640,14 @@ def _run(job_id, request):
                     update=lambda **changes: _update(job_id, **changes), **callbacks,
                 )
             else:
-                media = generate(model, request.payload.model_dump(), output, **callbacks)
+                direct_params = request.payload.model_dump()
+                # Only an explicitly requested 6s portrait probe gets text
+                # conditioning. Default direct-I2V remains byte-for-byte unchanged.
+                if (request.operation == "i2v" and request.payload.face_guidance is not None
+                        and request.payload.duration == 6):
+                    direct_params["prompt"] = video_rolling._face_prompt(
+                        direct_params, extension=False)
+                media = generate(model, direct_params, output, **callbacks)
             if cancel.is_set():
                 raise ProviderCancelled("Video job was cancelled")
             after = _memory_snapshot()
