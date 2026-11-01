@@ -3778,11 +3778,11 @@ const imageFiles =
 
                         const onQuality = event => {
                             captureImageSelections();
-                            choice = normalizeMediaPreviewQuality(
-                                event.currentTarget
-                                    .dataset.mediaQuality ||
-                                'standard', previewAvailable
-                            );
+                            const requestedQuality = event.currentTarget
+                                .dataset.mediaQuality || 'standard';
+                            choice = mediaQualityKind === 'video'
+                                ? normalizeSelectableVideoQuality(requestedQuality)
+                                : normalizeMediaPreviewQuality(requestedQuality, previewAvailable);
                             // Changing the preset resets manual overrides to
                             // the exact values shown for the new preset.
                             samplingCustom = null;
