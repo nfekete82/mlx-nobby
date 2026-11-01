@@ -265,5 +265,44 @@ nicht gestartet. Messverbesserungen werden nicht als visuelle Freigabe verkauft.
 
 Vollständige aggregierte [Vergleichsdaten](ltx-quality-audit-evidence/comparison.json),
 [VAE-Messung](ltx-quality-audit-evidence/vae-reconstruction.json) und
-[Testmatrix](image-model-test-matrix.md). Lokaler Rollout und abschließende
-Produktionswiedergabe werden nach erfolgreicher Prüfung unten ergänzt.
+[Testmatrix](image-model-test-matrix.md).
+
+
+## Abgeschlossener lokaler Rollout
+
+Implementierung und Messdaten: Commit `2e6725b0` auf dem separaten Feature-Branch.
+[Draft-PR #393](https://github.com/nfekete82/mlx-nobby/pull/393) basiert auf #392;
+kein Merge und keine automatische Qualitätsfreigabe. Spätere Commits dieses PRs
+ergänzen ausschließlich Rollout-/Testnachweise.
+
+Video-Service 8060 und Agent 8010 wurden nach jeweils erneuter Prüfung von
+Video-Health, Agent-Queue, Runtime-Lease und Lifecycle-Gate im Leerlauf neu
+gestartet. Docker-Web 8090 wurde aus Commit `2e6725b0` gebaut und erst nach
+erneuter Leerlaufprüfung ersetzt. Abschließend: Video `ready`, Web `/api/health`
+`ok`, Agent 0 aktive / 0 wartende Jobs, keine aktive Runtime-Lease.
+
+Alle drei neuen Videos bestehen echte Chromium-Wiedergabe über die produktive
+8090-API: 704×1280, 10,041667 s, erfolgreiches Abspielen, sieben Seeks bei
+0 / 3 / 5,9 / 6,1 / 7,9 / 8,1 / 9,9 s und HTTP **206** für Byte-Range-Requests.
+Der neue cacheversionierte UI-Asset ist nach der bereits bestehenden
+ImageFollowup-Middleware bytegenau geprüft. Der anfängliche Rohdatei-Hashvergleich
+berücksichtigte diese bekannte Servertransformation nicht; der korrigierte
+Vergleich besteht. Keine Änderung dieser Middleware. Seed 0, Auto-Fortsetzung
+und leere Standardauswahl für Gesichtstextführung bleiben erhalten.
+
+Alle fünf abgeschlossenen Jobresultate sind unverändert erhalten, ebenso die
+SHA256 aller fünf Videos und Original-/Referenzquellen. Die 37 vorher vorhandenen
+untracked Pfade existieren weiterhin; sie wurden weder hinzugefügt noch gelöscht.
+Neue Medien, Vollframes und private Jobdaten bleiben ausschließlich im ignorierten
+`artifacts/ltx-quality-20261101/`. Kein Modell, Checkpoint oder Original wurde
+verändert.
+
+Nachweise: [Rollout](ltx-quality-audit-evidence/deployment.json),
+[Produktionsplayback und Assetprüfung](ltx-quality-audit-evidence/production-browser.json),
+[synchroner lokaler Viewer](ltx-quality-audit-evidence/comparison-browser.json),
+[Testumfang und Grenzen](ltx-quality-audit-evidence/tests.json).
+
+Tatsächlich beibehaltene Inferenz: neues Video standardmäßig Standard/720p,
+kein unaufgefordertes Rolling, Rolling-I2V mit bestehender FULL-Textführung.
+Bestehende sitzungsbezogene Qualitätswahl bleibt erhalten. Das neue Experten-UI
+verändert keine globale VAE-, Sampling- oder Gesichtskorrektureinstellung.

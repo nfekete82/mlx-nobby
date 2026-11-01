@@ -1,0 +1,138 @@
+{
+  "videos": [
+    {
+      "width": 704,
+      "height": 1280,
+      "duration": 10.041667,
+      "seeks": [
+        {
+          "requested": 0,
+          "actual": 0
+        },
+        {
+          "requested": 3,
+          "actual": 3
+        },
+        {
+          "requested": 5.9,
+          "actual": 5.9
+        },
+        {
+          "requested": 6.1,
+          "actual": 6.1
+        },
+        {
+          "requested": 7.9,
+          "actual": 7.9
+        },
+        {
+          "requested": 8.1,
+          "actual": 8.1
+        },
+        {
+          "requested": 9.9,
+          "actual": 9.9
+        }
+      ],
+      "error": null,
+      "played_to": 0.661668,
+      "decoded": 1027,
+      "label": "original_full",
+      "video_id": "ed9ace71c353194b897ff259",
+      "range_status": 206
+    },
+    {
+      "width": 704,
+      "height": 1280,
+      "duration": 10.041667,
+      "seeks": [
+        {
+          "requested": 0,
+          "actual": 0
+        },
+        {
+          "requested": 3,
+          "actual": 3
+        },
+        {
+          "requested": 5.9,
+          "actual": 5.9
+        },
+        {
+          "requested": 6.1,
+          "actual": 6.1
+        },
+        {
+          "requested": 7.9,
+          "actual": 7.9
+        },
+        {
+          "requested": 8.1,
+          "actual": 8.1
+        },
+        {
+          "requested": 9.9,
+          "actual": 9.9
+        }
+      ],
+      "error": null,
+      "played_to": 0.659327,
+      "decoded": 1031,
+      "label": "original_minimal",
+      "video_id": "4377033c7cf8d80a9655b161",
+      "range_status": 206
+    },
+    {
+      "width": 704,
+      "height": 1280,
+      "duration": 10.041667,
+      "seeks": [
+        {
+          "requested": 0,
+          "actual": 0
+        },
+        {
+          "requested": 3,
+          "actual": 3
+        },
+        {
+          "requested": 5.9,
+          "actual": 5.9
+        },
+        {
+          "requested": 6.1,
+          "actual": 6.1
+        },
+        {
+          "requested": 7.9,
+          "actual": 7.9
+        },
+        {
+          "requested": 8.1,
+          "actual": 8.1
+        },
+        {
+          "requested": 9.9,
+          "actual": 9.9
+        }
+      ],
+      "error": null,
+      "played_to": 0.660052,
+      "decoded": 1031,
+      "label": "reference_minimal",
+      "video_id": "9e30f5a855891ddf1becf6ea",
+      "range_status": 206
+    }
+  ],
+  "frontend": {
+    "script_urls": [
+      "http://127.0.0.1:8090/assets/chat/generation.js?v=20261101-video-quality-audit"
+    ],
+    "generation_asset_sha256": "2a8db07ffa5d474d6a7c6f1595c60ef5f7478c8597a9fd9f062dc110d01609d9",
+    "source_sha256": "75fa4992e4a1c723353c14213d20758fe92674cfa42cb638a3b293fb8883d7ff",
+    "existing_response_transform": "backend.image_followup_ui.patch_generation_source",
+    "default_seed": 0,
+    "default_face_guidance": "legacy unchanged",
+    "default_continuation": "auto"
+  }
+}
