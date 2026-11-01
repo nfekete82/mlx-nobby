@@ -58,6 +58,17 @@ class TilingBenchmarkTests(unittest.TestCase):
         self.assertAlmostEqual(
             BENCH.parse_swap_gib("vm.swapusage: total = 10000.00M used: 1.5 GiB (encrypted)"),
             1.5)
+        self.assertAlmostEqual(
+            BENCH.parse_swap_gib(
+                "total = 8192,00M\u00a0 used = 7051,06M\u00a0 "
+                "free = 1140,94M\u00a0 (encrypted)"),
+            7051.06 / 1024)
+        self.assertAlmostEqual(
+            BENCH.parse_swap_gib(
+                "vm.swapusage: total = 8192,00M\u00a0 used = 7051,06M\u00a0 "
+                "free = 1140,94M\u00a0 (encrypted)"),
+            7051.06 / 1024)
+        self.assertAlmostEqual(BENCH.parse_swap_gib("used = 1,50GiB"), 1.5)
         self.assertEqual(BENCH.parse_swap_gib("used = 0.00M"), 0.0)
         self.assertIsNone(BENCH.parse_swap_gib("unsupported"))
 
