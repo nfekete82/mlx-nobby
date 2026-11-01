@@ -7,6 +7,7 @@ The high-resolution duration restriction remains unchanged in production.
 from __future__ import annotations
 
 import argparse
+import hashlib
 from datetime import datetime
 import json
 import os
@@ -29,15 +30,28 @@ MIN_START_FREE_PERCENT = 30
 MIN_RUNNING_FREE_PERCENT = 12
 MAX_SWAP_GROWTH_GIB = 3.0
 
+I2V_IDENTITY_PROMPT = (
+    "The single adult person in the reference image makes a slight natural "
+    "breathing motion, a gentle head movement and a subtle posture shift. "
+    "Preserve the exact same face, hairstyle, skin appearance, clothing, "
+    "body proportions and surroundings throughout. Locked static camera, "
+    "continuous movement, no cuts, no zoom, no additional people."
+)
+T2V_PROMPT = (
+    "A single adult person walking slowly in a sunlit garden, "
+    "consistent appearance, fixed camera, full-body view, natural "
+    "continuous movement, realistic lighting, no cuts or zooms"
+)
+
 
 def command(cli: Path, model: Path, output: Path, *, duration: int,
             tile_frames: int, tile_spatial: int, tile_overlap: int,
-            prompt: str, seed: int) -> list[str]:
+            prompt: str, seed: int, image: Path | None = None) -> list[str]:
     if duration not in (5, 6, 8, 10):
         raise ValueError("Duration must be 5, 6, 8 or 10 seconds")
     if tile_frames < 1 or tile_spatial < 1 or tile_overlap < 1:
         raise ValueError("Tile counts and overlap must be positive")
-    return [
+    argv = [
         str(cli), "generate", "--distilled", "--low-ram",
         "--model", str(model),
         "--prompt", prompt,
@@ -50,6 +64,35 @@ def command(cli: Path, model: Path, output: Path, *, duration: int,
         "--tile-spatial", str(tile_spatial),
         "--tile-overlap", str(tile_overlap),
     ]
+    if image is not None:
+        # LTX-2-MLX v0.16.3: PATH, FRAME_IDX, STRENGTH, CRF.
+        # Anchor the first frame at full strength; disable lossy source recompression.
+        argv.extend(["--image", str(image), "0", "1.0", "0"])
+    return argv
+
+
+def verify_source_image(image: Path) -> None:
+    """Fail early on missing/unsupported input; leave the original untouched."""
+    if not image.is_file():
+        raise ValueError(f"Reference image does not exist: {image}")
+    if image.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+        raise ValueError("Reference image must be JPG, PNG or WebP (export HEIC first)")
+    if image.stat().st_size == 0:
+        raise ValueError("Reference image is empty")
+    with image.open("rb") as handle:
+        signature = handle.read(12)
+    if not (signature.startswith(b"\xff\xd8\xff")
+            or signature.startswith(b"\x89PNG\r\n\x1a\n")
+            or (signature.startswith(b"RIFF") and signature[8:12] == b"WEBP")):
+        raise ValueError("Reference image contents are not recognizable as JPG/PNG/WebP")
+
+
+def image_digest(image: Path) -> str:
+    digest = hashlib.sha256()
+    with image.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def command_text(argv: list[str]) -> str:
@@ -170,10 +213,10 @@ def main() -> int:
     parser.add_argument("--tile-spatial", type=int, choices=(1, 2, 3), default=2)
     parser.add_argument("--tile-overlap", type=int, choices=(1, 2, 3, 4), default=2)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--prompt", default=(
-        "A single adult person walking slowly in a sunlit garden, "
-        "consistent appearance, fixed camera, full-body view, natural "
-        "continuous movement, realistic lighting, no cuts or zooms"))
+    parser.add_argument("--image", type=Path, default=None,
+                        help="Local reference image (JPG/PNG/WebP) for I2V frame 0")
+    parser.add_argument("--prompt", default=None,
+                        help="Video prompt; identity-stability prompt used with --image")
     parser.add_argument("--max-minutes", type=float, default=60)
     parser.add_argument("--max-swap-growth-gib", type=float,
                         default=MAX_SWAP_GROWTH_GIB)
@@ -190,10 +233,17 @@ def main() -> int:
         ROOT / "tiling-experiments" /
         f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{args.duration}s")
     video = folder / "result.mp4"
+    reference_image = args.image.expanduser().resolve() if args.image else None
+    if reference_image is not None:
+        try:
+            verify_source_image(reference_image)
+        except (ValueError, OSError) as error:
+            parser.error(str(error))
+    prompt = args.prompt or (I2V_IDENTITY_PROMPT if reference_image else T2V_PROMPT)
     argv = command(args.cli.expanduser(), args.model.expanduser(), video,
                    duration=args.duration, tile_frames=args.tile_frames,
                    tile_spatial=args.tile_spatial, tile_overlap=args.tile_overlap,
-                   prompt=args.prompt, seed=args.seed)
+                   prompt=prompt, seed=args.seed, image=reference_image)
     print("1080p temporal tiling experiment (production settings unchanged)")
     print(command_text(argv), flush=True)
     if not args.run:
@@ -303,6 +353,10 @@ def main() -> int:
             "swap_growth_gib": round(peak_swap - initial_swap, 3),
             "exit_code": exit_code,
             "video": str(video) if video.is_file() else None,
+            "reference_image": str(reference_image) if reference_image else None,
+            "reference_sha256": image_digest(reference_image) if reference_image else None,
+            "seed": args.seed,
+            "prompt": prompt,
             "log": str(log_path),
         }
         report_path = folder / "report.json"
