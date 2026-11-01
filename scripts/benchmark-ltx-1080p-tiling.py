@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Isolated 1080p temporal/spatial tiling experiment for LTX 2.5 MLX.
+"""Isolated I2V/T2V temporal/spatial tiling diagnosis for LTX 2.5 MLX.
 
 Does not modify MLX-Nobby's API, model weights, services or runtime.
 The high-resolution duration restriction remains unchanged in production.
@@ -25,7 +25,14 @@ GIB = 1024 ** 3
 ROOT = Path.home() / ".local/share/mlx-nobby"
 CLI = ROOT / "ltx-2-mlx/.venv/bin/ltx-2-mlx"
 MODEL = ROOT / "models/ltx-2.5-mlx-q4"
-WIDTH, HEIGHT, FPS = 1920, 1088, 24
+FPS = 24
+RESOLUTIONS = {
+    "720p": {"16:9": (1280, 704), "9:16": (704, 1280)},
+    "1080p": {"16:9": (1920, 1088), "9:16": (1088, 1920)},
+}
+DEFAULT_RESOLUTION = "1080p"
+DEFAULT_ASPECT_RATIO = "16:9"
+WIDTH, HEIGHT = RESOLUTIONS[DEFAULT_RESOLUTION][DEFAULT_ASPECT_RATIO]
 MIN_START_FREE_PERCENT = 30
 MIN_RUNNING_FREE_PERCENT = 12
 MAX_SWAP_GROWTH_GIB = 3.0
@@ -46,17 +53,23 @@ T2V_PROMPT = (
 
 def command(cli: Path, model: Path, output: Path, *, duration: int,
             tile_frames: int, tile_spatial: int, tile_overlap: int,
-            prompt: str, seed: int, image: Path | None = None) -> list[str]:
+            prompt: str, seed: int, image: Path | None = None,
+            resolution: str = DEFAULT_RESOLUTION,
+            aspect_ratio: str = DEFAULT_ASPECT_RATIO) -> list[str]:
     if duration not in (5, 6, 8, 10):
         raise ValueError("Duration must be 5, 6, 8 or 10 seconds")
     if tile_frames < 1 or tile_spatial < 1 or tile_overlap < 1:
         raise ValueError("Tile counts and overlap must be positive")
+    try:
+        width, height = RESOLUTIONS[resolution][aspect_ratio]
+    except KeyError as error:
+        raise ValueError("Unsupported resolution or aspect ratio") from error
     argv = [
         str(cli), "generate", "--distilled", "--low-ram",
         "--model", str(model),
         "--prompt", prompt,
         "--output", str(output),
-        "--width", str(WIDTH), "--height", str(HEIGHT),
+        "--width", str(width), "--height", str(height),
         "--frames", str(duration * FPS + 1),
         "--frame-rate", str(FPS), "--seed", str(seed),
         "--stage1-steps", "8", "--stage2-steps", "3",
@@ -209,6 +222,8 @@ def main() -> int:
     parser.add_argument("--run", action="store_true",
                         help="Actually render; otherwise just display configuration")
     parser.add_argument("--duration", type=int, choices=(5, 6, 8, 10), default=6)
+    parser.add_argument("--resolution", choices=tuple(RESOLUTIONS), default=DEFAULT_RESOLUTION)
+    parser.add_argument("--aspect-ratio", choices=("16:9", "9:16"), default=DEFAULT_ASPECT_RATIO)
     parser.add_argument("--tile-frames", type=int, choices=(1, 2, 3, 4), default=2)
     parser.add_argument("--tile-spatial", type=int, choices=(1, 2, 3), default=2)
     parser.add_argument("--tile-overlap", type=int, choices=(1, 2, 3, 4), default=2)
@@ -231,7 +246,8 @@ def main() -> int:
 
     folder = args.output_dir or (
         ROOT / "tiling-experiments" /
-        f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{args.duration}s")
+        f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{args.duration}s-"
+        f"{args.resolution}-{args.aspect_ratio.replace(':', 'x')}")
     video = folder / "result.mp4"
     reference_image = args.image.expanduser().resolve() if args.image else None
     if reference_image is not None:
@@ -243,8 +259,9 @@ def main() -> int:
     argv = command(args.cli.expanduser(), args.model.expanduser(), video,
                    duration=args.duration, tile_frames=args.tile_frames,
                    tile_spatial=args.tile_spatial, tile_overlap=args.tile_overlap,
-                   prompt=prompt, seed=args.seed, image=reference_image)
-    print("1080p temporal tiling experiment (production settings unchanged)")
+                   prompt=prompt, seed=args.seed, image=reference_image,
+                   resolution=args.resolution, aspect_ratio=args.aspect_ratio)
+    print("LTX tiling/identity experiment (production settings unchanged)")
     print(command_text(argv), flush=True)
     if not args.run:
         print("\nDry run only. Add --run to start rendering.")
@@ -340,7 +357,9 @@ def main() -> int:
             "status": status,
             "reason": abort_reason,
             "duration_seconds": args.duration,
-            "dimensions": [WIDTH, HEIGHT],
+            "resolution": args.resolution,
+            "aspect_ratio": args.aspect_ratio,
+            "dimensions": list(RESOLUTIONS[args.resolution][args.aspect_ratio]),
             "frames": args.duration * FPS + 1,
             "tile_frames": args.tile_frames,
             "tile_spatial": args.tile_spatial,
