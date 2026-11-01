@@ -89,6 +89,19 @@ CONTENT_CONSTRAINTS = {
     "wasserzeichen", "watermark", "watermarks", "text", "voiceover",
 }
 CONTENT_QUALIFIERS = {"generierter", "generierte", "generierten", "generiertes", "generated"}
+# Object-level exclusions after a positive image edit are not a cancellation.
+# E.g. "Ändere das Bild, aber nicht die Person" preserves the edit request.
+EDIT_EXCLUDED_SUBJECTS = {
+    "person", "personen", "frau", "mann", "gesicht", "gesichter", "haare",
+    "kleidung", "körper", "koerper", "figur", "pose", "hintergrund",
+    "people", "person", "woman", "man", "face", "faces", "hair",
+    "clothing", "clothes", "body", "pose", "background",
+}
+BARE_RETRACTION = re.compile(
+    r"^(?:(?:aber|doch|bitte|please)\s+)*(?:nicht|not|nein|no|"
+    r"vergiss\s+es|forget\s+it)\s*$",
+    re.IGNORECASE,
+)
 
 
 # The user's exact German instruction is an unconditional new-image command,
@@ -151,6 +164,14 @@ def _negates_execution(words, command):
             while following < len(words) and words[following] in DEGREE_WORDS:
                 following += 1
             if following < len(words) and words[following] in EDIT_PROPERTIES:
+                continue
+            # Exclude a subject from an otherwise affirmative image edit:
+            # "Ändere das Bild, aber nicht die Person". Require an explicit
+            # preceding image output so "Edit not the background" stays chat.
+            if (following + 1 < len(words)
+                    and words[following] in {"die", "den", "das", "der", "dem", "the"}
+                    and words[following + 1] in EDIT_EXCLUDED_SUBJECTS
+                    and any(token in OBJECTS for token in words[command + 1:index])):
                 continue
         # Negation before the verb, a negative output determiner (kein Bild),
         # or a command without a negated property cancels execution.
@@ -262,6 +283,13 @@ def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, 
         command = next((i for i, word in enumerate(words)
                         if word in CREATE | EDIT | ANIMATE | START | REFERENCE_VERBS), None)
         if _negates_execution(words, command) and (has_image or set(words) & topics):
+            # The clauses are split at "und"/"and". Once a positive media
+            # command is bound, a following constraint without another command
+            # ("und auch nicht die Haare") must not retract the entire job.
+            # An explicit bare withdrawal ("und doch nicht") still cancels.
+            if (execution is not None and command is None
+                    and not BARE_RETRACTION.fullmatch(clause.strip())):
+                continue
             negated = True
             continue
         if (words[0] in QUESTIONS or set(words[:6]) & DISCUSS) and (has_image or set(words) & topics):
