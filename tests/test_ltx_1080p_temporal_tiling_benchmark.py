@@ -160,6 +160,20 @@ class TilingBenchmarkTests(unittest.TestCase):
             self.assertIn("unknown oid", BENCH._SWAP_PROBE_DETAILS)
 
 
+    def test_chat_runtime_preflight_detects_listener_without_mutating_it(self):
+        class Connection:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return False
+        with mock.patch.object(BENCH.socket, "create_connection",
+                               return_value=Connection()) as connection:
+            self.assertTrue(BENCH.chat_runtime_listening())
+            connection.assert_called_once_with(("127.0.0.1", 8000), timeout=1)
+        with mock.patch.object(BENCH.socket, "create_connection",
+                               side_effect=ConnectionRefusedError):
+            self.assertFalse(BENCH.chat_runtime_listening())
+
     def test_preflight_dry_run_does_not_start_a_process(self):
         with mock.patch("sys.argv", ["experiment", "--duration", "6"]):
             with mock.patch.object(BENCH.subprocess, "Popen") as spawn:
