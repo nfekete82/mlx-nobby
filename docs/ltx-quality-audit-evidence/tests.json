@@ -1,0 +1,69 @@
+{
+  "date": "2026-11-01 CET",
+  "code_commit": "2e6725b0c881a72c38eb94def52390c1a7794046",
+  "required_python": {
+    "command": ".test-venv/bin/python -m pytest -q tests/test_video_rolling.py tests/test_video_segmented.py tests/test_i2v_conditioning_experiment.py",
+    "passed": 44
+  },
+  "expanded_python": {
+    "suites": [
+      "test_video_rolling",
+      "test_video_segmented",
+      "test_i2v_conditioning_experiment",
+      "test_video_long",
+      "test_video_mlx_provider",
+      "test_video_mlx_warm_runtime",
+      "test_runtime_coordinator",
+      "test_ai_lifecycle_reliability",
+      "test_ltx_vae_probe"
+    ],
+    "passed": 157,
+    "subtests_passed": 15,
+    "warnings": [
+      "Existing Starlette httpx deprecation"
+    ],
+    "overlap": "Includes required 44; not additive"
+  },
+  "post_probe_correction": {
+    "vae_admission_cleanup_tests_passed": 2,
+    "native_tiny_mlx_png_conversion": "passed, no model loaded",
+    "real_full_vae_probe": "passed; not a video render"
+  },
+  "cpu_diagnostics": {
+    "command": "image-venv/bin/python -m unittest tests.test_ltx_facial_quality tests.test_video_quality_benchmark tests.test_ltx_face_segment_analysis",
+    "passed": 11
+  },
+  "browser_fixture": {
+    "command": ".test-venv/bin/python -m pytest -q tests/e2e/test_video_rolling_quality.py",
+    "passed": 3,
+    "inference": "fixture only; no GPU"
+  },
+  "javascript": {
+    "test_video_job.mjs": "passed",
+    "test_media_quality.mjs": "passed, stale duration expectations corrected",
+    "test_chat_video_playback.mjs": {
+      "passed": 2
+    },
+    "test_video_edit_recovery.mjs": {
+      "passed": 5
+    }
+  },
+  "real_browser": {
+    "private_five_video_comparison": "passed",
+    "production_8090_three_new_videos": "passed",
+    "range_response": 206,
+    "asset_validation": "Matches source after the existing backend.image_followup_ui.patch_generation_source transformation"
+  },
+  "gpu_accounting": {
+    "complete_videos": 3,
+    "video_retries": 0,
+    "small_vae_attempts": 2,
+    "small_vae_success": 1,
+    "small_vae_failure_before_weights": 1
+  },
+  "general_ci_limits": [
+    "Pre-existing mlx_agent collection failure",
+    "Untracked ltx_lab tests require absent telemetry module",
+    "General AgentFixture GET video/edit/jobs returns HTTP 501; focused test provides endpoint and retains strict diagnostics"
+  ]
+}

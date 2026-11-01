@@ -1,0 +1,99 @@
+{
+  "build_sha": "2e6725b0c881a72c38eb94def52390c1a7794046",
+  "actions": [
+    {
+      "service": "de.nobby.mlx-video",
+      "before": {
+        "timestamp": 1793551854.910483,
+        "video_health": {
+          "ok": true,
+          "status": "ready",
+          "active_job_id": null,
+          "active_generation": false,
+          "offline": true
+        },
+        "agent_active": 0,
+        "agent_waiting": 0,
+        "runtime_active": null,
+        "lifecycle_blocked": false
+      },
+      "pid_before": 51814,
+      "pid_after": 50085,
+      "ready": true
+    },
+    {
+      "service": "de.nobby.mlx-agent",
+      "before": {
+        "timestamp": 1793551856.178638,
+        "video_health": {
+          "ok": true,
+          "status": "ready",
+          "active_job_id": null,
+          "active_generation": false,
+          "offline": true
+        },
+        "agent_active": 0,
+        "agent_waiting": 0,
+        "runtime_active": null,
+        "lifecycle_blocked": false
+      },
+      "pid_before": 51871,
+      "pid_after": 50096,
+      "ready": true
+    }
+  ],
+  "before": {
+    "timestamp": 1793551854.8836422,
+    "video_health": {
+      "ok": true,
+      "status": "ready",
+      "active_job_id": null,
+      "active_generation": false,
+      "offline": true
+    },
+    "agent_active": 0,
+    "agent_waiting": 0,
+    "runtime_active": null,
+    "lifecycle_blocked": false
+  },
+  "before_web_recreate": {
+    "timestamp": 1793551857.465858,
+    "video_health": {
+      "ok": true,
+      "status": "ready",
+      "active_job_id": null,
+      "active_generation": false,
+      "offline": true
+    },
+    "agent_active": 0,
+    "agent_waiting": 0,
+    "runtime_active": null,
+    "lifecycle_blocked": false
+  },
+  "web_health": {
+    "ok": true
+  },
+  "after": {
+    "timestamp": 1793551859.534525,
+    "video_health": {
+      "ok": true,
+      "status": "ready",
+      "active_job_id": null,
+      "active_generation": false,
+      "offline": true
+    },
+    "agent_active": 0,
+    "agent_waiting": 0,
+    "runtime_active": null,
+    "lifecycle_blocked": false
+  },
+  "completed_job_results_preserved": 5,
+  "initial_untracked_paths_preserved": 37,
+  "media_hashes_preserved": 5,
+  "source_hashes_preserved": true,
+  "final_agent_queue": {
+    "active": 0,
+    "waiting": 0,
+    "runtime_active": null
+  }
+}

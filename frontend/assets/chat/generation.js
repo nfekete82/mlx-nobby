@@ -313,6 +313,23 @@ async function videoSourceOrientation(source) {
     });
 }
 
+function parseVideoSeed(value) {
+    const text = String(value ?? '').trim();
+    if (!/^\d+$/.test(text)) return null;
+    const seed = Number(text);
+    return Number.isSafeInteger(seed) && seed <= 2147483647 ? seed : null;
+}
+
+function videoPresetSummary(quality, format, duration, rolling) {
+    const canvases = { fast: [1024, 576], standard: [1280, 704], quality: [1920, 1088], preview: [384, 256] };
+    let [width, height] = canvases[quality] || canvases.standard;
+    if (format === 'portrait') [width, height] = [height, width];
+    const mode = rolling ? 'Rolling 6 + 2 + 2 s · experimentell' :
+        (duration >= 30 || (quality === 'quality' && duration === 9)) ? 'RAM-sichere Segmente' :
+        (quality === 'quality' && duration > 5) || (quality === 'standard' && duration === 20) ? 'Automatische Fortsetzung' : 'Native Generierung';
+    return `${width} × ${height} Pixel · ${quality === 'preview' ? 8 : 24} FPS · ${duration} s · ${mode} · kein Ausgabe-Upscaling`;
+}
+
 function videoOptionsForRequest(
     options,
     mediaKind,
@@ -3412,9 +3429,10 @@ const imageFiles =
             // sampling values across models or across generation requests.
             let selectedSampling = null;
 
-            const rollingWindowRequested =
+            let rollingWindowRequested =
                 mediaQualityKind === 'video' &&
-                /\brolling[\s-]?window(?:[\s-]?test)?\b/i.test(prompt);
+                (options?.video?.continuation_mode === 'rolling' || /\brolling[\s-]?window(?:[\s-]?test)?\b/i.test(prompt));
+            let selectedVideoSeed = parseVideoSeed(options?.video?.seed ?? 0) ?? 0;
             const rollingSourceOrientation = rollingWindowRequested
                 ? await videoSourceOrientation(preferredVideoSource?.source)
                 : null;
@@ -3454,6 +3472,15 @@ const imageFiles =
                     document.getElementById('videoDuration');
                 const profileField = document.getElementById('videoProfileField');
                 const profileSelect = document.getElementById('videoProfile');
+                const videoExpert = document.getElementById('videoExpert');
+                const videoSeed = document.getElementById('videoSeed');
+                const videoSummary = document.getElementById('videoQualitySummary');
+                const continuationField = document.getElementById('videoContinuationField');
+                const continuationSelect = document.getElementById('videoContinuation');
+                if (videoExpert) videoExpert.hidden = mediaQualityKind !== 'video';
+                if (videoSeed) { videoSeed.value = String(selectedVideoSeed); videoSeed.setCustomValidity?.(''); }
+                if (continuationField) continuationField.hidden = mediaQualityKind !== 'video';
+                if (continuationSelect) continuationSelect.value = rollingWindowRequested ? 'rolling' : 'auto';
                 const faceGuidanceField = document.getElementById('videoFaceGuidanceField');
                 const faceGuidanceSelect = document.getElementById('videoFaceGuidance');
                 if (faceGuidanceField && faceGuidanceSelect) {
@@ -3660,8 +3687,8 @@ const imageFiles =
                             return;
                         }
 
-                        const allowed =
-                            videoDurationsForQuality(choice);
+                        const allowed = rollingWindowRequested ? [10] : videoDurationsForQuality(choice);
+                        if (rollingWindowRequested) selectedVideoDuration = 10;
 
                         selectedVideoDuration =
                             normalizeVideoDuration(
@@ -3703,6 +3730,7 @@ const imageFiles =
                     };
 
                     const renderChoice = () => {
+                        if (rollingWindowRequested && !['fast', 'standard'].includes(choice)) choice = 'standard';
                         // The native SDXL worker cannot accept Ultra's 1536 px:
                         // its hard bound is 1216. Avoid presenting a broken mode.
                         if (hasRagnarokSampling() && choice === 'ultra') {
@@ -3717,6 +3745,7 @@ const imageFiles =
                                 (button.dataset.mediaQuality === 'ultra' &&
                                  (mediaQualityKind !== 'image' || hasRagnarokSampling()));
 
+                            button.disabled = mediaQualityKind === 'video' && rollingWindowRequested && !['fast', 'standard'].includes(button.dataset.mediaQuality);
                             const active =
                                 !button.hidden &&
                                 button.dataset.mediaQuality === choice;
@@ -3735,6 +3764,10 @@ const imageFiles =
                         renderFormatOptions();
                         renderDurationOptions();
                         renderSampling();
+                        if (videoSummary) {
+                            videoSummary.hidden = mediaQualityKind !== 'video';
+                            videoSummary.textContent = videoPresetSummary(choice, selectedMediaFormat, selectedVideoDuration, rollingWindowRequested);
+                        }
 
                         if (negativePromptField) {
                             negativePromptField.hidden =
@@ -3821,6 +3854,8 @@ const imageFiles =
                             samplingCfg?.removeEventListener?.('input', onSamplingInput);
 
                             durationSelect?.removeEventListener?.('change', onFaceDurationChange);
+                            formatSelect?.removeEventListener?.('change', onFormatChange);
+                            continuationSelect?.removeEventListener?.('change', onContinuationChange);
 
                             cancel.removeEventListener(
                                 'click',
@@ -3888,9 +3923,25 @@ const imageFiles =
                             renderChoice();
                         };
 
+                        const onFormatChange = () => {
+                            selectedMediaFormat = formatSelect.value;
+                            if (mediaQualityKind === 'video' && videoSummary) {
+                                videoSummary.textContent = videoPresetSummary(choice, selectedMediaFormat, selectedVideoDuration, rollingWindowRequested);
+                            }
+                        };
+                        formatSelect?.addEventListener?.('change', onFormatChange);
+                        const onContinuationChange = () => {
+                            if (continuationSelect?.value === 'rolling' && document.getElementById('multiVideoEnabled')?.checked) {
+                                continuationSelect.value = 'auto';
+                            }
+                            rollingWindowRequested = continuationSelect?.value === 'rolling';
+                            renderChoice();
+                        };
+                        continuationSelect?.addEventListener?.('change', onContinuationChange);
                         const onFaceDurationChange = () => {
                             const duration = Number(durationSelect?.value);
                             if (VIDEO_DURATIONS.has(duration)) selectedVideoDuration = duration;
+                            if (videoSummary) videoSummary.textContent = videoPresetSummary(choice, selectedMediaFormat, selectedVideoDuration, rollingWindowRequested);
                             if (faceGuidanceField) {
                                 faceGuidanceField.hidden = !(
                                     preferredVideoSource?.source &&
@@ -3937,6 +3988,14 @@ const imageFiles =
                         };
 
                         const onConfirm = () => {
+                            if (mediaQualityKind === 'video' && videoSeed) {
+                                const parsed = parseVideoSeed(videoSeed.value);
+                                if (parsed === null) { videoSeed.setCustomValidity?.('Seed: ganze Zahl von 0 bis 2147483647'); videoSeed.reportValidity?.(); return; }
+                                videoSeed.setCustomValidity?.(''); selectedVideoSeed = parsed;
+                            }
+                            if (rollingWindowRequested && document.getElementById('multiVideoEnabled')?.checked) {
+                                window.MLXMultiImageVideo?.showError('Rolling benötigt ein einzelnes Bild; bitte automatische Fortsetzung wählen.'); return;
+                            }
                             try {
                                 multiVideoSelection = window.MLXMultiImageVideo?.selection(choice) || null;
                             } catch (error) {
@@ -4195,7 +4254,7 @@ const imageFiles =
                     ),
                     // Deliberate opt-in; never switch all long videos to this
                     // experimental native Extend path without user consent.
-                    ...(rollingWindowRequested ? { continuation_mode: 'rolling' } : {}),
+                    ...(mediaQualityKind === 'video' ? { seed: selectedVideoSeed, continuation_mode: rollingWindowRequested ? 'rolling' : 'segmented' } : {}),
                     ...(preferredVideoSource?.source && selectedFaceGuidance &&
                         (rollingWindowRequested ||
                             (selectedVideoDuration === 6 && selectedMediaQuality === 'standard'))
@@ -5673,6 +5732,8 @@ resetSessionRuntime: resetSessionRuntime,
             mediaPreviewAvailable: mediaPreviewAvailable,
             normalizeMediaPreviewQuality: normalizeMediaPreviewQuality,
             videoOptionsForRequest: videoOptionsForRequest,
+            parseVideoSeed: parseVideoSeed,
+            videoPresetSummary: videoPresetSummary,
             portraitHintFromDimensions: portraitHintFromDimensions,
             videoSourceOrientation: videoSourceOrientation,
             updateVideoProfileAvailability: updateVideoProfileAvailability,

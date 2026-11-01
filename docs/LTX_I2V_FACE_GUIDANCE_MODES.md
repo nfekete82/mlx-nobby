@@ -29,7 +29,7 @@ there, as well as in T2V, multi-I2V and unsupported durations.
 
 The browser offers the selector only when a managed source photo is
 present and either the 10s Rolling-Window-Test or the 6s/720p standard
-I2V probe is selected. The default is **Bisheriges Verhalten** and
+I2V probe is selected. The default is **Standard unverändert · Rolling FULL** and
 does not send the new option. No permanent quality/default change.
 
 ## Six-second causal probe
@@ -49,12 +49,11 @@ distilled 8+3 steps. Compare **off** against **minimal**, optionally
 at 0–6 seconds. A shorter low-aperture window is not automatically
 better if blinking is unnaturally rapid or eye/pupil geometry degrades.
 
-The `initial_off` experiment isolates the initial face prompt **without** changing the extension prompts. Compare 10s Rolling `full` against 10s Rolling `initial_off` using the same original, seed, prompt, 720p portrait resolution, 24fps and native runtime. Review native frames for eyelid movement in 0–6s and face/head motion at both 6s and 8s seams. Keep other guidance options and the default untouched; the new value has a distinct checkpoint fingerprint. **No GPU render has been run for this new mode.**
+The `initial_off` experiment isolates the initial face prompt **without** changing the extension prompts. Compare 10s Rolling `full` against 10s Rolling `initial_off` using the same original, seed, prompt, 720p portrait resolution, 24fps and native runtime. Review native frames for eyelid movement in 0–6s and face/head motion at both 6s and 8s seams. Keep other guidance options and the default untouched; the new value has a distinct checkpoint fingerprint. The original code-only PR did not include a GPU render. The supplied FULL/INITIAL_OFF pair and the subsequent controlled FULL/MINIMAL audit are now documented in [the November 1 audit](LTX_QUALITY_AUDIT_2026-11-01.md); they do not justify a default change.
 
 At least two matched seeds and visual human review should precede
-any default promotion. There is **no automatic GPU generation** in
-this code-only PR, and no claim of improved eye quality from tests
-alone. GPU generation must honor the existing memory gates.
+any default promotion. There is **no automatic GPU generation** when selecting or validating these
+options, and no claim of improved eye quality from CPU tests alone. GPU generation must honor the existing memory gates.
 
 ## Checkpoints / backward compatibility
 

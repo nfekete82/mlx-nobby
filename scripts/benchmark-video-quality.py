@@ -247,6 +247,8 @@ def job_telemetry(path):
     result['settings']={k:payload.get(k) for k in ('seed','resolution','aspect_ratio','fps','duration','identity_lock','resize_mode')}
     if payload.get('i2v_image_crf') is not None:
         result['settings']['i2v_image_crf']=payload['i2v_image_crf']
+    if payload.get('face_guidance') is not None:
+        result['settings']['face_guidance']=payload['face_guidance']
     result['prompt_sha256']=hashlib.sha256(payload.get('prompt','').encode()).hexdigest()
     source=payload.get('first_frame')
     result['source_sha256']=sha256(source) if source and Path(source).is_file() else None

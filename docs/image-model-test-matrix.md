@@ -164,3 +164,72 @@ promotion. [Cause analysis and evidence](LTX_I2V_CAUSE_ISOLATION_2026-10-31.md).
   Decision: retain model and default rolling behavior; keep CRF 0 research-only,
   manually review guidance opt-out; no automatic approval or image `tested`
   status promotion. [Final comparative evidence](ltx-i2v-cause-evidence/gpu-comparison.json).
+
+### 2026-11-01: controlled LTX FULL/MINIMAL audit
+
+Installed local checkpoint/provider retained: `dgrauet/ltx-2.5-mlx-q4`,
+`transformer-distilled.safetensors`, LTX-2.5 22B distilled audio/video, int4
+linear weights, native MLX/Metal. HF revision
+`e9a20add8c5937fcab635fb8e7a52926487a5776`, previously verified transformer
+SHA256 `413479747a7ecd39c71460c3b0e4c872399c64fdaff85f4ef2a28c435a45f21d`.
+Native 0.18.0 remains pinned at `b82b97e3d000e01361f8cfcb745244b15b89a521`;
+no installation, runtime or weight changes. Actual tests: **2026-11-01 CET**.
+
+Both new original-photo videos: 704×1280, 241 frames / 24 FPS, rolling 6+2+2 s,
+25-frame video/audio context, seed 0, Standard profile, `contain`, native still
+CRF 18, 8+3 distilled steps per window, native ancestral sigma tables; CFG N/A.
+Exact source and prompt hashes are checked separately from the supplied
+reference-image cohort. No image checkpoint receives a new `tested` status.
+
+| Trial | Real GPU/load result | Time | Native visual observation / decision |
+| --- | --- | ---: | --- |
+| Original FULL, job `eaa599eb9c44f61aafd735bc`, video `ed9ace71c353194b897ff259.mp4` | Passed | 432.724 s | Long initial eyelid closure; broad smile develops. Keep existing FULL default; no facial-quality acceptance. |
+| Original MINIMAL, job `54922fc180e98e3d2ed148af`, video `4377033c7cf8d80a9655b161.mp4` | Passed | 443.190 s | First low-aperture interval 44 vs 41 frames; longer closure in 6–8 s, weaker smile. Reject as a default improvement; retain explicit research option. |
+
+The thresholded intervals are detector candidates checked against native crops,
+not a clinical blink count or an identity score. No generation retries.
+Evidence/report: [quality audit](LTX_QUALITY_AUDIT_2026-11-01.md).
+
+- Reference-image MINIMAL, **2026-11-01 CET**, job
+  `aa792f485fe23d2824e54e1b`, video `9e30f5a855891ddf1becf6ea.mp4`:
+  real GPU/load/render passed, **438.735 s**. Same installed checkpoint,
+  architecture/provider/runtime and 704×1280 / 241 frames / 24 FPS / seed 0 /
+  Standard / 8+3 ancestral steps / CFG N/A as above. Only `face_guidance`
+  differs from the supplied FULL reference; its source image and user prompt
+  differ from the original-photo pair. Dense native assessment follows in the
+  linked report. Keep FULL pending nonregressive visible evidence. Exactly
+  three complete new videos in this round; fourth render budget unused.
+
+- Half-stage one-frame VAE diagnostic, **2026-11-01 CET**: **failed before VAE
+  weight loading**, no reconstruction or generated video. Same local LTX-2.5
+  model pack and native provider; intended 352×640 conv-VAE encode/decode,
+  native preprocessing CRF 18. Transformer steps, CFG, scheduler and seed N/A
+  for a deterministic spatial reconstruction. PNG export used an unavailable
+  MLX array method; managed process stopped, exclusive lease/chat restored,
+  no resource failure. Encoder SHA256
+  `34625a28efc2c447071221b9855849d9d4a90e19d5363c7347c00896f8409502`,
+  decoder SHA256 `fd250ca3bdeb4ce67b5343d62a45883924faf5314aa60a870eb7c575f5519c80`.
+  Quality: unassessed. Decision: correct diagnostic on CPU/tiny tensor; do not
+  repeat half-stage load, reserve the second/final probe for full-stage VAE.
+  No settings promoted, no new image-model `tested` status.
+
+- Full-stage one-frame VAE diagnostic, **2026-11-01 CET**: real GPU conv-VAE
+  encoder/decoder load and reconstruction **passed**, **0.789 s** worker
+  load/encode/decode/export time (excluding handoff/startup). Same installed
+  checkpoint/runtime/provider and exact encoder/decoder SHA256 above; 704×1280,
+  one frame, native CRF-18 preprocessing, BF16 latent `[1,128,1,40,22]`;
+  transformer steps / CFG / scheduler / seed N/A. No transformer, text encoder,
+  audio model or final video codec loaded. Peak native Metal allocation
+  **4.799 GiB**. Paired fixed native face ROI SSIM 0.9520, luma MAE 1.8604;
+  fine texture softens, eyes remain open. This demonstrates spatial
+  reconstruction loss, **not** a cause of the long generated eyelid closure
+  or an isolated temporal-Extend effect. Decision: retain native VAE and FULL;
+  no default promotion or facial restoration. Two diagnostic attempts total
+  (one before-weight-load failure, one successful single-frame reconstruction),
+  no further GPU work. Private evidence: `artifacts/ltx-quality-20261101/vae-full/`.
+
+- Abschließende Referenz-MINIMAL-Sichtung: erster Augenöffnungs-Kandidat 9
+  statt 5 Frames (FULL), weitere kurze Schließfolgen in den Verlängerungen,
+  keine durchgängige sichtbare Verbesserung. **MINIMAL als Default abgelehnt**;
+  alle alternativen Gesichtstexte bleiben explizit experimentell. Fehlgeschlagene
+  Halbprobe: Renderzeit N/A, genaue Controller-Wall-Zeit nicht instrumentiert.

@@ -1,0 +1,3684 @@
+{
+  "test_date": "2026-11-01 CET",
+  "cases": [
+    {
+      "label": "original_full",
+      "job_id": "eaa599eb9c44f61aafd735bc",
+      "video_id": "ed9ace71c353194b897ff259",
+      "video_sha256": "d01437f80ff3aa9f28a907f90105a0ba9d66e2c1ed335acc811d8ed18e8acf53",
+      "source_sha256": "4296d2d80c753633525d6dded18d3d7d95fa876585ca894273c6d2b0273e17d6",
+      "prompt_sha256": "390aa121ffc4ea2da6f62ca3ea6b1227209936ac08cc2f73de406036e902e4c1",
+      "settings": {
+        "aspect_ratio": "9:16",
+        "continuation_mode": "rolling",
+        "duration": 10,
+        "face_guidance": "full",
+        "fps": 24,
+        "frames": 241,
+        "height": 1280,
+        "i2v_image_crf": null,
+        "identity_lock": true,
+        "identity_strength": 0.3,
+        "images": [],
+        "model": "auto",
+        "multi_image_mode": null,
+        "profile": "standard",
+        "quality": "standard",
+        "resize_mode": "contain",
+        "resolution": "720p",
+        "resume_from": null,
+        "seed": 0,
+        "steps": 11,
+        "width": 704
+      },
+      "technical": {
+        "width": 704,
+        "height": 1280,
+        "fps": 24.0,
+        "frames": 241,
+        "video_duration": 10.041667,
+        "container_duration": 10.041667,
+        "video_start": 0.0,
+        "audio_start": 0.0,
+        "audio_duration": 10.041667,
+        "av_start_offset_seconds": 0.0,
+        "av_end_offset_seconds": 0.0,
+        "audio_sample_rate": "48000",
+        "codec": "h264",
+        "pixel_format": "yuv420p",
+        "pts_anomalies": []
+      },
+      "metrics": {
+        "analysis_width": 282,
+        "analysis_height": 512,
+        "adjacent_ssim": {
+          "min": 0.859251856803894,
+          "median": 0.9860284924507141,
+          "p95": 0.9984789371490479,
+          "max": 0.9988231658935547
+        },
+        "adjacent_mae": {
+          "min": 0.2055213898420334,
+          "median": 1.1102545857429504,
+          "p95": 3.5505030870437624,
+          "max": 4.344941139221191
+        },
+        "laplacian_variance": {
+          "min": 104.38227081298828,
+          "median": 169.7356719970703,
+          "p95": 197.74485778808594,
+          "max": 204.97535705566406
+        },
+        "exact_duplicate_frames": [],
+        "boundaries": [
+          {
+            "frame": 145,
+            "time": 6.041667,
+            "laplacian_variance": 159.61048889160156,
+            "mean_luma": 59.2032773714539,
+            "adjacent_ssim": 0.987768828868866,
+            "adjacent_mae": 1.2621204853057861,
+            "previous_frame": 144,
+            "mae_to_nonboundary_median_ratio": 0.6809956330782304,
+            "window": [
+              {
+                "frame": 142,
+                "time": 5.916667,
+                "laplacian_variance": 171.52899169921875,
+                "mean_luma": 59.83464234264184,
+                "adjacent_ssim": 0.9723876714706421,
+                "adjacent_mae": 1.5265333652496338
+              },
+              {
+                "frame": 143,
+                "time": 5.958333,
+                "laplacian_variance": 170.12342834472656,
+                "mean_luma": 59.92887716090426,
+                "adjacent_ssim": 0.9806088209152222,
+                "adjacent_mae": 1.247063398361206
+              },
+              {
+                "frame": 144,
+                "time": 6.0,
+                "laplacian_variance": 170.0904998779297,
+                "mean_luma": 59.816378546099294,
+                "adjacent_ssim": 0.9865789413452148,
+                "adjacent_mae": 1.0214636325836182
+              },
+              {
+                "frame": 145,
+                "time": 6.041667,
+                "laplacian_variance": 159.61048889160156,
+                "mean_luma": 59.2032773714539,
+                "adjacent_ssim": 0.987768828868866,
+                "adjacent_mae": 1.2621204853057861
+              },
+              {
+                "frame": 146,
+                "time": 6.083333,
+                "laplacian_variance": 158.00918579101562,
+                "mean_luma": 59.03614666445036,
+                "adjacent_ssim": 0.9931309819221497,
+                "adjacent_mae": 0.7186322808265686
+              },
+              {
+                "frame": 147,
+                "time": 6.125,
+                "laplacian_variance": 154.49969482421875,
+                "mean_luma": 59.14823664671986,
+                "adjacent_ssim": 0.995471715927124,
+                "adjacent_mae": 0.5221215486526489
+              },
+              {
+                "frame": 148,
+                "time": 6.166667,
+                "laplacian_variance": 157.49713134765625,
+                "mean_luma": 58.99594830452128,
+                "adjacent_ssim": 0.9961249828338623,
+                "adjacent_mae": 0.4938358962535858
+              }
+            ]
+          },
+          {
+            "frame": 193,
+            "time": 8.041667,
+            "laplacian_variance": 177.04644775390625,
+            "mean_luma": 58.441184618794324,
+            "adjacent_ssim": 0.9919201731681824,
+            "adjacent_mae": 0.9892231822013855,
+            "previous_frame": 192,
+            "mae_to_nonboundary_median_ratio": 0.5337498876390402,
+            "window": [
+              {
+                "frame": 190,
+                "time": 7.916667,
+                "laplacian_variance": 181.46397399902344,
+                "mean_luma": 59.10771969193262,
+                "adjacent_ssim": 0.9983800053596497,
+                "adjacent_mae": 0.26117852330207825
+              },
+              {
+                "frame": 191,
+                "time": 7.958333,
+                "laplacian_variance": 179.74856567382812,
+                "mean_luma": 59.127687278368796,
+                "adjacent_ssim": 0.9983595013618469,
+                "adjacent_mae": 0.2675573527812958
+              },
+              {
+                "frame": 192,
+                "time": 8.0,
+                "laplacian_variance": 182.93736267089844,
+                "mean_luma": 58.9666445035461,
+                "adjacent_ssim": 0.9979013204574585,
+                "adjacent_mae": 0.34452569484710693
+              },
+              {
+                "frame": 193,
+                "time": 8.041667,
+                "laplacian_variance": 177.04644775390625,
+                "mean_luma": 58.441184618794324,
+                "adjacent_ssim": 0.9919201731681824,
+                "adjacent_mae": 0.9892231822013855
+              },
+              {
+                "frame": 194,
+                "time": 8.083333,
+                "laplacian_variance": 175.68075561523438,
+                "mean_luma": 58.416188774379435,
+                "adjacent_ssim": 0.997384786605835,
+                "adjacent_mae": 0.3790794014930725
+              },
+              {
+                "frame": 195,
+                "time": 8.125,
+                "laplacian_variance": 170.13604736328125,
+                "mean_luma": 58.46669298537234,
+                "adjacent_ssim": 0.9971075057983398,
+                "adjacent_mae": 0.3272661864757538
+              },
+              {
+                "frame": 196,
+                "time": 8.166667,
+                "laplacian_variance": 171.95602416992188,
+                "mean_luma": 58.356563054078016,
+                "adjacent_ssim": 0.9969238638877869,
+                "adjacent_mae": 0.37992435693740845
+              }
+            ]
+          }
+        ]
+      },
+      "segments": [
+        {
+          "first_frame": 0,
+          "last_frame": 144,
+          "frames": 145,
+          "face_count_histogram": {
+            "1": 145
+          },
+          "left_eye_open_ratio": {
+            "min": 0.06121437607095314,
+            "median": 0.1743986304409132,
+            "p95": 0.3703751057857799,
+            "max": 0.3793205425187432
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 5.2745982861812646e-05,
+            "median": 0.003678988950861342,
+            "p95": 0.027973229691117308,
+            "max": 0.08270501828276217
+          },
+          "right_eye_open_ratio": {
+            "min": 0.0377198620631821,
+            "median": 0.18815965989644887,
+            "p95": 0.3210412724795356,
+            "max": 0.32773017775940433
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00021389341104988135,
+            "median": 0.004699977907509742,
+            "p95": 0.03690308743870103,
+            "max": 0.08416285581388475
+          },
+          "interocular_over_box_width": {
+            "min": 0.3687362069693868,
+            "median": 0.3826767311392561,
+            "p95": 0.40592524978668193,
+            "max": 0.409623423778151
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 3.479291172392429e-06,
+            "median": 0.0018065233960444238,
+            "p95": 0.006668935480298441,
+            "max": 0.014123381497718912
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.520411044194571,
+            "median": 0.5980357552263141,
+            "p95": 0.6991049250236447,
+            "max": 0.7011947420059917
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 8.415956493446064e-05,
+            "median": 0.0034678664390327407,
+            "p95": 0.012135554118132032,
+            "max": 0.02733562729971528
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.8670407450392407,
+            "median": 0.9076624066706526,
+            "p95": 1.1105277121753632,
+            "max": 1.1232239472235004
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 2.453560596693549e-06,
+            "median": 0.0047115487266111145,
+            "p95": 0.01564276064043715,
+            "max": 0.034434627691043884
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 24,
+              "last_frame": 64,
+              "frames": 41,
+              "duration_seconds": 1.7083333333333333
+            },
+            {
+              "first_frame": 102,
+              "last_frame": 122,
+              "frames": 21,
+              "duration_seconds": 0.875
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.36331450552784156,
+            "right": 0.3182232251208643
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.859251856803894,
+            "median": 0.9403639435768127,
+            "p95": 0.9976371437311172,
+            "max": 0.9987696409225464
+          },
+          "within_segment_laplacian_variance": {
+            "min": 104.38227081298828,
+            "median": 162.1970672607422,
+            "p95": 197.92320556640624,
+            "max": 204.97535705566406
+          }
+        },
+        {
+          "first_frame": 145,
+          "last_frame": 192,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.08250673929530158,
+            "median": 0.2578406215468835,
+            "p95": 0.27805614251507904,
+            "max": 0.28437769869472934
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00019025890932916623,
+            "median": 0.004642448815350947,
+            "p95": 0.039790933367073913,
+            "max": 0.07562487283520955
+          },
+          "right_eye_open_ratio": {
+            "min": 0.09714014143976636,
+            "median": 0.23931800879637788,
+            "p95": 0.25847901508245086,
+            "max": 0.26016897271721656
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00013232798330742312,
+            "median": 0.0035893644068885344,
+            "p95": 0.03458580045263817,
+            "max": 0.06139890474975593
+          },
+          "interocular_over_box_width": {
+            "min": 0.37792148702533107,
+            "median": 0.3810883369476244,
+            "p95": 0.3955876604426382,
+            "max": 0.3993578111985861
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 2.803162703529649e-05,
+            "median": 0.001431600719071724,
+            "p95": 0.004343814743235391,
+            "max": 0.007809846942862297
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5749680253771589,
+            "median": 0.6155960227479957,
+            "p95": 0.6275093682319722,
+            "max": 0.6292657388372492
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 3.089638344977441e-05,
+            "median": 0.0017519906385354833,
+            "p95": 0.012752864889239213,
+            "max": 0.01874345777601205
+          },
+          "mouth_width_over_interocular": {
+            "min": 1.0274704386952869,
+            "median": 1.0632926863105299,
+            "p95": 1.0985911157571613,
+            "max": 1.1084212781220308
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 1.5049056536264871e-05,
+            "median": 0.0038000921444654168,
+            "p95": 0.014499976257643897,
+            "max": 0.026611062040938327
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 169,
+              "last_frame": 171,
+              "frames": 3,
+              "duration_seconds": 0.125
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.27554418338975556,
+            "right": 0.2567354611285872
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9922909736633301,
+            "median": 0.9967226386070251,
+            "p95": 0.9985599279403686,
+            "max": 0.9987150430679321
+          },
+          "within_segment_laplacian_variance": {
+            "min": 154.49969482421875,
+            "median": 177.9155502319336,
+            "p95": 184.34334182739258,
+            "max": 185.10513305664062
+          }
+        },
+        {
+          "first_frame": 193,
+          "last_frame": 240,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.055819007716361314,
+            "median": 0.2443992965524653,
+            "p95": 0.27324805518336626,
+            "max": 0.2809544314766215
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00013534691160960177,
+            "median": 0.008613184446342424,
+            "p95": 0.05843334970967395,
+            "max": 0.09906272020234545
+          },
+          "right_eye_open_ratio": {
+            "min": 0.06443501613739411,
+            "median": 0.23504173223800368,
+            "p95": 0.2592158918101311,
+            "max": 0.260340384066225
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 4.680124692685306e-05,
+            "median": 0.007526550226076456,
+            "p95": 0.05046497881947776,
+            "max": 0.08880022999122579
+          },
+          "interocular_over_box_width": {
+            "min": 0.3803048027412456,
+            "median": 0.3884513059818211,
+            "p95": 0.41006007022975566,
+            "max": 0.41183322042751286
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 1.085571877224023e-06,
+            "median": 0.001407042153112159,
+            "p95": 0.007729581664206087,
+            "max": 0.013054521252094164
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5564601854226157,
+            "median": 0.6124596456357572,
+            "p95": 0.6267642674088194,
+            "max": 0.6280492207037133
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 8.439496712020489e-05,
+            "median": 0.003167275795174951,
+            "p95": 0.017486620872467492,
+            "max": 0.032675162472321606
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.9685531707005551,
+            "median": 1.0304297296107663,
+            "p95": 1.0466505314262804,
+            "max": 1.0504041053710012
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 0.000403631000463367,
+            "median": 0.005425720899183473,
+            "p95": 0.01481836900672586,
+            "max": 0.023379361581679414
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 197,
+              "last_frame": 197,
+              "frames": 1,
+              "duration_seconds": 0.041666666666666664
+            },
+            {
+              "first_frame": 223,
+              "last_frame": 229,
+              "frames": 7,
+              "duration_seconds": 0.2916666666666667
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.2725594445383543,
+            "right": 0.2574008087696168
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9143561124801636,
+            "median": 0.9960983395576477,
+            "p95": 0.9987241685390472,
+            "max": 0.9988231658935547
+          },
+          "within_segment_laplacian_variance": {
+            "min": 129.03517150878906,
+            "median": 175.98361206054688,
+            "p95": 197.7689292907715,
+            "max": 198.28826904296875
+          }
+        }
+      ],
+      "complete_timeline": {
+        "first_frame": 0,
+        "last_frame": 240,
+        "frames": 241,
+        "face_count_histogram": {
+          "1": 241
+        },
+        "left_eye_open_ratio": {
+          "min": 0.055819007716361314,
+          "median": 0.2247970125669333,
+          "p95": 0.363534794346499,
+          "max": 0.3793205425187432
+        },
+        "left_eye_open_ratio_adjacent_absolute_change": {
+          "min": 5.2745982861812646e-05,
+          "median": 0.004523424120673126,
+          "p95": 0.038653532752992326,
+          "max": 0.09906272020234545
+        },
+        "right_eye_open_ratio": {
+          "min": 0.0377198620631821,
+          "median": 0.22578676103921902,
+          "p95": 0.318797131469522,
+          "max": 0.32773017775940433
+        },
+        "right_eye_open_ratio_adjacent_absolute_change": {
+          "min": 4.680124692685306e-05,
+          "median": 0.00461834257160057,
+          "p95": 0.038678131276532475,
+          "max": 0.08880022999122579
+        },
+        "interocular_over_box_width": {
+          "min": 0.3687362069693868,
+          "median": 0.3826767311392561,
+          "p95": 0.4060960738833743,
+          "max": 0.41183322042751286
+        },
+        "interocular_over_box_width_adjacent_absolute_change": {
+          "min": 1.085571877224023e-06,
+          "median": 0.001635638554733393,
+          "p95": 0.006302565136288755,
+          "max": 0.014123381497718912
+        },
+        "nose_to_eye_mid_over_interocular": {
+          "min": 0.520411044194571,
+          "median": 0.6095350838653966,
+          "p95": 0.6985256905117793,
+          "max": 0.7011947420059917
+        },
+        "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+          "min": 3.089638344977441e-05,
+          "median": 0.003009831737711244,
+          "p95": 0.014385751146176637,
+          "max": 0.032675162472321606
+        },
+        "mouth_width_over_interocular": {
+          "min": 0.8670407450392407,
+          "median": 1.015914720890711,
+          "p95": 1.1068179991244809,
+          "max": 1.1232239472235004
+        },
+        "mouth_width_over_interocular_adjacent_absolute_change": {
+          "min": 2.453560596693549e-06,
+          "median": 0.004402838686190624,
+          "p95": 0.014997189340744227,
+          "max": 0.034434627691043884
+        },
+        "bilateral_low_aperture_candidates": [
+          {
+            "first_frame": 25,
+            "last_frame": 64,
+            "frames": 40,
+            "duration_seconds": 1.6666666666666667,
+            "reopening_frame": 65,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 102,
+            "last_frame": 121,
+            "frames": 20,
+            "duration_seconds": 0.8333333333333334,
+            "reopening_frame": 122,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 169,
+            "last_frame": 172,
+            "frames": 4,
+            "duration_seconds": 0.16666666666666666,
+            "reopening_frame": 173,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 197,
+            "last_frame": 199,
+            "frames": 3,
+            "duration_seconds": 0.125,
+            "reopening_frame": 200,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 223,
+            "last_frame": 229,
+            "frames": 7,
+            "duration_seconds": 0.2916666666666667,
+            "reopening_frame": 230,
+            "reopening_status": "above_candidate_threshold"
+          }
+        ],
+        "aperture_reference_p90": {
+          "left": 0.2809544314766215,
+          "right": 0.3093891354905533
+        }
+      },
+      "summary": {
+        "frames": 241,
+        "uncertain_frames": [],
+        "yaw_degrees": {
+          "min": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 45.00000125223908
+        },
+        "roll_degrees": {
+          "min": -30.000000834826057,
+          "median": 30.000000834826057,
+          "p95": 30.000000834826057,
+          "max": 30.000000834826057
+        },
+        "center_step_over_face_width": {
+          "min": 0.0002961893492735345,
+          "median": 0.004471404465783186,
+          "p95": 0.011459259561945039,
+          "max": 0.014887261023994798
+        },
+        "center_acceleration_over_face_width": {
+          "min": 0.00021345678516178205,
+          "median": 0.005424375519532275,
+          "p95": 0.012480695321291833,
+          "max": 0.021938737383811087
+        },
+        "face_region_delta_e76": {
+          "min": 0.0,
+          "median": 0.5830543330979482,
+          "p95": 1.1503174433564456,
+          "max": 1.7186365705534723
+        },
+        "normalized_face_laplacian_variance": {
+          "min": 90.16388702392578,
+          "median": 174.5082244873047,
+          "p95": 203.76454162597656,
+          "max": 215.44944763183594
+        },
+        "registered_luma_mae": {
+          "min": 0.8063979289940828,
+          "median": 2.76405325443787,
+          "p95": 6.889187315088745,
+          "max": 9.965791420118343
+        },
+        "left_eligible_pupil_adjacent_displacement": {
+          "min": 0.00019240037564573792,
+          "median": 0.006675584778771971,
+          "p95": 0.024384890498255117,
+          "max": 0.04507820125083241
+        },
+        "right_eligible_pupil_adjacent_displacement": {
+          "min": 0.00024371030669365778,
+          "median": 0.00679120214070355,
+          "p95": 0.02230051856391229,
+          "max": 0.036545165448446576
+        },
+        "pupil_eligible_frames": {
+          "left": 164,
+          "right": 163
+        }
+      },
+      "generation_seconds": 432.7238709926605,
+      "stage_memory": [
+        {
+          "after_free_percent": 86.0,
+          "after_headroom_gb": 35.28,
+          "after_pressure": "normal",
+          "after_swap_gb": 4.53,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 80.0,
+          "before_headroom_gb": 32.4,
+          "before_swap_gb": 4.55,
+          "elapsed_seconds": 215.91,
+          "resolution": "720p",
+          "stage": 1
+        },
+        {
+          "after_free_percent": 85.0,
+          "after_headroom_gb": 34.8,
+          "after_pressure": "normal",
+          "after_swap_gb": 4.51,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 86.0,
+          "before_headroom_gb": 35.28,
+          "before_swap_gb": 4.53,
+          "elapsed_seconds": 107.13,
+          "resolution": "720p",
+          "stage": 2
+        },
+        {
+          "after_free_percent": 82.0,
+          "after_headroom_gb": 33.36,
+          "after_pressure": "normal",
+          "after_swap_gb": 4.5,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 85.0,
+          "before_headroom_gb": 34.8,
+          "before_swap_gb": 4.51,
+          "elapsed_seconds": 105.75,
+          "resolution": "720p",
+          "stage": 3
+        }
+      ],
+      "monitored_memory": {
+        "sample_count": 113,
+        "first_sample_seconds_after_start": 207.64870691299438,
+        "coverage_seconds": 225.89660000801086,
+        "min_free_percent_including_handoff": 66.0,
+        "min_active_free_percent": 66.0,
+        "min_headroom_gib": 25.68,
+        "max_swap_gib": 4.53,
+        "first_swap_gib": 4.53,
+        "last_swap_gib": 4.5,
+        "pressure_values": [
+          "normal"
+        ],
+        "limits": "Two-second sample interval can miss peaks. FULL monitoring began late; availability is a macOS estimate, not process RSS."
+      }
+    },
+    {
+      "label": "original_minimal",
+      "job_id": "54922fc180e98e3d2ed148af",
+      "video_id": "4377033c7cf8d80a9655b161",
+      "video_sha256": "e67a9af02bd899f7357931ceff3fabbcb26f85cefecd0debd8b2244df8d0fa22",
+      "source_sha256": "4296d2d80c753633525d6dded18d3d7d95fa876585ca894273c6d2b0273e17d6",
+      "prompt_sha256": "390aa121ffc4ea2da6f62ca3ea6b1227209936ac08cc2f73de406036e902e4c1",
+      "settings": {
+        "aspect_ratio": "9:16",
+        "continuation_mode": "rolling",
+        "duration": 10,
+        "face_guidance": "minimal",
+        "fps": 24,
+        "frames": 241,
+        "height": 1280,
+        "i2v_image_crf": null,
+        "identity_lock": true,
+        "identity_strength": 0.3,
+        "images": [],
+        "model": "auto",
+        "multi_image_mode": null,
+        "profile": "standard",
+        "quality": "standard",
+        "resize_mode": "contain",
+        "resolution": "720p",
+        "resume_from": null,
+        "seed": 0,
+        "steps": 11,
+        "width": 704
+      },
+      "technical": {
+        "width": 704,
+        "height": 1280,
+        "fps": 24.0,
+        "frames": 241,
+        "video_duration": 10.041667,
+        "container_duration": 10.041667,
+        "video_start": 0.0,
+        "audio_start": 0.0,
+        "audio_duration": 10.041667,
+        "av_start_offset_seconds": 0.0,
+        "av_end_offset_seconds": 0.0,
+        "audio_sample_rate": "48000",
+        "codec": "h264",
+        "pixel_format": "yuv420p",
+        "pts_anomalies": []
+      },
+      "metrics": {
+        "analysis_width": 282,
+        "analysis_height": 512,
+        "adjacent_ssim": {
+          "min": 0.8569967150688171,
+          "median": 0.987394392490387,
+          "p95": 0.9972787141799927,
+          "max": 0.9987971782684326
+        },
+        "adjacent_mae": {
+          "min": 0.242395281791687,
+          "median": 1.009917974472046,
+          "p95": 3.5690065145492547,
+          "max": 4.4566779136657715
+        },
+        "laplacian_variance": {
+          "min": 99.22367095947266,
+          "median": 169.2593536376953,
+          "p95": 212.88597106933594,
+          "max": 216.31700134277344
+        },
+        "exact_duplicate_frames": [],
+        "boundaries": [
+          {
+            "frame": 145,
+            "time": 6.041667,
+            "laplacian_variance": 160.2864990234375,
+            "mean_luma": 59.87729942375886,
+            "adjacent_ssim": 0.9827182292938232,
+            "adjacent_mae": 1.4332058429718018,
+            "previous_frame": 144,
+            "mae_to_nonboundary_median_ratio": 1.1882740950735746,
+            "window": [
+              {
+                "frame": 142,
+                "time": 5.916667,
+                "laplacian_variance": 174.58482360839844,
+                "mean_luma": 60.603737256205676,
+                "adjacent_ssim": 0.9694573283195496,
+                "adjacent_mae": 1.627382516860962
+              },
+              {
+                "frame": 143,
+                "time": 5.958333,
+                "laplacian_variance": 173.46832275390625,
+                "mean_luma": 60.68775626108156,
+                "adjacent_ssim": 0.9786391854286194,
+                "adjacent_mae": 1.3069384098052979
+              },
+              {
+                "frame": 144,
+                "time": 6.0,
+                "laplacian_variance": 174.2614288330078,
+                "mean_luma": 60.522897273936174,
+                "adjacent_ssim": 0.9832619428634644,
+                "adjacent_mae": 1.150660753250122
+              },
+              {
+                "frame": 145,
+                "time": 6.041667,
+                "laplacian_variance": 160.2864990234375,
+                "mean_luma": 59.87729942375886,
+                "adjacent_ssim": 0.9827182292938232,
+                "adjacent_mae": 1.4332058429718018
+              },
+              {
+                "frame": 146,
+                "time": 6.083333,
+                "laplacian_variance": 157.30181884765625,
+                "mean_luma": 59.631766677748224,
+                "adjacent_ssim": 0.9901893138885498,
+                "adjacent_mae": 0.8506413698196411
+              },
+              {
+                "frame": 147,
+                "time": 6.125,
+                "laplacian_variance": 150.9453582763672,
+                "mean_luma": 59.814688608156025,
+                "adjacent_ssim": 0.9937103390693665,
+                "adjacent_mae": 0.6565201282501221
+              },
+              {
+                "frame": 148,
+                "time": 6.166667,
+                "laplacian_variance": 153.97311401367188,
+                "mean_luma": 59.673793495124116,
+                "adjacent_ssim": 0.994826078414917,
+                "adjacent_mae": 0.5851825475692749
+              }
+            ]
+          },
+          {
+            "frame": 193,
+            "time": 8.041667,
+            "laplacian_variance": 160.67710876464844,
+            "mean_luma": 58.798024711879435,
+            "adjacent_ssim": 0.9913564920425415,
+            "adjacent_mae": 1.0745857954025269,
+            "previous_frame": 192,
+            "mae_to_nonboundary_median_ratio": 0.8909414302715607,
+            "window": [
+              {
+                "frame": 190,
+                "time": 7.916667,
+                "laplacian_variance": 162.3638916015625,
+                "mean_luma": 59.409401318705676,
+                "adjacent_ssim": 0.9901694059371948,
+                "adjacent_mae": 0.8564106822013855
+              },
+              {
+                "frame": 191,
+                "time": 7.958333,
+                "laplacian_variance": 158.9961700439453,
+                "mean_luma": 59.528438054078016,
+                "adjacent_ssim": 0.9937018752098083,
+                "adjacent_mae": 0.6656485199928284
+              },
+              {
+                "frame": 192,
+                "time": 8.0,
+                "laplacian_variance": 160.8768310546875,
+                "mean_luma": 59.39354083554964,
+                "adjacent_ssim": 0.9927235841751099,
+                "adjacent_mae": 0.732636570930481
+              },
+              {
+                "frame": 193,
+                "time": 8.041667,
+                "laplacian_variance": 160.67710876464844,
+                "mean_luma": 58.798024711879435,
+                "adjacent_ssim": 0.9913564920425415,
+                "adjacent_mae": 1.0745857954025269
+              },
+              {
+                "frame": 194,
+                "time": 8.083333,
+                "laplacian_variance": 161.43722534179688,
+                "mean_luma": 58.70280640514184,
+                "adjacent_ssim": 0.995698869228363,
+                "adjacent_mae": 0.574842095375061
+              },
+              {
+                "frame": 195,
+                "time": 8.125,
+                "laplacian_variance": 163.2893524169922,
+                "mean_luma": 58.77918605939716,
+                "adjacent_ssim": 0.9955319166183472,
+                "adjacent_mae": 0.5465564131736755
+              },
+              {
+                "frame": 196,
+                "time": 8.166667,
+                "laplacian_variance": 167.317138671875,
+                "mean_luma": 58.598251883865245,
+                "adjacent_ssim": 0.9951954483985901,
+                "adjacent_mae": 0.5940824747085571
+              }
+            ]
+          }
+        ]
+      },
+      "segments": [
+        {
+          "first_frame": 0,
+          "last_frame": 144,
+          "frames": 145,
+          "face_count_histogram": {
+            "1": 145
+          },
+          "left_eye_open_ratio": {
+            "min": 0.05556547412713302,
+            "median": 0.18765282799425412,
+            "p95": 0.36617484823206076,
+            "max": 0.3717273997870888
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 1.2279601784598304e-05,
+            "median": 0.0029348296283801326,
+            "p95": 0.025781862824189573,
+            "max": 0.08531661308145025
+          },
+          "right_eye_open_ratio": {
+            "min": 0.03591231450358692,
+            "median": 0.2082387999768332,
+            "p95": 0.3206900126494424,
+            "max": 0.3255937787995599
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 9.12075834326731e-05,
+            "median": 0.0027690055329326613,
+            "p95": 0.0246600639178152,
+            "max": 0.0943570461955009
+          },
+          "interocular_over_box_width": {
+            "min": 0.36931495587630714,
+            "median": 0.38687450343098406,
+            "p95": 0.4024839397592714,
+            "max": 0.40989394497012344
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 8.4651638655453e-06,
+            "median": 0.001904529939050409,
+            "p95": 0.006324878861524654,
+            "max": 0.012738059374541366
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5117027396958028,
+            "median": 0.5977149003540301,
+            "p95": 0.6962780519353633,
+            "max": 0.6991228499346726
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 7.867533019623174e-06,
+            "median": 0.0028611270777409437,
+            "p95": 0.01321271946847342,
+            "max": 0.038173273759289805
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.881049665240898,
+            "median": 0.9189794461621325,
+            "p95": 0.995814948290659,
+            "max": 1.0031783746615432
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 0.00010873982840708951,
+            "median": 0.004483679865807555,
+            "p95": 0.0139568448323031,
+            "max": 0.025034586973090356
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 22,
+              "last_frame": 65,
+              "frames": 44,
+              "duration_seconds": 1.8333333333333333
+            },
+            {
+              "first_frame": 102,
+              "last_frame": 115,
+              "frames": 14,
+              "duration_seconds": 0.5833333333333334
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.3629645541344009,
+            "right": 0.3182071729157447
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.8569967150688171,
+            "median": 0.9467215836048126,
+            "p95": 0.9975818991661072,
+            "max": 0.9987971782684326
+          },
+          "within_segment_laplacian_variance": {
+            "min": 99.22367095947266,
+            "median": 162.05899047851562,
+            "p95": 197.9615753173828,
+            "max": 205.28932189941406
+          }
+        },
+        {
+          "first_frame": 145,
+          "last_frame": 192,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.07567282365484591,
+            "median": 0.23384352493772603,
+            "p95": 0.2882154554658265,
+            "max": 0.28852578015277136
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 3.432569767147786e-05,
+            "median": 0.004065212230027107,
+            "p95": 0.03171626233991833,
+            "max": 0.17203782451233424
+          },
+          "right_eye_open_ratio": {
+            "min": 0.06204367813741319,
+            "median": 0.21393962580789128,
+            "p95": 0.2574692522672393,
+            "max": 0.2585682314631189
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 9.968445440522444e-05,
+            "median": 0.003014794401246579,
+            "p95": 0.03160738004364033,
+            "max": 0.15341864515397674
+          },
+          "interocular_over_box_width": {
+            "min": 0.3813149208391464,
+            "median": 0.38842302896613584,
+            "p95": 0.41133151130301726,
+            "max": 0.4130112143482699
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 2.6963054448769785e-05,
+            "median": 0.0021252325304371156,
+            "p95": 0.004897430343824626,
+            "max": 0.02256510017311303
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5615562029711413,
+            "median": 0.6210269760365978,
+            "p95": 0.6497854242571339,
+            "max": 0.6518843611963213
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 3.682893803980125e-05,
+            "median": 0.0025140412268814805,
+            "p95": 0.014585736688753593,
+            "max": 0.057024340481907854
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.9592912391360986,
+            "median": 0.9836888921128042,
+            "p95": 1.0906985685743595,
+            "max": 1.1054055271098135
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 4.7041934405078756e-05,
+            "median": 0.005478796845469036,
+            "p95": 0.01889104905000021,
+            "max": 0.03141344577200278
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 166,
+              "last_frame": 182,
+              "frames": 17,
+              "duration_seconds": 0.7083333333333334
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.2868733172162647,
+            "right": 0.25734322045021407
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9859063029289246,
+            "median": 0.9912176728248596,
+            "p95": 0.9958598673343658,
+            "max": 0.9963988065719604
+          },
+          "within_segment_laplacian_variance": {
+            "min": 147.51791381835938,
+            "median": 163.75559997558594,
+            "p95": 178.63821868896486,
+            "max": 180.61328125
+          }
+        },
+        {
+          "first_frame": 193,
+          "last_frame": 240,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.06374210507312691,
+            "median": 0.24383272425411773,
+            "p95": 0.2563106398256188,
+            "max": 0.25731362627794013
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00023175570732014705,
+            "median": 0.004044787872989758,
+            "p95": 0.032178085504179894,
+            "max": 0.04229429508296277
+          },
+          "right_eye_open_ratio": {
+            "min": 0.04553542672259989,
+            "median": 0.220365360457972,
+            "p95": 0.2280834210484857,
+            "max": 0.2286825793864738
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 4.574039144261688e-05,
+            "median": 0.003018509369291683,
+            "p95": 0.032929692275002205,
+            "max": 0.04861499740489472
+          },
+          "interocular_over_box_width": {
+            "min": 0.3776574524646638,
+            "median": 0.38583496791527194,
+            "p95": 0.3987909886974896,
+            "max": 0.4003480029842256
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 0.00014161270547374816,
+            "median": 0.0017771340036493166,
+            "p95": 0.004885214572675744,
+            "max": 0.00558758372469309
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5556467514154447,
+            "median": 0.6207643213030389,
+            "p95": 0.6291065685501458,
+            "max": 0.6300330317032042
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 6.209611293250816e-05,
+            "median": 0.0020068457619994984,
+            "p95": 0.01567253463376879,
+            "max": 0.02923724037130293
+          },
+          "mouth_width_over_interocular": {
+            "min": 1.0826846230940301,
+            "median": 1.1106421554990442,
+            "p95": 1.1239353873110043,
+            "max": 1.1282606838956288
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 4.759535854836905e-05,
+            "median": 0.002886852210092661,
+            "p95": 0.010461602516855364,
+            "max": 0.015031987338391284
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 213,
+              "last_frame": 217,
+              "frames": 5,
+              "duration_seconds": 0.20833333333333334
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.2549159118381061,
+            "right": 0.22731460837216733
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9697187542915344,
+            "median": 0.9944987893104553,
+            "p95": 0.9972593426704407,
+            "max": 0.9974581003189087
+          },
+          "within_segment_laplacian_variance": {
+            "min": 160.67710876464844,
+            "median": 197.61835479736328,
+            "p95": 215.66413650512695,
+            "max": 216.31700134277344
+          }
+        }
+      ],
+      "complete_timeline": {
+        "first_frame": 0,
+        "last_frame": 240,
+        "frames": 241,
+        "face_count_histogram": {
+          "1": 241
+        },
+        "left_eye_open_ratio": {
+          "min": 0.05556547412713302,
+          "median": 0.21775178462774167,
+          "p95": 0.3637949301271909,
+          "max": 0.3717273997870888
+        },
+        "left_eye_open_ratio_adjacent_absolute_change": {
+          "min": 1.2279601784598304e-05,
+          "median": 0.0033977578742669656,
+          "p95": 0.031942263173947494,
+          "max": 0.17203782451233424
+        },
+        "right_eye_open_ratio": {
+          "min": 0.03591231450358692,
+          "median": 0.21405847964105656,
+          "p95": 0.3190906082682564,
+          "max": 0.3255937787995599
+        },
+        "right_eye_open_ratio_adjacent_absolute_change": {
+          "min": 4.574039144261688e-05,
+          "median": 0.0029383440613372225,
+          "p95": 0.03287483843136843,
+          "max": 0.15341864515397674
+        },
+        "interocular_over_box_width": {
+          "min": 0.36931495587630714,
+          "median": 0.3871947206308065,
+          "p95": 0.40681526152608416,
+          "max": 0.4130112143482699
+        },
+        "interocular_over_box_width_adjacent_absolute_change": {
+          "min": 8.4651638655453e-06,
+          "median": 0.0018871671471329399,
+          "p95": 0.005689857981378788,
+          "max": 0.02256510017311303
+        },
+        "nose_to_eye_mid_over_interocular": {
+          "min": 0.5117027396958028,
+          "median": 0.6152171049038758,
+          "p95": 0.694852724264428,
+          "max": 0.6991228499346726
+        },
+        "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+          "min": 7.867533019623174e-06,
+          "median": 0.0025389521793164893,
+          "p95": 0.015414002565645976,
+          "max": 0.057024340481907854
+        },
+        "mouth_width_over_interocular": {
+          "min": 0.881049665240898,
+          "median": 0.9691597136407998,
+          "p95": 1.1177533731241547,
+          "max": 1.1282606838956288
+        },
+        "mouth_width_over_interocular_adjacent_absolute_change": {
+          "min": 4.7041934405078756e-05,
+          "median": 0.004266061046442782,
+          "p95": 0.014531544990612884,
+          "max": 0.03141344577200278
+        },
+        "bilateral_low_aperture_candidates": [
+          {
+            "first_frame": 23,
+            "last_frame": 65,
+            "frames": 43,
+            "duration_seconds": 1.7916666666666667,
+            "reopening_frame": 66,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 102,
+            "last_frame": 111,
+            "frames": 10,
+            "duration_seconds": 0.4166666666666667,
+            "reopening_frame": 112,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 166,
+            "last_frame": 182,
+            "frames": 17,
+            "duration_seconds": 0.7083333333333334,
+            "reopening_frame": 183,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 212,
+            "last_frame": 218,
+            "frames": 7,
+            "duration_seconds": 0.2916666666666667,
+            "reopening_frame": 219,
+            "reopening_status": "above_candidate_threshold"
+          }
+        ],
+        "aperture_reference_p90": {
+          "left": 0.2881568896694403,
+          "right": 0.2902133016299302
+        }
+      },
+      "summary": {
+        "frames": 241,
+        "uncertain_frames": [],
+        "yaw_degrees": {
+          "min": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 45.00000125223908
+        },
+        "roll_degrees": {
+          "min": -30.000000834826057,
+          "median": 30.000000834826057,
+          "p95": 30.000000834826057,
+          "max": 30.000000834826057
+        },
+        "center_step_over_face_width": {
+          "min": 0.00012120830715975046,
+          "median": 0.004569105332104449,
+          "p95": 0.010867133583647664,
+          "max": 0.016293973563119353
+        },
+        "center_acceleration_over_face_width": {
+          "min": 0.00024938852590968165,
+          "median": 0.005428448918359474,
+          "p95": 0.01223138717172629,
+          "max": 0.02511990186898935
+        },
+        "face_region_delta_e76": {
+          "min": 0.0,
+          "median": 0.5705457832355505,
+          "p95": 1.126332213573533,
+          "max": 1.505513798705786
+        },
+        "normalized_face_laplacian_variance": {
+          "min": 89.16535949707031,
+          "median": 132.3971405029297,
+          "p95": 170.20375061035156,
+          "max": 181.8733367919922
+        },
+        "registered_luma_mae": {
+          "min": 0.9216900887573964,
+          "median": 2.6493620562130173,
+          "p95": 6.571292529585798,
+          "max": 7.584319526627219
+        },
+        "left_eligible_pupil_adjacent_displacement": {
+          "min": 0.0004270099864993502,
+          "median": 0.006143787429314658,
+          "p95": 0.01954314128276071,
+          "max": 0.037998095183643874
+        },
+        "right_eligible_pupil_adjacent_displacement": {
+          "min": 0.0002595879021295408,
+          "median": 0.00632083384136497,
+          "p95": 0.02373794357444388,
+          "max": 0.056876934276271156
+        },
+        "pupil_eligible_frames": {
+          "left": 156,
+          "right": 157
+        }
+      },
+      "generation_seconds": 443.19005274772644,
+      "stage_memory": [
+        {
+          "after_free_percent": 80.0,
+          "after_headroom_gb": 32.4,
+          "after_pressure": "normal",
+          "after_swap_gb": 4.49,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 80.0,
+          "before_headroom_gb": 32.4,
+          "before_swap_gb": 4.49,
+          "elapsed_seconds": 215.38,
+          "resolution": "720p",
+          "stage": 1
+        },
+        {
+          "after_free_percent": 81.0,
+          "after_headroom_gb": 32.88,
+          "after_pressure": "normal",
+          "after_swap_gb": 4.45,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 80.0,
+          "before_headroom_gb": 32.4,
+          "before_swap_gb": 4.49,
+          "elapsed_seconds": 118.21,
+          "resolution": "720p",
+          "stage": 2
+        },
+        {
+          "after_free_percent": 81.0,
+          "after_headroom_gb": 32.88,
+          "after_pressure": "normal",
+          "after_swap_gb": 4.45,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 81.0,
+          "before_headroom_gb": 32.88,
+          "before_swap_gb": 4.45,
+          "elapsed_seconds": 104.98,
+          "resolution": "720p",
+          "stage": 3
+        }
+      ],
+      "monitored_memory": {
+        "sample_count": 221,
+        "first_sample_seconds_after_start": 0.0007429122924804688,
+        "coverage_seconds": 443.84045004844666,
+        "min_free_percent_including_handoff": 41.0,
+        "min_active_free_percent": 57.0,
+        "min_headroom_gib": 13.68,
+        "max_swap_gib": 4.49,
+        "first_swap_gib": 4.49,
+        "last_swap_gib": 4.44,
+        "pressure_values": [
+          "normal"
+        ],
+        "limits": "Two-second sample interval can miss peaks. FULL monitoring began late; availability is a macOS estimate, not process RSS."
+      }
+    },
+    {
+      "label": "reference_full",
+      "job_id": "06a5e54fa06a1a8f44854d8d",
+      "video_id": "135299cdf68b03aa7cc5d4df",
+      "video_sha256": "ac6b01bb82bd6fe524d79c141a1b1a64ea5f899130e74ee01b2564489e45e455",
+      "source_sha256": "0f53aad73356d2e3615e4b20097f8142c9240a87c08930259f8bccf704a07742",
+      "prompt_sha256": "40f0db3e16c875ce8dc3526326730863ddc1c2e59603c14e3861744f719f4c55",
+      "settings": {
+        "aspect_ratio": "9:16",
+        "continuation_mode": "rolling",
+        "duration": 10,
+        "face_guidance": "full",
+        "fps": 24,
+        "frames": 241,
+        "height": 1280,
+        "i2v_image_crf": null,
+        "identity_lock": true,
+        "identity_strength": 0.3,
+        "images": [],
+        "model": "auto",
+        "multi_image_mode": null,
+        "profile": "standard",
+        "quality": "standard",
+        "resize_mode": "contain",
+        "resolution": "720p",
+        "resume_from": null,
+        "seed": 0,
+        "steps": 11,
+        "width": 704
+      },
+      "technical": {
+        "width": 704,
+        "height": 1280,
+        "fps": 24.0,
+        "frames": 241,
+        "video_duration": 10.041667,
+        "container_duration": 10.041667,
+        "video_start": 0.0,
+        "audio_start": 0.0,
+        "audio_duration": 10.041667,
+        "av_start_offset_seconds": 0.0,
+        "av_end_offset_seconds": 0.0,
+        "audio_sample_rate": "48000",
+        "codec": "h264",
+        "pixel_format": "yuv420p",
+        "pts_anomalies": []
+      },
+      "metrics": {
+        "analysis_width": 282,
+        "analysis_height": 512,
+        "adjacent_ssim": {
+          "min": 0.9379214644432068,
+          "median": 0.9752136766910553,
+          "p95": 0.9963647931814194,
+          "max": 0.9985154867172241
+        },
+        "adjacent_mae": {
+          "min": 0.2142965942621231,
+          "median": 1.1820908188819885,
+          "p95": 1.9796362638473508,
+          "max": 2.1395514011383057
+        },
+        "laplacian_variance": {
+          "min": 107.82111358642578,
+          "median": 150.4946746826172,
+          "p95": 209.16355895996094,
+          "max": 220.60568237304688
+        },
+        "exact_duplicate_frames": [],
+        "boundaries": [
+          {
+            "frame": 145,
+            "time": 6.041667,
+            "laplacian_variance": 174.5184326171875,
+            "mean_luma": 46.571517619680854,
+            "adjacent_ssim": 0.9821784496307373,
+            "adjacent_mae": 1.290586233139038,
+            "previous_frame": 144,
+            "mae_to_nonboundary_median_ratio": 1.0775800949775904,
+            "window": [
+              {
+                "frame": 142,
+                "time": 5.916667,
+                "laplacian_variance": 188.0957489013672,
+                "mean_luma": 47.167684785017734,
+                "adjacent_ssim": 0.9767902493476868,
+                "adjacent_mae": 1.155335783958435
+              },
+              {
+                "frame": 143,
+                "time": 5.958333,
+                "laplacian_variance": 182.55767822265625,
+                "mean_luma": 47.2215273160461,
+                "adjacent_ssim": 0.9842303395271301,
+                "adjacent_mae": 0.940284252166748
+              },
+              {
+                "frame": 144,
+                "time": 6.0,
+                "laplacian_variance": 188.78660583496094,
+                "mean_luma": 47.10340480939716,
+                "adjacent_ssim": 0.9887822270393372,
+                "adjacent_mae": 0.7964802384376526
+              },
+              {
+                "frame": 145,
+                "time": 6.041667,
+                "laplacian_variance": 174.5184326171875,
+                "mean_luma": 46.571517619680854,
+                "adjacent_ssim": 0.9821784496307373,
+                "adjacent_mae": 1.290586233139038
+              },
+              {
+                "frame": 146,
+                "time": 6.083333,
+                "laplacian_variance": 166.34320068359375,
+                "mean_luma": 46.549832391400706,
+                "adjacent_ssim": 0.9902556538581848,
+                "adjacent_mae": 0.7351992130279541
+              },
+              {
+                "frame": 147,
+                "time": 6.125,
+                "laplacian_variance": 157.84725952148438,
+                "mean_luma": 46.703048814273046,
+                "adjacent_ssim": 0.9938265085220337,
+                "adjacent_mae": 0.580355167388916
+              },
+              {
+                "frame": 148,
+                "time": 6.166667,
+                "laplacian_variance": 160.92137145996094,
+                "mean_luma": 46.591665281471634,
+                "adjacent_ssim": 0.9946802854537964,
+                "adjacent_mae": 0.5102089047431946
+              }
+            ]
+          },
+          {
+            "frame": 193,
+            "time": 8.041667,
+            "laplacian_variance": 150.4946746826172,
+            "mean_luma": 46.6977227393617,
+            "adjacent_ssim": 0.9660171270370483,
+            "adjacent_mae": 1.6115566492080688,
+            "previous_frame": 192,
+            "mae_to_nonboundary_median_ratio": 1.3455756171298876,
+            "window": [
+              {
+                "frame": 190,
+                "time": 7.916667,
+                "laplacian_variance": 173.3863525390625,
+                "mean_luma": 47.164762023492905,
+                "adjacent_ssim": 0.9717575907707214,
+                "adjacent_mae": 1.1640832424163818
+              },
+              {
+                "frame": 191,
+                "time": 7.958333,
+                "laplacian_variance": 166.5178680419922,
+                "mean_luma": 47.282406637854606,
+                "adjacent_ssim": 0.9739639759063721,
+                "adjacent_mae": 1.068982720375061
+              },
+              {
+                "frame": 192,
+                "time": 8.0,
+                "laplacian_variance": 175.72305297851562,
+                "mean_luma": 47.180594802748224,
+                "adjacent_ssim": 0.9743418097496033,
+                "adjacent_mae": 1.1036264896392822
+              },
+              {
+                "frame": 193,
+                "time": 8.041667,
+                "laplacian_variance": 150.4946746826172,
+                "mean_luma": 46.6977227393617,
+                "adjacent_ssim": 0.9660171270370483,
+                "adjacent_mae": 1.6115566492080688
+              },
+              {
+                "frame": 194,
+                "time": 8.083333,
+                "laplacian_variance": 145.5575408935547,
+                "mean_luma": 46.680435505319146,
+                "adjacent_ssim": 0.9711509943008423,
+                "adjacent_mae": 1.230815052986145
+              },
+              {
+                "frame": 195,
+                "time": 8.125,
+                "laplacian_variance": 136.90565490722656,
+                "mean_luma": 46.86477033466312,
+                "adjacent_ssim": 0.973172664642334,
+                "adjacent_mae": 1.1157677173614502
+              },
+              {
+                "frame": 196,
+                "time": 8.166667,
+                "laplacian_variance": 144.7673797607422,
+                "mean_luma": 46.743489583333336,
+                "adjacent_ssim": 0.9742452502250671,
+                "adjacent_mae": 1.0938400030136108
+              }
+            ]
+          }
+        ]
+      },
+      "segments": [
+        {
+          "first_frame": 0,
+          "last_frame": 144,
+          "frames": 145,
+          "face_count_histogram": {
+            "1": 145
+          },
+          "left_eye_open_ratio": {
+            "min": 0.06435201887267007,
+            "median": 0.26506932482483525,
+            "p95": 0.3290109822379265,
+            "max": 0.3418305795666327
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 5.002502348111504e-05,
+            "median": 0.006012812508681381,
+            "p95": 0.040837424596481826,
+            "max": 0.13837058420577325
+          },
+          "right_eye_open_ratio": {
+            "min": 0.06866619636472682,
+            "median": 0.24585141743241443,
+            "p95": 0.32521963784519803,
+            "max": 0.3328098802341912
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 9.040538522583907e-05,
+            "median": 0.006390095739512991,
+            "p95": 0.04505305047112507,
+            "max": 0.1574529688912655
+          },
+          "interocular_over_box_width": {
+            "min": 0.31695932396797455,
+            "median": 0.35707095739459505,
+            "p95": 0.36784809921675077,
+            "max": 0.37360259909107224
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 2.199761804599909e-05,
+            "median": 0.0018419044597481338,
+            "p95": 0.005436180036832951,
+            "max": 0.012555529935288579
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.551677580198547,
+            "median": 0.6232817512831162,
+            "p95": 0.6694780210062846,
+            "max": 0.6793650514569172
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 6.705000826023877e-05,
+            "median": 0.0031437365030930753,
+            "p95": 0.015280152893040232,
+            "max": 0.037815761566381
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.9445190585159542,
+            "median": 1.022849345976841,
+            "p95": 1.1264611757956233,
+            "max": 1.1487098088699184
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 7.914172644662987e-05,
+            "median": 0.005304558603357323,
+            "p95": 0.01679478293001299,
+            "max": 0.024001850872736208
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 28,
+              "last_frame": 32,
+              "frames": 5,
+              "duration_seconds": 0.20833333333333334
+            },
+            {
+              "first_frame": 50,
+              "last_frame": 54,
+              "frames": 5,
+              "duration_seconds": 0.20833333333333334
+            },
+            {
+              "first_frame": 92,
+              "last_frame": 95,
+              "frames": 4,
+              "duration_seconds": 0.16666666666666666
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.3126883698190696,
+            "right": 0.31603698719534123
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9379214644432068,
+            "median": 0.97911137342453,
+            "p95": 0.9969939112663269,
+            "max": 0.9985154867172241
+          },
+          "within_segment_laplacian_variance": {
+            "min": 107.82111358642578,
+            "median": 148.57733154296875,
+            "p95": 195.07857971191402,
+            "max": 220.60568237304688
+          }
+        },
+        {
+          "first_frame": 145,
+          "last_frame": 192,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.07085729816445752,
+            "median": 0.29866510590830664,
+            "p95": 0.31512132904998447,
+            "max": 0.3158590210425346
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00015163894480796358,
+            "median": 0.004044836945231334,
+            "p95": 0.03746329178759562,
+            "max": 0.10466713706038458
+          },
+          "right_eye_open_ratio": {
+            "min": 0.05656059949525034,
+            "median": 0.25143555227643977,
+            "p95": 0.26660249884146825,
+            "max": 0.2707029607522549
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.0005387300016502783,
+            "median": 0.004197240507814004,
+            "p95": 0.03347147573867518,
+            "max": 0.08965177652500353
+          },
+          "interocular_over_box_width": {
+            "min": 0.3433833709585026,
+            "median": 0.3515201499192097,
+            "p95": 0.3759634121348398,
+            "max": 0.3786602527993973
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 3.183400463790953e-05,
+            "median": 0.0015633796331341876,
+            "p95": 0.004549969991533109,
+            "max": 0.007612689636550929
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5969616832920138,
+            "median": 0.674519719163169,
+            "p95": 0.6799623115586034,
+            "max": 0.6804609961756174
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 0.00016975204296132418,
+            "median": 0.0025970370091858985,
+            "p95": 0.0134630465309663,
+            "max": 0.036341962213669476
+          },
+          "mouth_width_over_interocular": {
+            "min": 1.0519569956370145,
+            "median": 1.1017574964333834,
+            "p95": 1.1268661362536163,
+            "max": 1.1377364435521027
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 0.00014476995802348291,
+            "median": 0.005010797136139278,
+            "p95": 0.014537393191570783,
+            "max": 0.017551846183683883
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 184,
+              "last_frame": 192,
+              "frames": 9,
+              "duration_seconds": 0.375
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.3101919537888064,
+            "right": 0.26337693052012
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9689435958862305,
+            "median": 0.9770108461380005,
+            "p95": 0.9945288836956024,
+            "max": 0.9950041174888611
+          },
+          "within_segment_laplacian_variance": {
+            "min": 157.7535858154297,
+            "median": 181.7924041748047,
+            "p95": 215.56826095581053,
+            "max": 218.56689453125
+          }
+        },
+        {
+          "first_frame": 193,
+          "last_frame": 240,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.06933124726041733,
+            "median": 0.2588501176238284,
+            "p95": 0.2724933816834226,
+            "max": 0.2757383281195282
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 5.678164279021569e-05,
+            "median": 0.0058331540463026355,
+            "p95": 0.03529525904043429,
+            "max": 0.10446004355789318
+          },
+          "right_eye_open_ratio": {
+            "min": 0.06301191730207736,
+            "median": 0.24790095851857435,
+            "p95": 0.2667062749923834,
+            "max": 0.2736117457044041
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00038319396411631845,
+            "median": 0.004862412693116269,
+            "p95": 0.032083838200806604,
+            "max": 0.11015856409933461
+          },
+          "interocular_over_box_width": {
+            "min": 0.35819876820490126,
+            "median": 0.3633996849540532,
+            "p95": 0.3700849162476589,
+            "max": 0.3884055601125573
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 3.251180232588524e-06,
+            "median": 0.0016102986473789382,
+            "p95": 0.004653344697509637,
+            "max": 0.010209720690848412
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5943080504615749,
+            "median": 0.6606873832704808,
+            "p95": 0.6696221130431909,
+            "max": 0.6715091229560379
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 4.844733403186474e-05,
+            "median": 0.001970041854046145,
+            "p95": 0.009716852047100983,
+            "max": 0.0370043729182391
+          },
+          "mouth_width_over_interocular": {
+            "min": 1.0777815893940195,
+            "median": 1.120171059937085,
+            "p95": 1.1325690679975746,
+            "max": 1.1384330505122056
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 0.00048210275271909353,
+            "median": 0.005183010794263643,
+            "p95": 0.012574112010554958,
+            "max": 0.01478422598929452
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 240,
+              "last_frame": 240,
+              "frames": 1,
+              "duration_seconds": 0.041666666666666664
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.2707121822344554,
+            "right": 0.26124472963567263
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9570696949958801,
+            "median": 0.9710482358932495,
+            "p95": 0.9820917785167694,
+            "max": 0.9842207431793213
+          },
+          "within_segment_laplacian_variance": {
+            "min": 113.56562805175781,
+            "median": 138.26573181152344,
+            "p95": 150.01250076293945,
+            "max": 152.49485778808594
+          }
+        }
+      ],
+      "complete_timeline": {
+        "first_frame": 0,
+        "last_frame": 240,
+        "frames": 241,
+        "face_count_histogram": {
+          "1": 241
+        },
+        "left_eye_open_ratio": {
+          "min": 0.06435201887267007,
+          "median": 0.2658169016726156,
+          "p95": 0.31919063099924255,
+          "max": 0.3418305795666327
+        },
+        "left_eye_open_ratio_adjacent_absolute_change": {
+          "min": 5.002502348111504e-05,
+          "median": 0.005783655438858282,
+          "p95": 0.04312804559503546,
+          "max": 0.13837058420577325
+        },
+        "right_eye_open_ratio": {
+          "min": 0.05656059949525034,
+          "median": 0.2491577157498711,
+          "p95": 0.317237770316742,
+          "max": 0.3328098802341912
+        },
+        "right_eye_open_ratio_adjacent_absolute_change": {
+          "min": 9.040538522583907e-05,
+          "median": 0.005213721479906397,
+          "p95": 0.04301055422010598,
+          "max": 0.1574529688912655
+        },
+        "interocular_over_box_width": {
+          "min": 0.31695932396797455,
+          "median": 0.35779072628531905,
+          "p95": 0.3703031813076256,
+          "max": 0.3884055601125573
+        },
+        "interocular_over_box_width_adjacent_absolute_change": {
+          "min": 3.251180232588524e-06,
+          "median": 0.0016929507261061738,
+          "p95": 0.005267502965289505,
+          "max": 0.012555529935288579
+        },
+        "nose_to_eye_mid_over_interocular": {
+          "min": 0.551677580198547,
+          "median": 0.6384050229601673,
+          "p95": 0.677629870272847,
+          "max": 0.6804609961756174
+        },
+        "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+          "min": 4.844733403186474e-05,
+          "median": 0.0027178492595736348,
+          "p95": 0.015337033491084569,
+          "max": 0.037815761566381
+        },
+        "mouth_width_over_interocular": {
+          "min": 0.9445190585159542,
+          "median": 1.080051900801233,
+          "p95": 1.1304750889797393,
+          "max": 1.1487098088699184
+        },
+        "mouth_width_over_interocular_adjacent_absolute_change": {
+          "min": 7.914172644662987e-05,
+          "median": 0.005231695163558037,
+          "p95": 0.015307795920463262,
+          "max": 0.025337585169288968
+        },
+        "bilateral_low_aperture_candidates": [
+          {
+            "first_frame": 28,
+            "last_frame": 32,
+            "frames": 5,
+            "duration_seconds": 0.20833333333333334,
+            "reopening_frame": 33,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 50,
+            "last_frame": 54,
+            "frames": 5,
+            "duration_seconds": 0.20833333333333334,
+            "reopening_frame": 55,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 92,
+            "last_frame": 95,
+            "frames": 4,
+            "duration_seconds": 0.16666666666666666,
+            "reopening_frame": 96,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 184,
+            "last_frame": 192,
+            "frames": 9,
+            "duration_seconds": 0.375,
+            "reopening_frame": 193,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 239,
+            "last_frame": 240,
+            "frames": 2,
+            "duration_seconds": 0.08333333333333333,
+            "reopening_frame": null,
+            "reopening_status": "not_observed"
+          }
+        ],
+        "aperture_reference_p90": {
+          "left": 0.3078234560340235,
+          "right": 0.3042386863828069
+        }
+      },
+      "summary": {
+        "frames": 241,
+        "uncertain_frames": [],
+        "yaw_degrees": {
+          "min": -45.00000125223908,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "roll_degrees": {
+          "min": 0.0,
+          "median": 0.0,
+          "p95": 30.000000834826057,
+          "max": 30.000000834826057
+        },
+        "center_step_over_face_width": {
+          "min": 0.0003264579178372673,
+          "median": 0.004566730181255505,
+          "p95": 0.009350753417016038,
+          "max": 0.013901420984023595
+        },
+        "center_acceleration_over_face_width": {
+          "min": 0.00014701699364229133,
+          "median": 0.005340570298535014,
+          "p95": 0.011225348884899811,
+          "max": 0.015540537696206566
+        },
+        "face_region_delta_e76": {
+          "min": 0.0,
+          "median": 0.8696382979357377,
+          "p95": 2.0068296870522837,
+          "max": 4.051802087954564
+        },
+        "normalized_face_laplacian_variance": {
+          "min": 78.48199462890625,
+          "median": 164.56568908691406,
+          "p95": 212.00706481933594,
+          "max": 286.21221923828125
+        },
+        "registered_luma_mae": {
+          "min": 0.9320451183431953,
+          "median": 3.2079326923076925,
+          "p95": 5.2781527366863905,
+          "max": 6.183431952662722
+        },
+        "left_eligible_pupil_adjacent_displacement": {
+          "min": 0.0007447369122305654,
+          "median": 0.0071013614864318345,
+          "p95": 0.021519430208476666,
+          "max": 0.05412486283589338
+        },
+        "right_eligible_pupil_adjacent_displacement": {
+          "min": 0.0003294081917835414,
+          "median": 0.007053684733529127,
+          "p95": 0.02159330077032299,
+          "max": 0.05130687647380459
+        },
+        "pupil_eligible_frames": {
+          "left": 214,
+          "right": 211
+        }
+      },
+      "generation_seconds": 413.12549781799316,
+      "stage_memory": [
+        {
+          "after_free_percent": 86.0,
+          "after_headroom_gb": 35.28,
+          "after_pressure": "normal",
+          "after_swap_gb": 3.87,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 80.0,
+          "before_headroom_gb": 32.4,
+          "before_swap_gb": 3.87,
+          "elapsed_seconds": 210.11,
+          "resolution": "720p",
+          "stage": 1
+        },
+        {
+          "after_free_percent": 86.0,
+          "after_headroom_gb": 35.28,
+          "after_pressure": "normal",
+          "after_swap_gb": 3.87,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 86.0,
+          "before_headroom_gb": 35.28,
+          "before_swap_gb": 3.87,
+          "elapsed_seconds": 99.07,
+          "resolution": "720p",
+          "stage": 2
+        },
+        {
+          "after_free_percent": 85.0,
+          "after_headroom_gb": 34.8,
+          "after_pressure": "normal",
+          "after_swap_gb": 3.87,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 86.0,
+          "before_headroom_gb": 35.28,
+          "before_swap_gb": 3.87,
+          "elapsed_seconds": 99.72,
+          "resolution": "720p",
+          "stage": 3
+        }
+      ]
+    },
+    {
+      "label": "reference_initial_off",
+      "job_id": "a9f6d6aa0141c02dded76e66",
+      "video_id": "9078b2b7580404e272bbd5f7",
+      "video_sha256": "b33d3a70a6dd0ff833179110584427f6d6846652a347560b0124377901c504ed",
+      "source_sha256": "0f53aad73356d2e3615e4b20097f8142c9240a87c08930259f8bccf704a07742",
+      "prompt_sha256": "40f0db3e16c875ce8dc3526326730863ddc1c2e59603c14e3861744f719f4c55",
+      "settings": {
+        "aspect_ratio": "9:16",
+        "continuation_mode": "rolling",
+        "duration": 10,
+        "face_guidance": "initial_off",
+        "fps": 24,
+        "frames": 241,
+        "height": 1280,
+        "i2v_image_crf": null,
+        "identity_lock": true,
+        "identity_strength": 0.3,
+        "images": [],
+        "model": "auto",
+        "multi_image_mode": null,
+        "profile": "standard",
+        "quality": "standard",
+        "resize_mode": "contain",
+        "resolution": "720p",
+        "resume_from": null,
+        "seed": 0,
+        "steps": 11,
+        "width": 704
+      },
+      "technical": {
+        "width": 704,
+        "height": 1280,
+        "fps": 24.0,
+        "frames": 241,
+        "video_duration": 10.041667,
+        "container_duration": 10.041667,
+        "video_start": 0.0,
+        "audio_start": 0.0,
+        "audio_duration": 10.041667,
+        "av_start_offset_seconds": 0.0,
+        "av_end_offset_seconds": 0.0,
+        "audio_sample_rate": "48000",
+        "codec": "h264",
+        "pixel_format": "yuv420p",
+        "pts_anomalies": []
+      },
+      "metrics": {
+        "analysis_width": 282,
+        "analysis_height": 512,
+        "adjacent_ssim": {
+          "min": 0.9190815687179565,
+          "median": 0.9789372682571411,
+          "p95": 0.9972706079483032,
+          "max": 0.998607337474823
+        },
+        "adjacent_mae": {
+          "min": 0.19269448518753052,
+          "median": 1.165658950805664,
+          "p95": 2.2477963924407955,
+          "max": 2.460542678833008
+        },
+        "laplacian_variance": {
+          "min": 92.8033447265625,
+          "median": 158.88890075683594,
+          "p95": 194.02105712890625,
+          "max": 220.62098693847656
+        },
+        "exact_duplicate_frames": [],
+        "boundaries": [
+          {
+            "frame": 145,
+            "time": 6.041667,
+            "laplacian_variance": 179.505126953125,
+            "mean_luma": 46.82780640514184,
+            "adjacent_ssim": 0.9832725524902344,
+            "adjacent_mae": 1.267162561416626,
+            "previous_frame": 144,
+            "mae_to_nonboundary_median_ratio": 1.1479789468488986,
+            "window": [
+              {
+                "frame": 142,
+                "time": 5.916667,
+                "laplacian_variance": 186.4561004638672,
+                "mean_luma": 47.37221575797872,
+                "adjacent_ssim": 0.9795851111412048,
+                "adjacent_mae": 1.0487726926803589
+              },
+              {
+                "frame": 143,
+                "time": 5.958333,
+                "laplacian_variance": 175.76815795898438,
+                "mean_luma": 47.44629598847518,
+                "adjacent_ssim": 0.9865732192993164,
+                "adjacent_mae": 0.84765625
+              },
+              {
+                "frame": 144,
+                "time": 6.0,
+                "laplacian_variance": 183.9020233154297,
+                "mean_luma": 47.363655252659576,
+                "adjacent_ssim": 0.9903954863548279,
+                "adjacent_mae": 0.7277676463127136
+              },
+              {
+                "frame": 145,
+                "time": 6.041667,
+                "laplacian_variance": 179.505126953125,
+                "mean_luma": 46.82780640514184,
+                "adjacent_ssim": 0.9832725524902344,
+                "adjacent_mae": 1.267162561416626
+              },
+              {
+                "frame": 146,
+                "time": 6.083333,
+                "laplacian_variance": 170.59002685546875,
+                "mean_luma": 46.79666722074468,
+                "adjacent_ssim": 0.9931885600090027,
+                "adjacent_mae": 0.6585771441459656
+              },
+              {
+                "frame": 147,
+                "time": 6.125,
+                "laplacian_variance": 163.12559509277344,
+                "mean_luma": 46.920247395833336,
+                "adjacent_ssim": 0.996791660785675,
+                "adjacent_mae": 0.4378947913646698
+              },
+              {
+                "frame": 148,
+                "time": 6.166667,
+                "laplacian_variance": 165.69888305664062,
+                "mean_luma": 46.793141899379435,
+                "adjacent_ssim": 0.9968698024749756,
+                "adjacent_mae": 0.4084247648715973
+              }
+            ]
+          },
+          {
+            "frame": 193,
+            "time": 8.041667,
+            "laplacian_variance": 129.36082458496094,
+            "mean_luma": 47.69443290115248,
+            "adjacent_ssim": 0.9591275453567505,
+            "adjacent_mae": 1.8416237831115723,
+            "previous_frame": 192,
+            "mae_to_nonboundary_median_ratio": 1.668408928263155,
+            "window": [
+              {
+                "frame": 190,
+                "time": 7.916667,
+                "laplacian_variance": 144.36334228515625,
+                "mean_luma": 48.218369071365245,
+                "adjacent_ssim": 0.9495898485183716,
+                "adjacent_mae": 1.8052970170974731
+              },
+              {
+                "frame": 191,
+                "time": 7.958333,
+                "laplacian_variance": 141.16197204589844,
+                "mean_luma": 48.31737588652482,
+                "adjacent_ssim": 0.9580428600311279,
+                "adjacent_mae": 1.560276746749878
+              },
+              {
+                "frame": 192,
+                "time": 8.0,
+                "laplacian_variance": 142.95545959472656,
+                "mean_luma": 48.217544880319146,
+                "adjacent_ssim": 0.9592573642730713,
+                "adjacent_mae": 1.5466395616531372
+              },
+              {
+                "frame": 193,
+                "time": 8.041667,
+                "laplacian_variance": 129.36082458496094,
+                "mean_luma": 47.69443290115248,
+                "adjacent_ssim": 0.9591275453567505,
+                "adjacent_mae": 1.8416237831115723
+              },
+              {
+                "frame": 194,
+                "time": 8.083333,
+                "laplacian_variance": 121.1066665649414,
+                "mean_luma": 47.6117852393617,
+                "adjacent_ssim": 0.9637527465820312,
+                "adjacent_mae": 1.5159505605697632
+              },
+              {
+                "frame": 195,
+                "time": 8.125,
+                "laplacian_variance": 118.50516510009766,
+                "mean_luma": 47.744272218528366,
+                "adjacent_ssim": 0.9634923338890076,
+                "adjacent_mae": 1.539762020111084
+              },
+              {
+                "frame": 196,
+                "time": 8.166667,
+                "laplacian_variance": 128.73712158203125,
+                "mean_luma": 47.59514212101064,
+                "adjacent_ssim": 0.9635025858879089,
+                "adjacent_mae": 1.5683177709579468
+              }
+            ]
+          }
+        ]
+      },
+      "segments": [
+        {
+          "first_frame": 0,
+          "last_frame": 144,
+          "frames": 145,
+          "face_count_histogram": {
+            "1": 145
+          },
+          "left_eye_open_ratio": {
+            "min": 0.08423087484106384,
+            "median": 0.27543877669969064,
+            "p95": 0.30585956221710336,
+            "max": 0.3329946172049076
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 9.725889852235658e-05,
+            "median": 0.006512765694289435,
+            "p95": 0.04151362239956877,
+            "max": 0.10394451512488195
+          },
+          "right_eye_open_ratio": {
+            "min": 0.0708962384368221,
+            "median": 0.262848837963278,
+            "p95": 0.2928883623270714,
+            "max": 0.3101578204812573
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00019272142934428915,
+            "median": 0.0059855828345041495,
+            "p95": 0.045343198778779494,
+            "max": 0.10361231026974013
+          },
+          "interocular_over_box_width": {
+            "min": 0.3171628055030431,
+            "median": 0.36278780860357357,
+            "p95": 0.37450003597091414,
+            "max": 0.3785561285299073
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 8.419195161035731e-07,
+            "median": 0.0018964571133565367,
+            "p95": 0.005780846173360586,
+            "max": 0.0159254455893163
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5426385489396737,
+            "median": 0.5924468301212813,
+            "p95": 0.6501618400915329,
+            "max": 0.6752883672228353
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 1.204023141199162e-05,
+            "median": 0.0031742303010414696,
+            "p95": 0.016135919861670536,
+            "max": 0.04704016581744597
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.9173712398202113,
+            "median": 0.99538997697409,
+            "p95": 1.0395874210440061,
+            "max": 1.0535025520000967
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 2.5757208021559563e-05,
+            "median": 0.004678602918299135,
+            "p95": 0.01560405953242217,
+            "max": 0.027106567150845917
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 28,
+              "last_frame": 33,
+              "frames": 6,
+              "duration_seconds": 0.25
+            },
+            {
+              "first_frame": 51,
+              "last_frame": 54,
+              "frames": 4,
+              "duration_seconds": 0.16666666666666666
+            },
+            {
+              "first_frame": 96,
+              "last_frame": 99,
+              "frames": 4,
+              "duration_seconds": 0.16666666666666666
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.30124550940841666,
+            "right": 0.2867318135111218
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9318604469299316,
+            "median": 0.9770180583000183,
+            "p95": 0.9971392095088959,
+            "max": 0.9981904625892639
+          },
+          "within_segment_laplacian_variance": {
+            "min": 99.30648803710938,
+            "median": 155.7300567626953,
+            "p95": 196.64496154785144,
+            "max": 220.62098693847656
+          }
+        },
+        {
+          "first_frame": 145,
+          "last_frame": 192,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.07636952889732453,
+            "median": 0.21521730450293677,
+            "p95": 0.30674625948493645,
+            "max": 0.3082377414708298
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 6.53446899952781e-05,
+            "median": 0.005482779131308402,
+            "p95": 0.030590753005817692,
+            "max": 0.13573325037797115
+          },
+          "right_eye_open_ratio": {
+            "min": 0.05130694871900821,
+            "median": 0.20763504923032783,
+            "p95": 0.267357261794554,
+            "max": 0.2678757713768656
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 2.75614740974095e-05,
+            "median": 0.0048341222077953605,
+            "p95": 0.036268299096845265,
+            "max": 0.12397547342104696
+          },
+          "interocular_over_box_width": {
+            "min": 0.34619938714332726,
+            "median": 0.3627894269455231,
+            "p95": 0.37760573885008153,
+            "max": 0.37910086958508776
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 8.619757096345326e-05,
+            "median": 0.0022068401167376628,
+            "p95": 0.007251674435450777,
+            "max": 0.012479191239176679
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5506037571672194,
+            "median": 0.6244946106085323,
+            "p95": 0.6545008047530424,
+            "max": 0.6552995092430888
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 1.8752219625439714e-05,
+            "median": 0.0027819108362129308,
+            "p95": 0.019951496962010908,
+            "max": 0.039391063046883446
+          },
+          "mouth_width_over_interocular": {
+            "min": 1.020149336654933,
+            "median": 1.0517531571975054,
+            "p95": 1.0816148524582243,
+            "max": 1.092065436194467
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 9.477505609356562e-05,
+            "median": 0.006948424126650865,
+            "p95": 0.01847526663563123,
+            "max": 0.0299118794927713
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 157,
+              "last_frame": 171,
+              "frames": 15,
+              "duration_seconds": 0.625
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.30366693186002847,
+            "right": 0.261990600711976
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9190815687179565,
+            "median": 0.9554877877235413,
+            "p95": 0.9963427364826203,
+            "max": 0.9968698024749756
+          },
+          "within_segment_laplacian_variance": {
+            "min": 92.8033447265625,
+            "median": 163.8229522705078,
+            "p95": 195.61344833374022,
+            "max": 202.94932556152344
+          }
+        },
+        {
+          "first_frame": 193,
+          "last_frame": 240,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.06224533358143235,
+            "median": 0.24234335279255664,
+            "p95": 0.27849566081703603,
+            "max": 0.28174129338101894
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 5.948953771500731e-05,
+            "median": 0.008799104201509533,
+            "p95": 0.05340964203711348,
+            "max": 0.10979180280551738
+          },
+          "right_eye_open_ratio": {
+            "min": 0.06942373767770993,
+            "median": 0.25344366799427187,
+            "p95": 0.2995110593202401,
+            "max": 0.3015471500489891
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00014545097472762336,
+            "median": 0.009445584836308224,
+            "p95": 0.06132048028244841,
+            "max": 0.10782690324920598
+          },
+          "interocular_over_box_width": {
+            "min": 0.35906184251893314,
+            "median": 0.3651493345140162,
+            "p95": 0.3892313324803636,
+            "max": 0.39280970739888593
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 6.843196554773279e-05,
+            "median": 0.002079341102111276,
+            "p95": 0.008114828133483513,
+            "max": 0.0194891070547506
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5398675691350839,
+            "median": 0.6284337713510881,
+            "p95": 0.6383753254486647,
+            "max": 0.6389064044606724
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 7.354606266640751e-05,
+            "median": 0.0033881613751352013,
+            "p95": 0.021739653912551334,
+            "max": 0.056607392289091285
+          },
+          "mouth_width_over_interocular": {
+            "min": 1.0032422306904574,
+            "median": 1.0526542150131561,
+            "p95": 1.0770701191111902,
+            "max": 1.0811919668319663
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 0.00018964186740166866,
+            "median": 0.005885828703409368,
+            "p95": 0.02001837901304992,
+            "max": 0.03721482468809523
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 200,
+              "last_frame": 205,
+              "frames": 6,
+              "duration_seconds": 0.25
+            },
+            {
+              "first_frame": 230,
+              "last_frame": 234,
+              "frames": 5,
+              "duration_seconds": 0.20833333333333334
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.276875611219312,
+            "right": 0.2976578354851476
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9556511640548706,
+            "median": 0.9911438822746277,
+            "p95": 0.9983859062194824,
+            "max": 0.998607337474823
+          },
+          "within_segment_laplacian_variance": {
+            "min": 118.50516510009766,
+            "median": 172.7957000732422,
+            "p95": 192.22370300292968,
+            "max": 194.02105712890625
+          }
+        }
+      ],
+      "complete_timeline": {
+        "first_frame": 0,
+        "last_frame": 240,
+        "frames": 241,
+        "face_count_histogram": {
+          "1": 241
+        },
+        "left_eye_open_ratio": {
+          "min": 0.06224533358143235,
+          "median": 0.2596847274143458,
+          "p95": 0.3060355936526293,
+          "max": 0.3329946172049076
+        },
+        "left_eye_open_ratio_adjacent_absolute_change": {
+          "min": 5.948953771500731e-05,
+          "median": 0.006590183432449714,
+          "p95": 0.04367697041754878,
+          "max": 0.13573325037797115
+        },
+        "right_eye_open_ratio": {
+          "min": 0.05130694871900821,
+          "median": 0.25489374039515317,
+          "p95": 0.2942590342119044,
+          "max": 0.3101578204812573
+        },
+        "right_eye_open_ratio_adjacent_absolute_change": {
+          "min": 2.75614740974095e-05,
+          "median": 0.006236827046519344,
+          "p95": 0.04830713254783065,
+          "max": 0.12397547342104696
+        },
+        "interocular_over_box_width": {
+          "min": 0.3171628055030431,
+          "median": 0.36334846891729283,
+          "p95": 0.3785561285299073,
+          "max": 0.39280970739888593
+        },
+        "interocular_over_box_width_adjacent_absolute_change": {
+          "min": 8.419195161035731e-07,
+          "median": 0.0020320052901264263,
+          "p95": 0.006886258058430367,
+          "max": 0.0194891070547506
+        },
+        "nose_to_eye_mid_over_interocular": {
+          "min": 0.5398675691350839,
+          "median": 0.6106340281485438,
+          "p95": 0.6525175984068758,
+          "max": 0.6752883672228353
+        },
+        "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+          "min": 1.204023141199162e-05,
+          "median": 0.0031742303010414696,
+          "p95": 0.019419410302847905,
+          "max": 0.056607392289091285
+        },
+        "mouth_width_over_interocular": {
+          "min": 0.9173712398202113,
+          "median": 1.0105497092203288,
+          "p95": 1.0734262142106363,
+          "max": 1.092065436194467
+        },
+        "mouth_width_over_interocular_adjacent_absolute_change": {
+          "min": 2.5757208021559563e-05,
+          "median": 0.005114044214377722,
+          "p95": 0.016420184738489073,
+          "max": 0.03721482468809523
+        },
+        "bilateral_low_aperture_candidates": [
+          {
+            "first_frame": 28,
+            "last_frame": 33,
+            "frames": 6,
+            "duration_seconds": 0.25,
+            "reopening_frame": 34,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 51,
+            "last_frame": 54,
+            "frames": 4,
+            "duration_seconds": 0.16666666666666666,
+            "reopening_frame": 55,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 96,
+            "last_frame": 99,
+            "frames": 4,
+            "duration_seconds": 0.16666666666666666,
+            "reopening_frame": 100,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 157,
+            "last_frame": 171,
+            "frames": 15,
+            "duration_seconds": 0.625,
+            "reopening_frame": 172,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 200,
+            "last_frame": 205,
+            "frames": 6,
+            "duration_seconds": 0.25,
+            "reopening_frame": 206,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 230,
+            "last_frame": 235,
+            "frames": 6,
+            "duration_seconds": 0.25,
+            "reopening_frame": 236,
+            "reopening_status": "above_candidate_threshold"
+          }
+        ],
+        "aperture_reference_p90": {
+          "left": 0.3008670761271866,
+          "right": 0.2883614742747188
+        }
+      },
+      "summary": {
+        "frames": 241,
+        "uncertain_frames": [],
+        "yaw_degrees": {
+          "min": -45.00000125223908,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "roll_degrees": {
+          "min": -30.000000834826057,
+          "median": 0.0,
+          "p95": 30.000000834826057,
+          "max": 30.000000834826057
+        },
+        "center_step_over_face_width": {
+          "min": 9.462249092740144e-05,
+          "median": 0.004154865820390111,
+          "p95": 0.010273033647581113,
+          "max": 0.01615815957437881
+        },
+        "center_acceleration_over_face_width": {
+          "min": 0.0004892435858460626,
+          "median": 0.004614378775577201,
+          "p95": 0.011768610344864061,
+          "max": 0.017390630858527153
+        },
+        "face_region_delta_e76": {
+          "min": 0.0,
+          "median": 0.6987533023918275,
+          "p95": 1.5908338600220282,
+          "max": 2.7801316739882047
+        },
+        "normalized_face_laplacian_variance": {
+          "min": 76.71529388427734,
+          "median": 153.11627197265625,
+          "p95": 206.25840759277344,
+          "max": 290.9076843261719
+        },
+        "registered_luma_mae": {
+          "min": 0.8917344674556213,
+          "median": 3.2950258875739644,
+          "p95": 5.995150702662722,
+          "max": 6.681952662721893
+        },
+        "left_eligible_pupil_adjacent_displacement": {
+          "min": 0.0004939613384385636,
+          "median": 0.00862871466091783,
+          "p95": 0.024609499099312045,
+          "max": 0.1028810176276529
+        },
+        "right_eligible_pupil_adjacent_displacement": {
+          "min": 0.00043437994617353095,
+          "median": 0.008948293881896103,
+          "p95": 0.02315540702841897,
+          "max": 0.040512592943449686
+        },
+        "pupil_eligible_frames": {
+          "left": 196,
+          "right": 186
+        }
+      },
+      "generation_seconds": 429.88064312934875,
+      "stage_memory": [
+        {
+          "after_free_percent": 83.0,
+          "after_headroom_gb": 33.84,
+          "after_pressure": "normal",
+          "after_swap_gb": 3.9,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 79.0,
+          "before_headroom_gb": 31.92,
+          "before_swap_gb": 3.91,
+          "elapsed_seconds": 219.69,
+          "resolution": "720p",
+          "stage": 1
+        },
+        {
+          "after_free_percent": 81.0,
+          "after_headroom_gb": 32.88,
+          "after_pressure": "normal",
+          "after_swap_gb": 3.88,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 83.0,
+          "before_headroom_gb": 33.84,
+          "before_swap_gb": 3.9,
+          "elapsed_seconds": 102.32,
+          "resolution": "720p",
+          "stage": 2
+        },
+        {
+          "after_free_percent": 80.0,
+          "after_headroom_gb": 32.4,
+          "after_pressure": "normal",
+          "after_swap_gb": 3.87,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 81.0,
+          "before_headroom_gb": 32.88,
+          "before_swap_gb": 3.88,
+          "elapsed_seconds": 103.3,
+          "resolution": "720p",
+          "stage": 3
+        }
+      ]
+    },
+    {
+      "label": "reference_minimal",
+      "job_id": "aa792f485fe23d2824e54e1b",
+      "video_id": "9e30f5a855891ddf1becf6ea",
+      "video_sha256": "ef62ac97b8ed011234c4024097d987aaa84540bfaf0853f35f64c7f2cea050aa",
+      "source_sha256": "0f53aad73356d2e3615e4b20097f8142c9240a87c08930259f8bccf704a07742",
+      "prompt_sha256": "40f0db3e16c875ce8dc3526326730863ddc1c2e59603c14e3861744f719f4c55",
+      "settings": {
+        "aspect_ratio": "9:16",
+        "continuation_mode": "rolling",
+        "duration": 10,
+        "face_guidance": "minimal",
+        "fps": 24,
+        "frames": 241,
+        "height": 1280,
+        "i2v_image_crf": null,
+        "identity_lock": true,
+        "identity_strength": 0.3,
+        "images": [],
+        "model": "auto",
+        "multi_image_mode": null,
+        "profile": "standard",
+        "quality": "standard",
+        "resize_mode": "contain",
+        "resolution": "720p",
+        "resume_from": null,
+        "seed": 0,
+        "steps": 11,
+        "width": 704
+      },
+      "technical": {
+        "width": 704,
+        "height": 1280,
+        "fps": 24.0,
+        "frames": 241,
+        "video_duration": 10.041667,
+        "container_duration": 10.041667,
+        "video_start": 0.0,
+        "audio_start": 0.0,
+        "audio_duration": 10.041667,
+        "av_start_offset_seconds": 0.0,
+        "av_end_offset_seconds": 0.0,
+        "audio_sample_rate": "48000",
+        "codec": "h264",
+        "pixel_format": "yuv420p",
+        "pts_anomalies": []
+      },
+      "metrics": {
+        "analysis_width": 282,
+        "analysis_height": 512,
+        "adjacent_ssim": {
+          "min": 0.9249141812324524,
+          "median": 0.9804417788982391,
+          "p95": 0.996865662932396,
+          "max": 0.9986950159072876
+        },
+        "adjacent_mae": {
+          "min": 0.22254543006420135,
+          "median": 1.1382389664649963,
+          "p95": 2.16103378534317,
+          "max": 2.3615498542785645
+        },
+        "laplacian_variance": {
+          "min": 99.40970611572266,
+          "median": 153.34019470214844,
+          "p95": 196.35939025878906,
+          "max": 219.43067932128906
+        },
+        "exact_duplicate_frames": [],
+        "boundaries": [
+          {
+            "frame": 145,
+            "time": 6.041667,
+            "laplacian_variance": 186.74456787109375,
+            "mean_luma": 46.529262245124116,
+            "adjacent_ssim": 0.9829544425010681,
+            "adjacent_mae": 1.3006843328475952,
+            "previous_frame": 144,
+            "mae_to_nonboundary_median_ratio": 1.234899841587527,
+            "window": [
+              {
+                "frame": 142,
+                "time": 5.916667,
+                "laplacian_variance": 189.883056640625,
+                "mean_luma": 47.1430975731383,
+                "adjacent_ssim": 0.9791266918182373,
+                "adjacent_mae": 1.068359375
+              },
+              {
+                "frame": 143,
+                "time": 5.958333,
+                "laplacian_variance": 183.02435302734375,
+                "mean_luma": 47.197404144503544,
+                "adjacent_ssim": 0.9863226413726807,
+                "adjacent_mae": 0.859728217124939
+              },
+              {
+                "frame": 144,
+                "time": 6.0,
+                "laplacian_variance": 192.26223754882812,
+                "mean_luma": 47.092330175088655,
+                "adjacent_ssim": 0.990617036819458,
+                "adjacent_mae": 0.7180227637290955
+              },
+              {
+                "frame": 145,
+                "time": 6.041667,
+                "laplacian_variance": 186.74456787109375,
+                "mean_luma": 46.529262245124116,
+                "adjacent_ssim": 0.9829544425010681,
+                "adjacent_mae": 1.3006843328475952
+              },
+              {
+                "frame": 146,
+                "time": 6.083333,
+                "laplacian_variance": 176.95574951171875,
+                "mean_luma": 46.578242741578016,
+                "adjacent_ssim": 0.9922449588775635,
+                "adjacent_mae": 0.7119625210762024
+              },
+              {
+                "frame": 147,
+                "time": 6.125,
+                "laplacian_variance": 170.203369140625,
+                "mean_luma": 46.632590868794324,
+                "adjacent_ssim": 0.9959738254547119,
+                "adjacent_mae": 0.4785502552986145
+              },
+              {
+                "frame": 148,
+                "time": 6.166667,
+                "laplacian_variance": 173.9062957763672,
+                "mean_luma": 46.52538369902482,
+                "adjacent_ssim": 0.9968776106834412,
+                "adjacent_mae": 0.39469054341316223
+              }
+            ]
+          },
+          {
+            "frame": 193,
+            "time": 8.041667,
+            "laplacian_variance": 125.43720245361328,
+            "mean_luma": 47.49222905585106,
+            "adjacent_ssim": 0.9633508920669556,
+            "adjacent_mae": 1.734852910041809,
+            "previous_frame": 192,
+            "mae_to_nonboundary_median_ratio": 1.6471095481699152,
+            "window": [
+              {
+                "frame": 190,
+                "time": 7.916667,
+                "laplacian_variance": 138.5083770751953,
+                "mean_luma": 48.04781000664894,
+                "adjacent_ssim": 0.9589563608169556,
+                "adjacent_mae": 1.577847957611084
+              },
+              {
+                "frame": 191,
+                "time": 7.958333,
+                "laplacian_variance": 136.13584899902344,
+                "mean_luma": 48.095841644503544,
+                "adjacent_ssim": 0.9634461998939514,
+                "adjacent_mae": 1.4475911855697632
+              },
+              {
+                "frame": 192,
+                "time": 8.0,
+                "laplacian_variance": 139.9674835205078,
+                "mean_luma": 47.983315325797875,
+                "adjacent_ssim": 0.9661484956741333,
+                "adjacent_mae": 1.3873906135559082
+              },
+              {
+                "frame": 193,
+                "time": 8.041667,
+                "laplacian_variance": 125.43720245361328,
+                "mean_luma": 47.49222905585106,
+                "adjacent_ssim": 0.9633508920669556,
+                "adjacent_mae": 1.734852910041809
+              },
+              {
+                "frame": 194,
+                "time": 8.083333,
+                "laplacian_variance": 119.5052261352539,
+                "mean_luma": 47.445090868794324,
+                "adjacent_ssim": 0.9700728058815002,
+                "adjacent_mae": 1.3214761018753052
+              },
+              {
+                "frame": 195,
+                "time": 8.125,
+                "laplacian_variance": 116.90673828125,
+                "mean_luma": 47.598515070921984,
+                "adjacent_ssim": 0.9691176414489746,
+                "adjacent_mae": 1.370608925819397
+              },
+              {
+                "frame": 196,
+                "time": 8.166667,
+                "laplacian_variance": 125.13868713378906,
+                "mean_luma": 47.46735095301418,
+                "adjacent_ssim": 0.9700229167938232,
+                "adjacent_mae": 1.3971631526947021
+              }
+            ]
+          }
+        ]
+      },
+      "segments": [
+        {
+          "first_frame": 0,
+          "last_frame": 144,
+          "frames": 145,
+          "face_count_histogram": {
+            "1": 145
+          },
+          "left_eye_open_ratio": {
+            "min": 0.07972814665129453,
+            "median": 0.2566036055151052,
+            "p95": 0.3391066133145747,
+            "max": 0.35794089767403403
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 4.500949445601643e-05,
+            "median": 0.007559947977507267,
+            "p95": 0.04516478121263816,
+            "max": 0.1198603460932029
+          },
+          "right_eye_open_ratio": {
+            "min": 0.07186150632794719,
+            "median": 0.2507525224220392,
+            "p95": 0.29988180374089785,
+            "max": 0.3148711311388539
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 1.5112110642312437e-05,
+            "median": 0.006973283288041872,
+            "p95": 0.04585025891491957,
+            "max": 0.12851044655869
+          },
+          "interocular_over_box_width": {
+            "min": 0.3156008226607,
+            "median": 0.3621093069122605,
+            "p95": 0.3698665380845964,
+            "max": 0.3745487924219449
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 4.023692149451863e-05,
+            "median": 0.002032288626050538,
+            "p95": 0.006069477409849641,
+            "max": 0.014987898413861722
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5288576855645606,
+            "median": 0.601468370731891,
+            "p95": 0.658805668745958,
+            "max": 0.6753860901001872
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 2.2214679690990558e-05,
+            "median": 0.0036416708317061897,
+            "p95": 0.016489206815619623,
+            "max": 0.03584184854548267
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.9460621968142713,
+            "median": 1.0190627415028997,
+            "p95": 1.047894204845916,
+            "max": 1.0667778515913366
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 6.464791469817932e-05,
+            "median": 0.005090797867860597,
+            "p95": 0.01765189148190727,
+            "max": 0.022067967803773403
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 22,
+              "last_frame": 30,
+              "frames": 9,
+              "duration_seconds": 0.375
+            },
+            {
+              "first_frame": 51,
+              "last_frame": 54,
+              "frames": 4,
+              "duration_seconds": 0.16666666666666666
+            },
+            {
+              "first_frame": 93,
+              "last_frame": 97,
+              "frames": 5,
+              "duration_seconds": 0.20833333333333334
+            },
+            {
+              "first_frame": 120,
+              "last_frame": 121,
+              "frames": 2,
+              "duration_seconds": 0.08333333333333333
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.3238448503868581,
+            "right": 0.2970030817408289
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9356588125228882,
+            "median": 0.9786261022090912,
+            "p95": 0.9971810340881347,
+            "max": 0.9986950159072876
+          },
+          "within_segment_laplacian_variance": {
+            "min": 105.35550689697266,
+            "median": 152.5026092529297,
+            "p95": 195.22684020996093,
+            "max": 219.43067932128906
+          }
+        },
+        {
+          "first_frame": 145,
+          "last_frame": 192,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.10806116831461766,
+            "median": 0.21838575657961895,
+            "p95": 0.3492119347334309,
+            "max": 0.35090768898642205
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 6.239920413642075e-05,
+            "median": 0.005678877580128444,
+            "p95": 0.04246038262521852,
+            "max": 0.08545342990977334
+          },
+          "right_eye_open_ratio": {
+            "min": 0.0900196930839874,
+            "median": 0.21672592647178135,
+            "p95": 0.28985194401638564,
+            "max": 0.29157855611889233
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 4.2717614548271055e-05,
+            "median": 0.006528779044875144,
+            "p95": 0.038578290839849004,
+            "max": 0.07119511332383624
+          },
+          "interocular_over_box_width": {
+            "min": 0.343671190801341,
+            "median": 0.3688947378829598,
+            "p95": 0.3738210559907059,
+            "max": 0.37585565062584786
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 7.154311140178393e-05,
+            "median": 0.002071698094409935,
+            "p95": 0.0051199296732671856,
+            "max": 0.01011125933881557
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5939540116035149,
+            "median": 0.6296679746275333,
+            "p95": 0.6664603690521431,
+            "max": 0.668651004014339
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 0.00016178462365390445,
+            "median": 0.0025887599672678174,
+            "p95": 0.014310396352778948,
+            "max": 0.01841671419434099
+          },
+          "mouth_width_over_interocular": {
+            "min": 1.068434020691254,
+            "median": 1.0872756586133567,
+            "p95": 1.1323673842021227,
+            "max": 1.1510448459428704
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 0.0002476469065759712,
+            "median": 0.004972440874277062,
+            "p95": 0.018812316458295317,
+            "max": 0.03186589328383005
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 167,
+              "last_frame": 172,
+              "frames": 6,
+              "duration_seconds": 0.25
+            },
+            {
+              "first_frame": 182,
+              "last_frame": 185,
+              "frames": 4,
+              "duration_seconds": 0.16666666666666666
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.34825413224076435,
+            "right": 0.2886264682762098
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9249141812324524,
+            "median": 0.9568232297897339,
+            "p95": 0.9962441444396972,
+            "max": 0.9968776106834412
+          },
+          "within_segment_laplacian_variance": {
+            "min": 99.40970611572266,
+            "median": 160.90679168701172,
+            "p95": 197.3090805053711,
+            "max": 201.9672088623047
+          }
+        },
+        {
+          "first_frame": 193,
+          "last_frame": 240,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.041618150583895806,
+            "median": 0.22814681452131275,
+            "p95": 0.26271190147295503,
+            "max": 0.2661532135387078
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00018461394719559987,
+            "median": 0.008644353151725542,
+            "p95": 0.06038092503243335,
+            "max": 0.08419856181450669
+          },
+          "right_eye_open_ratio": {
+            "min": 0.04847733676292096,
+            "median": 0.232703787363471,
+            "p95": 0.2712957329680577,
+            "max": 0.27498611592543026
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.0016698257949392392,
+            "median": 0.008565923821337168,
+            "p95": 0.055999655949183,
+            "max": 0.09775825193785413
+          },
+          "interocular_over_box_width": {
+            "min": 0.3661757980465698,
+            "median": 0.37139688229794215,
+            "p95": 0.3913745541578222,
+            "max": 0.39285862161801594
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 6.10570513951969e-05,
+            "median": 0.0019808452013225786,
+            "p95": 0.007214329420831521,
+            "max": 0.01527184432248646
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5365282743397171,
+            "median": 0.61043252250059,
+            "p95": 0.62289642457923,
+            "max": 0.6242608611201338
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 1.8800455444112352e-05,
+            "median": 0.004563413977591635,
+            "p95": 0.028654288929942293,
+            "max": 0.03586361914200353
+          },
+          "mouth_width_over_interocular": {
+            "min": 1.0463345642788977,
+            "median": 1.07336867345362,
+            "p95": 1.0921888618931304,
+            "max": 1.0998622891889895
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 8.50877706506381e-05,
+            "median": 0.005208477843352544,
+            "p95": 0.018069497524008386,
+            "max": 0.02324552683029557
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 201,
+              "last_frame": 205,
+              "frames": 5,
+              "duration_seconds": 0.20833333333333334
+            },
+            {
+              "first_frame": 227,
+              "last_frame": 230,
+              "frames": 4,
+              "duration_seconds": 0.16666666666666666
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.2592494690684145,
+            "right": 0.26965696368646813
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9650742411613464,
+            "median": 0.9871740341186523,
+            "p95": 0.9965590059757232,
+            "max": 0.996769368648529
+          },
+          "within_segment_laplacian_variance": {
+            "min": 116.90673828125,
+            "median": 161.3898696899414,
+            "p95": 174.85569076538087,
+            "max": 178.46957397460938
+          }
+        }
+      ],
+      "complete_timeline": {
+        "first_frame": 0,
+        "last_frame": 240,
+        "frames": 241,
+        "face_count_histogram": {
+          "1": 241
+        },
+        "left_eye_open_ratio": {
+          "min": 0.041618150583895806,
+          "median": 0.23796366759691295,
+          "p95": 0.3433178587691954,
+          "max": 0.35794089767403403
+        },
+        "left_eye_open_ratio_adjacent_absolute_change": {
+          "min": 4.500949445601643e-05,
+          "median": 0.007559947977507267,
+          "p95": 0.04598416245698976,
+          "max": 0.1198603460932029
+        },
+        "right_eye_open_ratio": {
+          "min": 0.04847733676292096,
+          "median": 0.23866684205294264,
+          "p95": 0.2980203404973398,
+          "max": 0.3148711311388539
+        },
+        "right_eye_open_ratio_adjacent_absolute_change": {
+          "min": 1.5112110642312437e-05,
+          "median": 0.007104974007121817,
+          "p95": 0.04604273920889784,
+          "max": 0.12851044655869
+        },
+        "interocular_over_box_width": {
+          "min": 0.3156008226607,
+          "median": 0.36466943895298365,
+          "p95": 0.38448860791227757,
+          "max": 0.39285862161801594
+        },
+        "interocular_over_box_width_adjacent_absolute_change": {
+          "min": 4.023692149451863e-05,
+          "median": 0.0020086645535913605,
+          "p95": 0.006071763656297609,
+          "max": 0.01527184432248646
+        },
+        "nose_to_eye_mid_over_interocular": {
+          "min": 0.5288576855645606,
+          "median": 0.606615222812805,
+          "p95": 0.6655254464801248,
+          "max": 0.6753860901001872
+        },
+        "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+          "min": 1.8800455444112352e-05,
+          "median": 0.0035669942196412396,
+          "p95": 0.018434175091113465,
+          "max": 0.03586361914200353
+        },
+        "mouth_width_over_interocular": {
+          "min": 0.9460621968142713,
+          "median": 1.0368165238155929,
+          "p95": 1.0977971823614745,
+          "max": 1.1510448459428704
+        },
+        "mouth_width_over_interocular_adjacent_absolute_change": {
+          "min": 6.464791469817932e-05,
+          "median": 0.005072326754907319,
+          "p95": 0.01789600935419506,
+          "max": 0.03186589328383005
+        },
+        "bilateral_low_aperture_candidates": [
+          {
+            "first_frame": 22,
+            "last_frame": 31,
+            "frames": 10,
+            "duration_seconds": 0.4166666666666667,
+            "reopening_frame": 32,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 51,
+            "last_frame": 54,
+            "frames": 4,
+            "duration_seconds": 0.16666666666666666,
+            "reopening_frame": 55,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 93,
+            "last_frame": 97,
+            "frames": 5,
+            "duration_seconds": 0.20833333333333334,
+            "reopening_frame": 98,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 120,
+            "last_frame": 121,
+            "frames": 2,
+            "duration_seconds": 0.08333333333333333,
+            "reopening_frame": 122,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 167,
+            "last_frame": 172,
+            "frames": 6,
+            "duration_seconds": 0.25,
+            "reopening_frame": 173,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 182,
+            "last_frame": 185,
+            "frames": 4,
+            "duration_seconds": 0.16666666666666666,
+            "reopening_frame": 186,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 200,
+            "last_frame": 205,
+            "frames": 6,
+            "duration_seconds": 0.25,
+            "reopening_frame": 206,
+            "reopening_status": "above_candidate_threshold"
+          },
+          {
+            "first_frame": 226,
+            "last_frame": 231,
+            "frames": 6,
+            "duration_seconds": 0.25,
+            "reopening_frame": 232,
+            "reopening_status": "above_candidate_threshold"
+          }
+        ],
+        "aperture_reference_p90": {
+          "left": 0.3353389941298243,
+          "right": 0.2946021828084352
+        }
+      },
+      "summary": {
+        "frames": 241,
+        "uncertain_frames": [],
+        "yaw_degrees": {
+          "min": -45.00000125223908,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "roll_degrees": {
+          "min": -30.000000834826057,
+          "median": 0.0,
+          "p95": 30.000000834826057,
+          "max": 30.000000834826057
+        },
+        "center_step_over_face_width": {
+          "min": 0.00020028341543887134,
+          "median": 0.0045230328985557105,
+          "p95": 0.010524640662185225,
+          "max": 0.016056152969949767
+        },
+        "center_acceleration_over_face_width": {
+          "min": 0.0006511637309766281,
+          "median": 0.005266839777041071,
+          "p95": 0.010842193537096237,
+          "max": 0.022141544853225996
+        },
+        "face_region_delta_e76": {
+          "min": 0.0,
+          "median": 0.7684327625749718,
+          "p95": 1.745035150598405,
+          "max": 2.951197199847809
+        },
+        "normalized_face_laplacian_variance": {
+          "min": 82.78639221191406,
+          "median": 153.99278259277344,
+          "p95": 206.45584106445312,
+          "max": 286.6639404296875
+        },
+        "registered_luma_mae": {
+          "min": 0.9711538461538461,
+          "median": 3.44739275147929,
+          "p95": 5.1271588387573965,
+          "max": 7.771079881656805
+        },
+        "left_eligible_pupil_adjacent_displacement": {
+          "min": 0.0004082591243405984,
+          "median": 0.008087121696674337,
+          "p95": 0.02225631651811086,
+          "max": 0.09360150211119732
+        },
+        "right_eligible_pupil_adjacent_displacement": {
+          "min": 0.00033937141364939776,
+          "median": 0.0074330201905410485,
+          "p95": 0.019087224059153505,
+          "max": 0.0436265023036735
+        },
+        "pupil_eligible_frames": {
+          "left": 194,
+          "right": 177
+        }
+      },
+      "generation_seconds": 438.73526191711426,
+      "stage_memory": [
+        {
+          "after_free_percent": 79.0,
+          "after_headroom_gb": 31.92,
+          "after_pressure": "normal",
+          "after_swap_gb": 4.44,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 80.0,
+          "before_headroom_gb": 32.4,
+          "before_swap_gb": 4.44,
+          "elapsed_seconds": 225.15,
+          "resolution": "720p",
+          "stage": 1
+        },
+        {
+          "after_free_percent": 79.0,
+          "after_headroom_gb": 31.92,
+          "after_pressure": "normal",
+          "after_swap_gb": 4.43,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 79.0,
+          "before_headroom_gb": 31.92,
+          "before_swap_gb": 4.44,
+          "elapsed_seconds": 105.91,
+          "resolution": "720p",
+          "stage": 2
+        },
+        {
+          "after_free_percent": 80.0,
+          "after_headroom_gb": 32.4,
+          "after_pressure": "normal",
+          "after_swap_gb": 4.43,
+          "aspect_ratio": "9:16",
+          "before_free_percent": 79.0,
+          "before_headroom_gb": 31.92,
+          "before_swap_gb": 4.43,
+          "elapsed_seconds": 103.67,
+          "resolution": "720p",
+          "stage": 3
+        }
+      ],
+      "monitored_memory": {
+        "sample_count": 219,
+        "first_sample_seconds_after_start": 0.00449681282043457,
+        "coverage_seconds": 439.7760760784149,
+        "min_free_percent_including_handoff": 40.0,
+        "min_active_free_percent": 54.0,
+        "min_headroom_gib": 13.2,
+        "max_swap_gib": 4.44,
+        "first_swap_gib": 4.44,
+        "last_swap_gib": 4.43,
+        "pressure_values": [
+          "normal"
+        ],
+        "limits": "Two-second sample interval can miss peaks. FULL monitoring began late; availability is a macOS estimate, not process RSS."
+      }
+    }
+  ],
+  "methodology": {
+    "landmarks": "Apple Vision CPU, every native frame; one face and confidence >=0.8 required. Vision yaw/roll are coarse quantized estimates, not continuous pose truth. Eye-line angle is continuous detector geometry.",
+    "eyes": "Pupil changes only between adjacent eligible open-eye/confident frames, normalized by eye width/height; not iris segmentation. Roll-corrected aperture. Low-aperture candidates retain the existing 45%-of-segment-p90 heuristic, not a medical/identity verdict.",
+    "color": "Median approximate forehead/cheek face patches intersected with contour, uncalibrated sRGB -> Lab D65, adjacent Delta E76. Not validated skin segmentation.",
+    "motion": "Face box center step/acceleration; 128x128 normalized luma translation phase correlation within 8 pixels, not optical flow or an identity metric.",
+    "limits": "Expression, pose, lighting and detector jitter confound all perceptual proxies. No automatic acceptance. A/V offsets are stream timing, not lip sync."
+  }
+}

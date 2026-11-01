@@ -68,7 +68,13 @@ assert.match(rendering, /rolling_stage_memory/);
 assert.equal(api.__test.isVideoRequest(
     'Erstelle ein 10-Sekunden-Video mit Rolling-Window-Test: The woman smiles.'
 ), true);
-assert.match(source, /continuation_mode: 'rolling'/);
+assert.match(source, /continuation_mode: rollingWindowRequested \? 'rolling' : 'segmented'/);
+for (const value of ['', '-1', '1.2', '1e3', '2147483648', 'no']) assert.equal(api.__test.parseVideoSeed(value), null);
+for (const value of [0, '0', '42', '2147483647']) assert.equal(api.__test.parseVideoSeed(value), Number(value));
+assert.match(api.__test.videoPresetSummary('standard', 'portrait', 10, true), /704 × 1280 Pixel · 24 FPS · 10 s · Rolling/);
+assert.match(api.__test.videoPresetSummary('quality', 'landscape', 9, false), /1920 × 1088.*RAM-sichere Segmente/);
+assert.match(api.__test.videoPresetSummary('quality', 'portrait', 10, false), /1088 × 1920.*Automatische Fortsetzung/);
+assert.match(api.__test.videoPresetSummary('fast', 'landscape', 5, false), /1024 × 576.*kein Ausgabe-Upscaling/);
 assert.match(source, /rolling\[\\s-\]\?window/);
 
 assert.equal(api.__test.isVideoRequest("erstelle ein video: The person slowly turns their head, smiles naturally and looks directly into the camera. Smooth continuous movement, fixed camera, consistent facial features, hairstyle and clothing, realistic facial expressions, no scene changes."), true);
@@ -313,7 +319,7 @@ assert.match(rendering, /LTX Fast: 8 Denoising-Schritte/);
 assert.match(rendering, /Creating short/);
 assert.match(rendering, /artifact\.url/);
 assert.equal(rendering.includes('shorts_generatequeued'), false);
-assert.match(chatHtml, /chat\/generation\.js\?v=20261030-german-quote-parser/);
+assert.match(chatHtml, /chat\/generation\.js\?v=20261101-video-quality-audit/);
 assert.match(chatHtml, /chat\/voice-video\.js\?v=20261030-ltx-max-opt-in/);
 assert.match(chatHtml, /chat\/rendering\.js\?v=[a-z0-9-]+/);
 assert.match(chatHtml, /chat\.js\?v=[a-z0-9-]+/);

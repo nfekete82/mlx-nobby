@@ -97,3 +97,47 @@ These tests include exact decoded-pixel preservation, actual audio/video clocks,
 SSIM behavior, static duplicate detection, optional detector failure, native face
 crops, checkpoint cancellation/resume and desktop/mobile settings forwarding.
 CPU fixtures do not establish native facial quality.
+
+
+## Dense synchronized facial audit (2026-11-01)
+
+`scripts/benchmark-ltx-facial-quality.py` builds on this benchmark and
+`analyze-ltx-face-segments.py`. Run with the existing image venv and the compiled
+CPU Vision helper. Labels accept letters, numbers, underscores and hyphens:
+
+```sh
+image-venv/bin/python scripts/benchmark-ltx-facial-quality.py \
+  full=/absolute/full.mp4 minimal=/absolute/minimal.mp4 \
+  --job full=/absolute/full-job.json --job minimal=/absolute/minimal-job.json \
+  --vision-helper /private/tmp/video-face-landmarks \
+  --out artifacts/ltx-quality-PRIVATE/comparison
+```
+
+The input must have the 241-frame/24-FPS rolling layout. Every native frame is
+retained. The local HTML adds a common play/pause/seek clock, one-frame stepping,
+original photos, native frame selection, eye timelines and 6/8-second marks.
+It exports separate 0–6, 6–8 and 8–10-second observations and whole-timeline
+closure candidates so an interval crossing a seam is not silently truncated.
+Reopening means passing the aperture threshold, not a validated natural blink.
+
+Additional diagnostics: confident open-eye pupil changes, face-center movement
+and acceleration, translation-registered 128×128 luma residuals, and approximate
+cheek/forehead color changes in Lab D65. Uniform/weakly registered images and
+missing/multiple/low-confidence faces remain uncertain. Vision yaw/roll can be
+coarsely quantized; continuous eye-line angle is reported separately. No optical
+flow, skin classifier, iris segmentation or face-recognition model is implied.
+
+`--reuse` accepts only unchanged video, job, source, helper and analysis-script
+SHA256 fingerprints plus existing native frames; choose a fresh output directory
+when any input or analysis changes. Private media stay in the ignored artifact
+directory. Exact mode `face_guidance` is now recorded in base benchmark settings.
+
+`scripts/probe-ltx-vae-reconstruction.py` is a separate, explicit GPU diagnostic.
+It requires the exact clean pinned runtime and local model directory. Run
+`--help` for required arguments. One `--stage half` or `--stage full` invocation
+reconstructs one still at 352×640 or 704×1280, including the real CRF-18
+preprocessing. Encoder/decoder weights load sequentially under the established
+exclusive lease, unchanged memory admission, managed process and watchdog. It
+uses no transformer/text/audio model, emits PNGs without an output video codec,
+and never changes a production profile. Such a probe isolates spatial VAE loss;
+it cannot prove temporal reconstruction drift or fix a blink.
