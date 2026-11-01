@@ -42,6 +42,38 @@ class TilingBenchmarkTests(unittest.TestCase):
             ["--image", str(image), "0", "1.0", "0"])
         self.assertEqual(argv[argv.index("--frames") + 1], "145")
 
+    def test_720p_portrait_untiled_reference_is_true_control(self):
+        argv = BENCH.command(
+            Path("/tmp/ltx"), Path("/tmp/model"), Path("/tmp/control.mp4"),
+            duration=6, tile_frames=1, tile_spatial=1, tile_overlap=2,
+            prompt="Same person", seed=42, image=Path("/tmp/Julia_Gerber.png"),
+            resolution="720p", aspect_ratio="9:16")
+        for flag, expected in (("--width", "704"), ("--height", "1280"),
+                               ("--frames", "145"), ("--tile-frames", "1"),
+                               ("--tile-spatial", "1"), ("--seed", "42")):
+            self.assertEqual(argv[argv.index(flag) + 1], expected)
+        self.assertEqual(
+            argv[argv.index("--image"):],
+            ["--image", "/tmp/Julia_Gerber.png", "0", "1.0", "0"])
+
+    def test_720p_landscape_matches_production_geometry(self):
+        argv = BENCH.command(
+            Path("ltx"), Path("model"), Path("result.mp4"),
+            duration=5, tile_frames=1, tile_spatial=1, tile_overlap=2,
+            prompt="test", seed=42, resolution="720p", aspect_ratio="16:9")
+        self.assertEqual(argv[argv.index("--width") + 1], "1280")
+        self.assertEqual(argv[argv.index("--height") + 1], "704")
+
+    def test_orientation_and_resolution_reject_unsupported_values(self):
+        for resolution, aspect in (("540p", "9:16"), ("720p", "4:3")):
+            with self.subTest(resolution=resolution, aspect=aspect):
+                with self.assertRaisesRegex(ValueError, "Unsupported resolution"):
+                    BENCH.command(
+                        Path("ltx"), Path("model"), Path("out"),
+                        duration=6, tile_frames=1, tile_spatial=1,
+                        tile_overlap=2, prompt="test", seed=42,
+                        resolution=resolution, aspect_ratio=aspect)
+
     def test_source_image_validation_and_sha256_are_local(self):
         with tempfile.TemporaryDirectory() as folder:
             good = Path(folder, "an image.PNG")
