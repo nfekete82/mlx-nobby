@@ -57,6 +57,15 @@ def command_text(argv: list[str]) -> str:
     return shlex.join(argv)
 
 
+def parse_free_percent(value: str) -> int | None:
+    """Support macOS memory_pressure -Q variants (with or without 'memory')."""
+    match = re.search(
+        r"System-wide(?: memory)? free percentage:\s*(\d+)%",
+        value, re.IGNORECASE,
+    )
+    return int(match.group(1)) if match else None
+
+
 def read_free_percent() -> int | None:
     try:
         completed = subprocess.run(
@@ -64,8 +73,7 @@ def read_free_percent() -> int | None:
             text=True, check=True, timeout=6)
     except (OSError, subprocess.SubprocessError):
         return None
-    match = re.search(r"System-wide free percentage:\s*(\d+)%", completed.stdout)
-    return int(match.group(1)) if match else None
+    return parse_free_percent(completed.stdout)
 
 
 def parse_swap_gib(value: str) -> float | None:
@@ -178,7 +186,10 @@ def main() -> int:
     start_free = read_free_percent()
     initial_swap = read_swap_gib()
     if start_free is None or initial_swap is None:
-        print("Cannot measure memory pressure and swap; aborting.", file=sys.stderr)
+        print(f"Cannot measure memory pressure and swap: "
+              f"free_percent={start_free!r}, swap_gib={initial_swap!r}; "
+              "aborting. Diagnostic commands: memory_pressure -Q; "
+              "sysctl -n vm.swapusage", file=sys.stderr)
         return 2
     if start_free < MIN_START_FREE_PERCENT:
         print(f"Only {start_free}% memory free (needs {MIN_START_FREE_PERCENT}%); "
