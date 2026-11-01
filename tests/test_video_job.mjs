@@ -43,6 +43,14 @@ for (const [fileContext, artifactId] of [
     }
 }
 assert.equal(normalizeMediaPreviewQuality('preview', true), 'preview');
+for (const [input, expected] of [
+    ['preview', 'standard'], ['fast', 'standard'],
+    ['ultra', 'standard'], ['standard', 'standard'],
+    ['quality', 'quality']
+]) {
+    assert.equal(api.__test.normalizeSelectableVideoQuality(input), expected);
+}
+assert.match(source, /CURATED_VIDEO_QUALITIES\.includes\(button\.dataset\.mediaQuality\)/);
 assert.equal(api.__test.isVideoRequest('Erstelle ein Video von einem Ball'), true);
 assert.equal(api.__test.isVideoRequest('Animiere dieses Bild'), true);
 assert.equal(api.__test.isVideoRequest('Wie wird das Wetter?'), false);
@@ -54,7 +62,7 @@ assert.deepEqual(
 );
 assert.deepEqual(
     Array.from(api.__test.videoDurationsForQuality('standard')),
-    [5, 6, 8, 10]
+    [5, 6]
 );
 assert.deepEqual(
     Array.from(api.__test.videoDurationsForQuality('quality')),
@@ -85,7 +93,7 @@ assert.equal(
         20,
         'standard'
     ).duration,
-    10
+    6
 );
 assert.equal(
     api.__test.videoOptionsForRequest(
