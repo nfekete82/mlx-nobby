@@ -62,6 +62,15 @@ MATRIX = [
     ("mach ihre Haare nicht heller", True, "image_edit"),
     ("edit the background not too bright", True, "image_edit"),
     ("mach das Bild nicht dunkel", True, "image_edit"),
+    # Positive image edits may contain *negative content constraints*.
+    # They must not be downgraded to vision chat.
+    ("Ändere das Bild und mach die Farben gleich und auch nicht die Gesichter", True, "image_edit"),
+    ("Ändere das Bild und auch nicht die Kleidung", True, "image_edit"),
+    ("Ändere das Bild, aber nicht die Person", True, "image_edit"),
+    ("Edit the picture, but not the background", True, "image_edit"),
+    # An explicit withdrawal of the job must still win.
+    ("Ändere das Bild und doch nicht", True, "chat"),
+    ("Bearbeite das Bild und bearbeite das Bild nicht", True, "chat"),
     ("mach das Bild nicht", True, "chat"),
     ("bearbeite das Bild nicht", True, "chat"),
     ("edit not the background", True, "chat"),
