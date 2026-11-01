@@ -1,0 +1,52 @@
+{
+  "stage": "full",
+  "width": 704,
+  "height": 1280,
+  "frames": 1,
+  "image_crf": 18,
+  "latent_shape": [
+    1,
+    128,
+    1,
+    40,
+    22
+  ],
+  "latent_dtype": "mlx.core.bfloat16",
+  "decoded_shape": [
+    1,
+    3,
+    1,
+    1280,
+    704
+  ],
+  "encoder_load_and_encode_seconds": 0.5870495830895379,
+  "total_worker_seconds": 0.7888757500331849,
+  "metal_peak_gib": 4.799491576850414,
+  "rgb_mae": 1.434734922466856,
+  "scope": "Same native face ROI, no resizing; pixel reconstruction, not generated quality.",
+  "fixed_input_face_bounds": [
+    168,
+    406,
+    532,
+    770
+  ],
+  "native_face_luma_ssim": 0.9520031213760376,
+  "native_face_luma_mae": 1.8604259751237773,
+  "face_sharpness_input": 75.87874603271484,
+  "face_sharpness_reconstruction": 63.160099029541016,
+  "runtime_commit": "b82b97e3d000e01361f8cfcb745244b15b89a521",
+  "checkpoint_sha256": {
+    "vae_encoder_conv.safetensors": "34625a28efc2c447071221b9855849d9d4a90e19d5363c7347c00896f8409502",
+    "vae_decoder_conv.safetensors": "fd250ca3bdeb4ce67b5343d62a45883924faf5314aa60a870eb7c575f5519c80",
+    "embedded_config.json": "880a7c558adab874ea6b2e4f7f463e9343bc241caa05dddc3c0ce12d1af87cd1"
+  },
+  "source_sha256": "4296d2d80c753633525d6dded18d3d7d95fa876585ca894273c6d2b0273e17d6",
+  "failed_half_attempt": {
+    "status": "failed_before_vae_weights",
+    "error": "MLX array.clip unavailable; corrected to mx.clip",
+    "render_seconds": null,
+    "controller_wall_seconds": null,
+    "timing_limits": "Exact failed-attempt wall time was not instrumented",
+    "reconstruction": false
+  }
+}

@@ -1611,7 +1611,7 @@
 <script src="/assets/chat/response-length.js?v=20261020-auto-conversation"></script>
 <script src="/assets/chat/interactive-questions.js?v=20261028-forms-v3"></script>
 <script src="/assets/chat/voice-video.js?v=20261030-ltx-max-opt-in"></script>
-<script src="/assets/chat/generation.js?v=20261030-german-quote-parser"></script>
+<script src="/assets/chat/generation.js?v=20261101-video-quality-audit"></script>
 <link rel="stylesheet" href="/assets/chat/multi-image-video.css?v=20261022">
 <script src="/assets/chat/multi-image-video.js?v=20261022" defer></script>
 <script src="/assets/history-cleanup.js?v=20260909-cleanup"></script>
@@ -2107,16 +2107,32 @@
             </select>
         </label>
 
+        <p id="videoQualitySummary" class="media-sampling-hint" hidden aria-live="polite"></p>
+        <label id="videoContinuationField" class="media-duration-field" hidden>
+            <span>Fortsetzung</span>
+            <select id="videoContinuation" aria-label="Videofortsetzung">
+                <option value="auto" selected>Automatisch passend zur Länge</option>
+                <option value="rolling">Rolling-Test · 10 s · 540p/720p</option>
+            </select>
+        </label>
+        <details id="videoExpert" hidden>
+            <summary>Video: Seed und experimentelle Textführung</summary>
+            <label class="media-duration-field"><span>Reproduzierbarer Seed</span>
+                <input id="videoSeed" type="number" min="0" max="2147483647" step="1" value="0" aria-label="Video-Seed">
+            </label>
         <label id="videoFaceGuidanceField" class="media-duration-field" hidden>
-            <span>Gesichtstextführung (Rolling-Test)</span>
+            <span>Gesichtstextführung · experimentell</span>
             <select id="videoFaceGuidance" aria-label="Gesichtstextführung">
-                <option value="" selected>Bisheriges Verhalten</option>
+                <option value="" selected>Standard unverändert · Rolling FULL</option>
                 <option value="off">Aus – keine automatischen Hinweise</option>
                 <option value="minimal">Minimal – natürliche Mimik</option>
                 <option value="full">Voll – detaillierte Gesichtshinweise</option>
                 <option value="initial_off">Nur Start aus – Extend voll (6 s wie Aus)</option>
             </select>
         </label>
+
+            <p>FULL bleibt das bisherige Rolling-Verhalten. Andere Textführungen sind nicht allgemein freigegeben; das Originalbild bleibt erhalten.</p>
+        </details>
 
         <label
             id="videoDurationField"
