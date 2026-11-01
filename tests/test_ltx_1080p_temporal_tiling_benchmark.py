@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import tempfile
 from pathlib import Path
 import unittest
 from unittest import mock
@@ -29,6 +30,40 @@ class TilingBenchmarkTests(unittest.TestCase):
         self.assertEqual(args[args.index("--tile-overlap") + 1], "2")
         self.assertEqual(args[args.index("--stage1-steps") + 1], "8")
         self.assertEqual(args[args.index("--stage2-steps") + 1], "3")
+
+    def test_image_to_video_uses_strong_frame_zero_anchor_without_recompression(self):
+        image = Path("/tmp/my test image.png")
+        argv = BENCH.command(
+            Path("/tmp/ltx"), Path("/tmp/model"), Path("/tmp/result.mp4"),
+            duration=6, tile_frames=3, tile_spatial=2, tile_overlap=2,
+            prompt="Same person from the image", seed=42, image=image)
+        self.assertEqual(
+            argv[argv.index("--image"):],
+            ["--image", str(image), "0", "1.0", "0"])
+        self.assertEqual(argv[argv.index("--frames") + 1], "145")
+
+    def test_source_image_validation_and_sha256_are_local(self):
+        with tempfile.TemporaryDirectory() as folder:
+            good = Path(folder, "an image.PNG")
+            good.write_bytes(b"\x89PNG\r\n\x1a\n" + b"pixels")
+            BENCH.verify_source_image(good)
+            self.assertEqual(len(BENCH.image_digest(good)), 64)
+            bad = Path(folder, "invalid.jpg")
+            bad.write_bytes(b"hello world")
+            with self.assertRaisesRegex(ValueError, "not recognizable"):
+                BENCH.verify_source_image(bad)
+            missing = Path(folder, "missing.jpg")
+            with self.assertRaisesRegex(ValueError, "does not exist"):
+                BENCH.verify_source_image(missing)
+
+    def test_image_dry_run_never_launches_a_render(self):
+        with tempfile.TemporaryDirectory() as folder:
+            image = Path(folder, "portrait.png")
+            image.write_bytes(b"\x89PNG\r\n\x1a\n" + b"pixels")
+            with mock.patch("sys.argv", ["experiment", "--image", str(image), "--duration", "6"]):
+                with mock.patch.object(BENCH.subprocess, "Popen") as spawn:
+                    self.assertEqual(BENCH.main(), 0)
+                    spawn.assert_not_called()
 
     def test_duration_is_explicitly_bounded(self):
         with self.assertRaises(ValueError):
