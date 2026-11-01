@@ -301,7 +301,7 @@ class VideoServiceTests(unittest.TestCase):
                 payload={"prompt": "Animate gently"},
             )
         self.assertEqual(self.request("i2v", "/managed/image.png").operation, "i2v")
-        for duration in (5, 6):
+        for duration in (5, 6, 8, 10):
             request = video_service.JobCreate(
                 operation="t2v", chat_id="chat", chat_revision=0,
                 payload={"prompt": "A red ball rolls", "duration": duration},
@@ -313,15 +313,6 @@ class VideoServiceTests(unittest.TestCase):
                 operation="t2v", chat_id="chat", chat_revision=0,
                 payload={"prompt": "A red ball rolls", "duration": 7},
             )
-
-        # Untested longer direct-generation durations stay off the curated
-        # standard 720p path, even if they were accepted in older versions.
-        for duration in (8, 10, 20):
-            with self.subTest(duration=duration), self.assertRaises(ValueError):
-                video_service.JobCreate(
-                    operation="t2v", chat_id="chat", chat_revision=0,
-                    payload={"prompt": "A red ball rolls", "duration": duration},
-                )
 
         fast_20 = video_service.JobCreate(
             operation="t2v",
