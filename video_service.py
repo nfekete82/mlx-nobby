@@ -55,7 +55,7 @@ RESOLUTION_SIZES = {
 SUPPORTED_DURATIONS_BY_RESOLUTION = {
     "preview": {2},
     "540p": {5, 6, 8, 10, 20},
-    "720p": {5, 6, 8, 10},
+    "720p": {5, 6},
     "1080p": {5},
 }
 _lock = threading.Lock()
