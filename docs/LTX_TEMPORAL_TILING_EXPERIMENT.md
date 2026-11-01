@@ -95,10 +95,70 @@ duration changes the model's generation even with the same seed. If identity
 drifts in the six-second render, an additional 6-second run with
 --tile-frames 2 can isolate temporal tile-count effects, if sufficient RAM.
 
+## Controlled identity failure diagnosis (after first 1080p I2V)
+
+A 6-second 1080p 16:9 I2V run with 3 temporal and 2x2 spatial tiles
+completed without swap growth when chat was stopped. Visual inspection
+found a recognizable person for approximately 1 second, followed by
+identity loss and a four-face 2x2 grid around 2 seconds. This is an
+observed failure, **not a proven root cause**. The reference image
+is portrait (1097x1434) while the failed output was landscape
+(1920x1088), which also changes the framing.
+
+The benchmark now accepts --resolution 720p and --aspect-ratio 9:16
+(704x1280, consistent with MLX-Nobby's production geometry).
+Keep the source photo, seed, prompt, duration and geometry constant
+for all A/B runs. **Do only the first run initially.**
+
+    cd ~/mlx-web
+    git fetch origin feat/ltx-1080p-temporal-tiling-smoke-20261101
+    git show FETCH_HEAD:scripts/benchmark-ltx-1080p-tiling.py > /tmp/ltx-1080p-tiling-test.py
+
+    BILD="$HOME/Downloads/Julia_Gerber.png"
+
+    # Control: 720p portrait, 6 seconds, untiled in both dimensions
+    python3 /tmp/ltx-1080p-tiling-test.py --run \
+        --image "$BILD" --resolution 720p --aspect-ratio 9:16 \
+        --duration 6 --tile-frames 1 --tile-spatial 1 \
+        --tile-overlap 2 --seed 42
+
+If the untiled clip is stable, compare one variable at a time:
+
+    # Spatial tiling only (2x2), no temporal tiling
+    python3 /tmp/ltx-1080p-tiling-test.py --run \
+        --image "$BILD" --resolution 720p --aspect-ratio 9:16 \
+        --duration 6 --tile-frames 1 --tile-spatial 2 \
+        --tile-overlap 2 --seed 42
+
+    # Temporal tiling only (3 partitions), no spatial tiling
+    python3 /tmp/ltx-1080p-tiling-test.py --run \
+        --image "$BILD" --resolution 720p --aspect-ratio 9:16 \
+        --duration 6 --tile-frames 3 --tile-spatial 1 \
+        --tile-overlap 2 --seed 42
+
+Interpretation:
+
+- If untiled also fails, inspect I2V conditioning, image crop/geometry
+  and distilled inference before blaming tiling.
+- If spatial-only fails with a 2x2 grid, investigate spatial tiler
+  cross-tile context and blending.
+- If temporal-only changes identities at temporal boundaries,
+  investigate temporal attention context and anchor propagation.
+- If both isolated modes work but combined fails, investigate their
+  interaction.
+- A memory-guard abort is **not** evidence about visual quality.
+  Keep the memory watchdog enabled.
+
+The benchmark now refuses to render while the chat runtime listens
+on port 8000. It never stops other services automatically. Stop only
+an idle chat server using mlx stop before running; mlx start restores it.
+
+Production 1080p limits remain unchanged.
+
 ## Safeguards and limitations
 
 - The script does not install packages, modify the worker, change model weights, overwrite videos, change the current Git branch or restart services.
-- It checks for active MLX-Nobby video jobs, a valid CLI, macOS, model files, and memory/swap telemetry.
+- It checks for active MLX-Nobby video jobs, an active chat listener (port 8000), a valid CLI, macOS, model files, and memory/swap telemetry.
 - A minimum 30% system free memory is required to start.
 - Every two seconds it monitors free memory and swap and stops its own process group on below 12% free, more than 3 GiB additional swap, or 60 minutes elapsed.
 - The guard is best effort: extremely fast Metal memory spikes may occur before a sample and cause an OOM.
