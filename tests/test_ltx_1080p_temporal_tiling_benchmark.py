@@ -55,7 +55,32 @@ class TilingBenchmarkTests(unittest.TestCase):
         self.assertAlmostEqual(
             BENCH.parse_swap_gib("total = 10240.00M used = 2048.00M free = 8192.00M"),
             2.0)
+        self.assertAlmostEqual(
+            BENCH.parse_swap_gib("vm.swapusage: total = 10000.00M used: 1.5 GiB (encrypted)"),
+            1.5)
+        self.assertEqual(BENCH.parse_swap_gib("used = 0.00M"), 0.0)
         self.assertIsNone(BENCH.parse_swap_gib("unsupported"))
+
+    def test_swap_probe_falls_back_to_another_sysctl_invocation(self):
+        from subprocess import CompletedProcess
+        first = CompletedProcess(["/usr/sbin/sysctl"], 1, "", "permission denied")
+        second = CompletedProcess(["/usr/sbin/sysctl"], 0,
+                                  "vm.swapusage: total = 2048.00M used = 512.00M free = 1536.00M", "")
+        with mock.patch.object(BENCH.subprocess, "run",
+                               side_effect=[first, second]) as run:
+            self.assertAlmostEqual(BENCH.read_swap_gib(), 0.5)
+            self.assertEqual(run.call_count, 2)
+            self.assertEqual(BENCH._SWAP_PROBE_DETAILS, "")
+
+    def test_swap_probe_fails_closed_and_reports_raw_diagnostics(self):
+        from subprocess import CompletedProcess
+        result = CompletedProcess(["sysctl"], 1, "", "unknown oid")
+        with mock.patch.object(BENCH.subprocess, "run",
+                               return_value=result) as run:
+            self.assertIsNone(BENCH.read_swap_gib())
+            self.assertEqual(run.call_count, 4)
+            self.assertIn("unknown oid", BENCH._SWAP_PROBE_DETAILS)
+
 
     def test_preflight_dry_run_does_not_start_a_process(self):
         with mock.patch("sys.argv", ["experiment", "--duration", "6"]):
