@@ -77,15 +77,15 @@ def read_free_percent() -> int | None:
 
 
 def parse_swap_gib(value: str) -> float | None:
-    """Parse macOS swapusage with M/G suffixes, optional iB/B and whitespace."""
+    """Parse localized macOS swapusage (comma/dot decimals, NBSP, units)."""
     match = re.search(
-        r"\bused\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)\s*"
+        r"\bused\s*[:=]\s*([0-9]+(?:[.,][0-9]+)?)\s*"
         r"([KMGT])(?:i?B)?(?=\s|[,;)]|$)",
         value, re.IGNORECASE,
     )
     if match is not None:
         power = {"K": 1, "M": 2, "G": 3, "T": 4}[match.group(2).upper()]
-        return float(match.group(1)) * (1024 ** power) / GIB
+        return float(match.group(1).replace(",", ".")) * (1024 ** power) / GIB
     bytes_match = re.search(
         r"\bused\s*[:=]\s*(\d+)\s*(?:bytes?|B)\b",
         value, re.IGNORECASE,
