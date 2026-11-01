@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -181,6 +182,15 @@ def read_swap_gib() -> float | None:
     return None
 
 
+def chat_runtime_listening() -> bool:
+    """Conservative check: this isolated test cannot unload the chat model."""
+    try:
+        with socket.create_connection(("127.0.0.1", 8000), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
 def video_service_busy() -> bool:
     try:
         with urllib.request.urlopen("http://127.0.0.1:8060/health",
@@ -274,6 +284,12 @@ def main() -> int:
         return 2
     if video_service_busy():
         print("Another MLX-Nobby video job is active; aborting.", file=sys.stderr)
+        return 2
+    if chat_runtime_listening():
+        print("MLX chat runtime is still listening on port 8000. "
+              "For an isolated benchmark, finish chat requests, run "
+              "`mlx stop`, verify `mlx status`, then retry. "
+              "The script never stops other services.", file=sys.stderr)
         return 2
     try:
         require_supported_cli(args.cli.expanduser())
