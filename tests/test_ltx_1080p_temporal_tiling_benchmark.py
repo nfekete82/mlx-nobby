@@ -37,6 +37,17 @@ class TilingBenchmarkTests(unittest.TestCase):
                 duration=20, tile_frames=2, tile_spatial=2,
                 tile_overlap=2, prompt="test", seed=42)
 
+    def test_memory_pressure_parser_accepts_real_macos_output(self):
+        self.assertEqual(
+            BENCH.parse_free_percent(
+                "The system has 51539607552 (3145728 pages with a page size of 16384).\n"
+                "System-wide memory free percentage: 40%\n"),
+            40)
+        self.assertEqual(
+            BENCH.parse_free_percent("System-wide free percentage: 31%\n"),
+            31)
+        self.assertIsNone(BENCH.parse_free_percent("unsupported format"))
+
     def test_swap_parser_supports_macos_units(self):
         self.assertAlmostEqual(
             BENCH.parse_swap_gib("total = 10240.00M  used = 7.25G  free = 2.75G"),
