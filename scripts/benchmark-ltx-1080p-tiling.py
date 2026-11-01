@@ -77,22 +77,52 @@ def read_free_percent() -> int | None:
 
 
 def parse_swap_gib(value: str) -> float | None:
-    match = re.search(r"\bused\s*=\s*([\d.]+)\s*([KMGT])(?:i?B)?\b",
-                      value, re.IGNORECASE)
-    if match is None:
-        return None
-    power = {"K": 1, "M": 2, "G": 3, "T": 4}[match.group(2).upper()]
-    return float(match.group(1)) * (1024 ** power) / GIB
+    """Parse macOS swapusage with M/G suffixes, optional iB/B and whitespace."""
+    match = re.search(
+        r"\bused\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)\s*"
+        r"([KMGT])(?:i?B)?(?=\s|[,;)]|$)",
+        value, re.IGNORECASE,
+    )
+    if match is not None:
+        power = {"K": 1, "M": 2, "G": 3, "T": 4}[match.group(2).upper()]
+        return float(match.group(1)) * (1024 ** power) / GIB
+    bytes_match = re.search(
+        r"\bused\s*[:=]\s*(\d+)\s*(?:bytes?|B)\b",
+        value, re.IGNORECASE,
+    )
+    return int(bytes_match.group(1)) / GIB if bytes_match else None
+
+
+_SWAP_PROBE_DETAILS = ""
 
 
 def read_swap_gib() -> float | None:
-    try:
-        completed = subprocess.run(
-            ["/usr/sbin/sysctl", "-n", "vm.swapusage"], capture_output=True,
-            text=True, check=True, timeout=6)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return parse_swap_gib(completed.stdout)
+    """Try both common macOS sysctl paths and output modes, fail closed."""
+    global _SWAP_PROBE_DETAILS
+    attempts = []
+    for executable in ("/usr/sbin/sysctl", "sysctl"):
+        for option in (("-n", "vm.swapusage"), ("vm.swapusage",)):
+            cmd = [executable, *option]
+            try:
+                completed = subprocess.run(
+                    cmd, capture_output=True, text=True, check=False,
+                    timeout=6,
+                )
+            except (OSError, subprocess.SubprocessError) as error:
+                attempts.append(f"{' '.join(cmd)}: {type(error).__name__}: {error}")
+                continue
+            if completed.returncode == 0:
+                result = parse_swap_gib(completed.stdout)
+                if result is not None:
+                    _SWAP_PROBE_DETAILS = ""
+                    return result
+            details = (completed.stdout + " " + completed.stderr).strip()
+            attempts.append(
+                f"{' '.join(cmd)}: exit={completed.returncode}; "
+                f"output={details[:180]!r}"
+            )
+    _SWAP_PROBE_DETAILS = " | ".join(attempts)[:900]
+    return None
 
 
 def video_service_busy() -> bool:
@@ -190,6 +220,8 @@ def main() -> int:
               f"free_percent={start_free!r}, swap_gib={initial_swap!r}; "
               "aborting. Diagnostic commands: memory_pressure -Q; "
               "sysctl -n vm.swapusage", file=sys.stderr)
+        if initial_swap is None:
+            print(f"Swap probe details: {_SWAP_PROBE_DETAILS}", file=sys.stderr)
         return 2
     if start_free < MIN_START_FREE_PERCENT:
         print(f"Only {start_free}% memory free (needs {MIN_START_FREE_PERCENT}%); "
