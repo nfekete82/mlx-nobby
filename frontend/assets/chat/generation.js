@@ -83,13 +83,21 @@ function normalizeMediaPreviewQuality(quality, previewAvailable) {
 const VIDEO_DURATIONS_BY_QUALITY = Object.freeze({
     preview: Object.freeze([2]),
     fast: Object.freeze([5, 6, 8, 10, 20]),
-    standard: Object.freeze([5, 6, 8, 10]),
+    standard: Object.freeze([5, 6]),
     quality: Object.freeze([5])
 });
 
 const VIDEO_DURATIONS = new Set(
     Object.values(VIDEO_DURATIONS_BY_QUALITY).flat()
 );
+
+// The normal video picker offers only the production-tested quality paths.
+// Legacy preview/540p request modes remain internal for existing integrations.
+const CURATED_VIDEO_QUALITIES = Object.freeze(['standard', 'quality']);
+function normalizeSelectableVideoQuality(quality) {
+    return CURATED_VIDEO_QUALITIES.includes(quality) ? quality : 'standard';
+}
+
 
 const VIDEO_FORMATS = Object.freeze([
     'landscape',
@@ -3282,9 +3290,11 @@ const imageFiles =
             const previewAvailable = mediaPreviewAvailable(
                 mediaQualityKind, fileContext, activeArtifactIdForEdit
             );
-            const normalizedMediaQuality = mediaQualityKind
-                ? normalizeMediaPreviewQuality(selectedMediaQuality, previewAvailable)
-                : selectedMediaQuality;
+            const normalizedMediaQuality = mediaQualityKind === 'video'
+                ? normalizeSelectableVideoQuality(selectedMediaQuality)
+                : mediaQualityKind
+                    ? normalizeMediaPreviewQuality(selectedMediaQuality, previewAvailable)
+                    : selectedMediaQuality;
             if (mediaQualityKind === 'video' && normalizedMediaQuality !== selectedMediaQuality) {
                 const legacySelect = document.getElementById('mediaQuality');
                 if (legacySelect) {
@@ -3441,7 +3451,9 @@ const imageFiles =
 
                 {
                     // Default is Standard; subsequent jobs reuse this session's choice.
-                    let choice = selectedMediaQuality;
+                    let choice = mediaQualityKind === 'video'
+                        ? normalizeSelectableVideoQuality(selectedMediaQuality)
+                        : selectedMediaQuality;
                     let samplingCustom = null;
                     // Existing explicit caller options must be visible rather
                     // than silently trumping the selected quality preset.
@@ -3604,9 +3616,25 @@ const imageFiles =
                                 button.dataset.mediaQuality === 'preview';
 
                             button.hidden =
+                                (mediaQualityKind === 'video' &&
+                                 !CURATED_VIDEO_QUALITIES.includes(button.dataset.mediaQuality)) ||
                                 (isPreview && !previewAvailable) ||
                                 (button.dataset.mediaQuality === 'ultra' &&
                                  (mediaQualityKind !== 'image' || hasRagnarokSampling()));
+
+                            // Video labels describe exact native output and validated duration.
+                            // Restore the image labels each time the modal is used for images.
+                            const hint = button.querySelector?.('span');
+                            if (hint && ['standard', 'quality'].includes(button.dataset.mediaQuality)) {
+                                if (!hint.dataset.imageQualityHint) {
+                                    hint.dataset.imageQualityHint = hint.textContent;
+                                }
+                                hint.textContent = mediaQualityKind === 'video'
+                                    ? (button.dataset.mediaQuality === 'standard'
+                                        ? generationText('ui.video_curated_720p', '720p · 5–6 s · ohne Tiling')
+                                        : generationText('ui.video_curated_1080p', '1080p · 5 s · ohne Tiling'))
+                                    : hint.dataset.imageQualityHint;
+                            }
 
                             const active =
                                 !button.hidden &&
@@ -3985,9 +4013,9 @@ const imageFiles =
                         return;
                     }
 
-                    selectedMediaQuality = normalizeMediaPreviewQuality(
-                        result, previewAvailable
-                    );
+                    selectedMediaQuality = mediaQualityKind === 'video'
+                        ? normalizeSelectableVideoQuality(result)
+                        : normalizeMediaPreviewQuality(result, previewAvailable);
 
                     /*
                      * Keep the old session setting in sync for existing
