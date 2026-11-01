@@ -42,6 +42,59 @@ For an untiled 5-second reference (same prompt and seed):
 
     python3 /tmp/ltx-1080p-tiling-test.py --run --duration 5 --tile-frames 1 --tile-spatial 1
 
+## Image-to-video identity experiment
+
+A 6-second 1080p text-to-video render with 3 temporal and 2x2 spatial tiles
+completed on the M5 Max with the chat runtime stopped, but the person visibly
+changed identity. To distinguish arbitrary T2V faces from temporal-tiling
+identity drift, the benchmark now accepts a single **local** reference image.
+
+Choose a clear **photo of one adult** with the entire intended subject visible,
+preferably already composed near the 16:9 output framing. Use PNG or JPEG (or
+WebP); export HEIC before using. A different aspect ratio may lead to cropping
+when LTX prepares the reference image. The test does not alter the input file.
+
+Example, replacing the path with an actual existing file on your Mac:
+
+    BILD="$HOME/Desktop/testperson.jpg"
+    test -f "$BILD" || echo "Image missing; choose the correct path"
+
+Refresh the isolated script, without changing your current git branch:
+
+    cd ~/mlx-web
+    git fetch origin feat/ltx-1080p-temporal-tiling-smoke-20261101
+    git show FETCH_HEAD:scripts/benchmark-ltx-1080p-tiling.py > /tmp/ltx-1080p-tiling-test.py
+
+Verify the CLI parameters first, without rendering:
+
+    python3 /tmp/ltx-1080p-tiling-test.py --image "$BILD" --duration 6 --tile-frames 3 --tile-spatial 2
+
+If MLX-Nobby chat has already been safely stopped, and no other model job is
+active, render the proven RAM-friendly tiling setup:
+
+    python3 /tmp/ltx-1080p-tiling-test.py --run --image "$BILD" --duration 6 --tile-frames 3 --tile-spatial 2 --tile-overlap 2
+
+The image is referenced locally as a full-strength frame-0 anchor with CRF 0
+(no additional H.264 recompression of the source for conditioning); no images
+are uploaded. With --image, a neutral low-motion identity prompt is selected
+automatically. The source path and SHA-256 are included in the private local
+report so repeat runs can be compared. This is **only a first-frame anchor**,
+not a guarantee of constant identity throughout the entire video.
+
+**What to look for:** the very first generated frame should resemble the
+reference photo. Check face, hair, body, clothes and camera framing at 1, 2,
+3, 4, 5 and 6 seconds. If identity changes after a particular point, note the
+time. Distinguish continuous identity drift from sudden temporal-tile seams.
+
+Optional 5-second reference, using the same image/prompt/seed/tile settings:
+
+    python3 /tmp/ltx-1080p-tiling-test.py --run --image "$BILD" --duration 5 --tile-frames 3 --tile-spatial 2 --tile-overlap 2
+
+The 5-second and 6-second results are **not** expected to be frame-identical:
+duration changes the model's generation even with the same seed. If identity
+drifts in the six-second render, an additional 6-second run with
+--tile-frames 2 can isolate temporal tile-count effects, if sufficient RAM.
+
 ## Safeguards and limitations
 
 - The script does not install packages, modify the worker, change model weights, overwrite videos, change the current Git branch or restart services.
