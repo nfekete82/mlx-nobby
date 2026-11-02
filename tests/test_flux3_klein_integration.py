@@ -137,7 +137,8 @@ def test_legacy_negative_prompt_is_removed_before_flux3_generation(monkeypatch):
     assert resolved["params"]["steps"] == 16
     assert "negative_prompt" not in resolved["params"]
     # The same optional exclusion is still passed to models that support it.
-    another = model | {"model_family": "flux2-klein", "base_model": "flux2-klein-4b"}
+    another = model | {"model_family": "flux2-klein", "base_model": "flux2-klein-4b",
+                       "default_guidance": 1.0}
     monkeypatch.setattr(image_service, "_generation_model",
                         lambda _model_id, _prompt: another)
     resolved_other = image_service._resolve_generation(request)
