@@ -68,9 +68,18 @@ MATRIX = [
     ("Ändere das Bild und auch nicht die Kleidung", True, "image_edit"),
     ("Ändere das Bild, aber nicht die Person", True, "image_edit"),
     ("Edit the picture, but not the background", True, "image_edit"),
+    # Visual appearance negation must not be mistaken for "do not edit".
+    ("ändere das bild: Realistic photo of a natural woman, average body type, not a model, realistic skin texture, features not perfectly symmetrical.", True, "image_edit"),
+    ("ändere das bild: Realistic photo of a natural woman, average body type, not a model, realistic skin texture, features not perfectly symmetrical.", False, "chat"),
+    ("Edit this picture: an ordinary person, not a model, natural lighting.", True, "image_edit"),
+    ("Edit this image: a portrait not perfectly symmetrical.", True, "image_edit"),
+    ("Bearbeite das Bild: natürlich, nicht wie ein Modell.", True, "image_edit"),
+    ("Bearbeite das Bild: nicht perfekt symmetrisch.", True, "image_edit"),
     # An explicit withdrawal of the job must still win.
     ("Ändere das Bild und doch nicht", True, "chat"),
     ("Bearbeite das Bild und bearbeite das Bild nicht", True, "chat"),
+    ("Edit this picture, do not edit it", True, "chat"),
+    ("Ändere das Bild nicht", True, "chat"),
     ("mach das Bild nicht", True, "chat"),
     ("bearbeite das Bild nicht", True, "chat"),
     ("edit not the background", True, "chat"),
