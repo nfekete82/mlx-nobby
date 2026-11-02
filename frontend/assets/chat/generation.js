@@ -127,6 +127,7 @@ function normalizeImageCreationPreferences(value) {
         format: IMAGE_FORMATS.includes(data.format)
             ? data.format : 'square',
         model: typeof data.model === 'string' && data.model.trim().length <= 160
+            && data.model.trim() !== 'mflux-flux3-image-klein-q4'
             ? (data.model.trim() || 'auto') : 'auto',
         negative_prompt: typeof data.negative_prompt === 'string'
             ? data.negative_prompt.slice(0, 2000) : ''
@@ -331,10 +332,13 @@ async function updateVideoProfileAvailability(select) {
 
 function storedImageModel() {
     try {
-        return String(
+        const saved = String(
             window.localStorage?.getItem?.(IMAGE_MODEL_STORAGE_KEY) ||
             'auto'
         ).trim() || 'auto';
+        // An intentionally retired test model should not block new image
+        // jobs after its registry entry has been removed.
+        return saved === 'mflux-flux3-image-klein-q4' ? 'auto' : saved;
     } catch (_) {
         return 'auto';
     }
@@ -357,7 +361,9 @@ async function updateImageModelOptions(
     capability = 'text_to_image'
 ) {
     if (!select) return 'auto';
-    const requested = String(preferred || storedImageModel() || 'auto').trim() || 'auto';
+    const originalRequested = String(preferred || storedImageModel() || 'auto').trim() || 'auto';
+    const requested = originalRequested === 'mflux-flux3-image-klein-q4'
+        ? 'auto' : originalRequested;
 
     const automatic = document.createElement('option');
     automatic.value = 'auto';
