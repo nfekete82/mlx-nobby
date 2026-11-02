@@ -99,7 +99,47 @@ def process_model(command: str) -> str:
         and argv.index("--model") + 1 < len(argv)) else ""
 
 
-def memory_gate(snapshot: dict) -> list[str]:
+def parse_vm_stat_swap_delta(output: str, seconds: int) -> dict[str, int]:
+    """Read the interval row, never cumulative counters from the first row."""
+    lines = [line.split() for line in output.splitlines() if line.strip()]
+    header_index = next(
+        (i for i, cells in enumerate(lines)
+         if "swapins" in cells and "swapouts" in cells),
+        None,
+    )
+    if header_index is None or len(lines) < header_index + 3:
+        raise ValueError("vm_stat interval rows unavailable")
+    header = lines[header_index]
+    sample = lines[header_index + 2]
+    if len(sample) != len(header):
+        raise ValueError("vm_stat interval row shape changed")
+    in_token = sample[header.index("swapins")]
+    out_token = sample[header.index("swapouts")]
+    if not in_token.isascii() or not out_token.isascii() or not (
+        in_token.isdecimal() and out_token.isdecimal()
+    ):
+        raise ValueError("vm_stat interval counters malformed")
+    return {
+        "window_seconds": seconds,
+        "swapins_pages": int(in_token),
+        "swapouts_pages": int(out_token),
+    }
+
+
+def sample_swap_activity(seconds: int = 3) -> dict[str, int]:
+    """Check actual recent swapping only if macOS still holds old swap pages."""
+    result = subprocess.run(
+        ["vm_stat", "-c", "2", str(seconds)],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=seconds + 10,
+        env={**os.environ, "LC_ALL": "C"},
+    )
+    return parse_vm_stat_swap_delta(result.stdout, seconds)
+
+
+def memory_gate(snapshot: dict, swap_activity: dict | None = None) -> list[str]:
     errors = []
     for key in ("free_percent", "headroom_gb", "swap_used_gb"):
         val = snapshot.get(key)
@@ -111,11 +151,49 @@ def memory_gate(snapshot: dict) -> list[str]:
         errors.append(f"free_percent below {MIN_FREE_PERCENT:g}%")
     if snapshot["headroom_gb"] < MIN_HEADROOM_GB:
         errors.append(f"headroom_gb below {MIN_HEADROOM_GB:g}")
-    if snapshot["swap_used_gb"] > MAX_SWAP_GB:
-        errors.append(f"swap_used_gb above {MAX_SWAP_GB:g}")
     if snapshot.get("pressure") != "normal":
         errors.append("memory pressure is not normal")
+    if snapshot["swap_used_gb"] > MAX_SWAP_GB:
+        # Swap OCCUPANCY is historical on macOS. Allow a high old allocation
+        # only when a new interval contains zero outbound swap pages and ALL
+        # regular memory pressure/headroom guards already pass. Missing data
+        # fails closed, as does even one recent swapout.
+        if not isinstance(swap_activity, dict):
+            errors.append(f"swap_used_gb above {MAX_SWAP_GB:g}; swap activity not verified")
+        elif (type(swap_activity.get("swapouts_pages")) is not int
+              or type(swap_activity.get("window_seconds")) is not int
+              or swap_activity["window_seconds"] < 2
+              or swap_activity["swapouts_pages"] < 0):
+            errors.append("swap activity unavailable or invalid")
+        elif swap_activity["swapouts_pages"] != 0:
+            errors.append("active swapouts detected")
     return errors
+
+
+def memory_diagnostics(profile) -> tuple[dict, dict | None, list[str]]:
+    snapshot = profile.memory_snapshot()
+    activity = None
+    used = snapshot.get("swap_used_gb")
+    # Only run the interval probe if an otherwise acceptable memory state
+    # is blocked exclusively by historical swap occupancy.
+    if (type(used) in (int, float) and math.isfinite(used)
+            and used > MAX_SWAP_GB
+            and snapshot.get("pressure") == "normal"
+            and type(snapshot.get("free_percent")) in (int, float)
+            and snapshot["free_percent"] >= MIN_FREE_PERCENT
+            and type(snapshot.get("headroom_gb")) in (int, float)
+            and snapshot["headroom_gb"] >= MIN_HEADROOM_GB):
+        try:
+            activity = sample_swap_activity()
+        except (OSError, ValueError, subprocess.CalledProcessError,
+                subprocess.TimeoutExpired):
+            # Never expose an upstream command or its raw output.
+            activity = {"status": "unavailable"}
+    return snapshot, activity, memory_gate(snapshot, activity)
+
+
+def memory_blockers(profile) -> list[str]:
+    return memory_diagnostics(profile)[2]
 
 
 def idle_error_code(exc: BaseException) -> str:
@@ -196,9 +274,11 @@ def preflight(content: str, profile, candidate_model: str | None) -> tuple[dict,
         checks.append("Chat server health unavailable")
 
     try:
-        memory = profile.memory_snapshot()
+        memory, swap_activity, memory_errors = memory_diagnostics(profile)
         status["memory"] = memory
-        checks.extend(memory_gate(memory))
+        if swap_activity is not None:
+            status["swap_activity"] = swap_activity
+        checks.extend(memory_errors)
     except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError):
         checks.append("Agent memory snapshot unavailable")
     return status, checks
@@ -239,7 +319,7 @@ def speed_tests(probe, model: str, samples: int, timeout: int, memory_probe=None
                     max(r["completion_tokens"] for r in rows),
                 ],
             }
-            if memory_probe and memory_gate(memory_probe()):
+            if memory_probe and memory_probe():
                 raise RuntimeError("Memory admission failed during speed test")
     return result
 
@@ -310,7 +390,7 @@ def run(args, profile, probe, quality):
         profile.ensure_idle()
         result["baseline_before"] = profile.memory_snapshot()
         result["baseline_speed"] = speed_tests(
-            probe, status["original_model"], args.samples, args.timeout, profile.memory_snapshot)
+            probe, status["original_model"], args.samples, args.timeout, lambda: memory_blockers(profile))
         result["baseline_after"] = profile.memory_snapshot()
         if args.with_quality:
             with tempfile.TemporaryDirectory(prefix="nobby-quality-ab-") as workspace:
@@ -319,7 +399,7 @@ def run(args, profile, probe, quality):
                 p = Path(workspace)
                 baseline_quality = quality_test(p / "baseline.json", args.timeout)
                 profile.ensure_idle()
-                if memory_gate(profile.memory_snapshot()):
+                if memory_blockers(profile):
                     raise RuntimeError("Memory admission failed after baseline")
                 if profile.CONFIG.read_text(encoding="utf-8") != original:
                     raise RuntimeError("Config changed externally before candidate")
@@ -329,15 +409,15 @@ def run(args, profile, probe, quality):
                 verify_process(profile, target, dflash=True)
                 profile.ensure_idle()
                 result["candidate_before"] = profile.memory_snapshot()
-                if memory_gate(result["candidate_before"]):
+                if memory_blockers(profile):
                     raise RuntimeError("Memory admission failed after candidate start")
-                result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout, profile.memory_snapshot)
+                result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout, lambda: memory_blockers(profile))
                 result["candidate_after"] = profile.memory_snapshot()
                 candidate_quality = quality_test(p / "candidate.json", args.timeout)
                 result["quality"] = quality.compare(baseline_quality, candidate_quality)
         else:
             profile.ensure_idle()
-            if memory_gate(profile.memory_snapshot()):
+            if memory_blockers(profile):
                 raise RuntimeError("Memory admission failed after baseline")
             if profile.CONFIG.read_text(encoding="utf-8") != original:
                 raise RuntimeError("Config changed externally before candidate")
@@ -347,9 +427,9 @@ def run(args, profile, probe, quality):
             verify_process(profile, target, dflash=True)
             profile.ensure_idle()
             result["candidate_before"] = profile.memory_snapshot()
-            if memory_gate(result["candidate_before"]):
+            if memory_blockers(profile):
                 raise RuntimeError("Memory admission failed after candidate start")
-            result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout, profile.memory_snapshot)
+            result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout, lambda: memory_blockers(profile))
             result["candidate_after"] = profile.memory_snapshot()
     except BaseException as exc:
         primary_error = exc
