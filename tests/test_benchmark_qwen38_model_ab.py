@@ -211,6 +211,64 @@ def test_comparison_restores_entire_config_on_success(monkeypatch, tmp_path):
     assert restarts[1] == original
 
 
+def test_only_expected_model_drift_can_be_reconciled():
+    original = 'MODEL="/models/6bit"\nTHINKING="false"\n'
+    candidate = 'MODEL="/models/4bit"\nTHINKING="false"\nMLX_CHAT_PERFORMANCE_PROFILE="dflash"\n'
+    role_switched = 'MODEL="/models/6bit"\nTHINKING="false"\nMLX_CHAT_PERFORMANCE_PROFILE="dflash"\n'
+    assert ab.only_expected_model_drift(candidate, candidate, original)
+    assert ab.only_expected_model_drift(role_switched, candidate, original)
+    assert not ab.only_expected_model_drift(
+        role_switched.replace('THINKING="false"', 'THINKING="true"'),
+        candidate, original,
+    )
+    assert not ab.only_expected_model_drift(
+        role_switched.replace('/models/6bit', '/models/unrelated'),
+        candidate, original,
+    )
+
+
+def test_quality_error_after_role_switch_still_restores_baseline(monkeypatch, tmp_path):
+    profile, config, original, restarts, options = setup_fake_runtime(tmp_path, monkeypatch)
+    options.with_quality = True
+    state = {"calls": 0}
+    def quality_run(_path, _timeout):
+        state["calls"] += 1
+        if state["calls"] == 1:
+            return {"baseline": True}
+        # Simulate the historical Agent role resolver changing MODEL
+        # and failing in the first streamed quality case.
+        interim = config.read_text().replace(
+            ab.config_value(config.read_text(), "MODEL"),
+            ab.config_value(original, "MODEL"),
+        )
+        config.write_text(interim)
+        raise RuntimeError("Agent stream error")
+    monkeypatch.setattr(ab, "quality_test", quality_run)
+    with pytest.raises(RuntimeError, match="Agent stream error"):
+        ab.run(options, profile, object(), object())
+    assert config.read_text() == original
+    assert len(restarts) == 2
+
+
+def test_quality_error_preserves_unrelated_external_changes(monkeypatch, tmp_path):
+    profile, config, original, restarts, options = setup_fake_runtime(tmp_path, monkeypatch)
+    options.with_quality = True
+    state = {"calls": 0}
+    def quality_run(_path, _timeout):
+        state["calls"] += 1
+        if state["calls"] == 1:
+            return {"baseline": True}
+        config.write_text(config.read_text().replace(
+            'THINKING="false"', 'THINKING="true"',
+        ))
+        raise RuntimeError("Agent stream error")
+    monkeypatch.setattr(ab, "quality_test", quality_run)
+    with pytest.raises(RuntimeError, match="RESTORE FAILED"):
+        ab.run(options, profile, object(), object())
+    assert 'THINKING="true"' in config.read_text()
+    assert len(restarts) == 1
+
+
 def test_inference_failure_restores_original_config(monkeypatch, tmp_path):
     profile, config, original, restarts, options = setup_fake_runtime(tmp_path, monkeypatch)
     def broken(_probe, model, *_):
