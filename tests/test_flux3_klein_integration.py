@@ -119,3 +119,26 @@ def test_existing_registry_gains_opt_in_model_without_touching_default(tmp_path,
     upgraded = registry.load_registry()
     assert upgraded["default_model"] == data["default_model"]
     assert next(m for m in upgraded["models"] if m["id"] == registry.FLUX3_KLEIN_Q4_ID)["enabled"] is False
+
+
+
+def test_legacy_negative_prompt_is_removed_before_flux3_generation(monkeypatch):
+    import image_service
+
+    model = flux3_model() | {"enabled": True}
+    monkeypatch.setattr(image_service, "_generation_model",
+                        lambda _model_id, _prompt: model)
+    request = image_service.Generate(
+        prompt="Portrait of an adult woman", model=registry.FLUX3_KLEIN_Q4_ID,
+        width=1024, height=1024, negative_prompt="old saved SDXL exclusion",
+    )
+    resolved = image_service._resolve_generation(request)
+    assert resolved["model"]["id"] == registry.FLUX3_KLEIN_Q4_ID
+    assert resolved["params"]["steps"] == 16
+    assert "negative_prompt" not in resolved["params"]
+    # The same optional exclusion is still passed to models that support it.
+    another = model | {"model_family": "flux2-klein", "base_model": "flux2-klein-4b"}
+    monkeypatch.setattr(image_service, "_generation_model",
+                        lambda _model_id, _prompt: another)
+    resolved_other = image_service._resolve_generation(request)
+    assert resolved_other["params"]["negative_prompt"] == "old saved SDXL exclusion"
