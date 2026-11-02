@@ -62,15 +62,17 @@ _HUMAN_SUBJECT = re.compile(
     re.IGNORECASE,
 )
 
+# RunDiffusion Ragnarok guide: foreground the subject, stay concise (roughly
+# <=75 CLIP tokens) and start with no negative prompt. Only add a few helpful
+# photographic cues when they do not conflict with the requested visual style.
 _JUGGERNAUT_REALISM_SUFFIX = (
-    "natural skin texture, visible pores and fine facial detail, subtle facial asymmetry, "
-    "lifelike eyes with natural catchlights, realistic hair strands, realistic fabric texture, "
-    "physically plausible soft lighting, natural tonal variation, subtle photographic grain, "
+    "natural skin texture, subtle facial asymmetry, physically plausible light, "
     "unretouched photographic look"
 )
-_JUGGERNAUT_REALISM_NEGATIVE = (
-    "waxy skin, plastic skin, airbrushed skin, over-smoothed skin, doll-like face, "
-    "CGI, 3D render, synthetic skin, excessive beauty retouching, oversharpened"
+_REQUESTED_RETOUCHED_STYLE = re.compile(
+    r"\\b(?:airbrushed|beauty retouch(?:ed|ing)?|glossy glamour|"
+    r"flawless skin|smooth porcelain skin|studio beauty portrait)\\b",
+    re.IGNORECASE,
 )
 
 
@@ -147,7 +149,11 @@ def enhance_juggernaut_payload(
     model: str | None,
     explicit_negative_prompt: bool = False,
 ) -> dict:
-    """Add restrained realism hints for Juggernaut photorealistic people only."""
+    """Apply short, optional photographic cues without rewriting user intent.
+
+    Ragnarok accepts plain sentences and tagged prompts. Avoid long generic
+    suffixes and default negative lists; users' own negative prompts are kept.
+    """
     if not isinstance(payload, dict) or not _is_juggernaut(model):
         return payload
 
@@ -155,12 +161,18 @@ def enhance_juggernaut_payload(
     if not _is_photorealistic_human_prompt(prompt):
         return payload
 
-    if "natural skin texture" not in prompt.casefold():
+    # Never override a user's desired glossy/retouched look. Existing semantic
+    # information is left untouched, including all negations and camera details.
+    if _REQUESTED_RETOUCHED_STYLE.search(prompt):
+        return payload
+
+    # A rough word-count guard, not a claim to tokenize CLIP precisely.
+    # Preserve the whole request even when it is long: do not truncate it.
+    if len(prompt.split()) <= 55 and "natural skin texture" not in prompt.casefold():
         payload["prompt"] = prompt.rstrip(" ,.") + ", " + _JUGGERNAUT_REALISM_SUFFIX
 
-    if not explicit_negative_prompt and not str(payload.get("negative_prompt") or "").strip():
-        payload["negative_prompt"] = _JUGGERNAUT_REALISM_NEGATIVE
-
+    # RunDiffusion recommends starting with an empty negative prompt.
+    # Do not add blanket anatomy, SFW or anti-retouching lists.
     return payload
 
 
