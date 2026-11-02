@@ -92,6 +92,39 @@ def test_plan_does_not_restart_or_write(monkeypatch, tmp_path, capsys):
     assert '"ready": true' in capsys.readouterr().out
 
 
+def test_idle_guard_failure_is_named_and_other_diagnostics_still_run(monkeypatch, tmp_path, capsys):
+    profile, config, original, restarts, options = setup_fake_runtime(tmp_path, monkeypatch)
+    def guard():
+        raise RuntimeError("Runtime lease active or queued; wait before switching")
+    monkeypatch.setattr(profile, "ensure_idle", guard)
+    options.confirm_restarts = False
+    assert ab.run(options, profile, object(), object()) == 0
+    import json
+    report = json.loads(capsys.readouterr().out)
+    assert report["ready"] is False
+    assert report["status"]["idle_check"] == "runtime_lease_busy"
+    assert report["status"]["memory"]["headroom_gb"] == 14
+    assert report["status"]["runtime_health"]["healthy"] is True
+    assert "Idle guard blocked (runtime_lease_busy)" in report["blockers"]
+    assert config.read_text() == original
+    assert not restarts
+
+
+def test_idle_guard_failure_prevents_restart_even_with_good_memory(monkeypatch, tmp_path):
+    profile, config, original, restarts, options = setup_fake_runtime(tmp_path, monkeypatch)
+    monkeypatch.setattr(profile, "ensure_idle", lambda: (_ for _ in ()).throw(
+        RuntimeError("Incomplete runtime status; refusing profile change")))
+    with pytest.raises(RuntimeError, match="runtime_status_incomplete"):
+        ab.run(options, profile, object(), object())
+    assert config.read_text() == original
+    assert not restarts
+
+
+def test_unknown_guard_errors_are_redacted():
+    assert ab.idle_error_code(RuntimeError("private response body from upstream")) == "idle_guard_unavailable"
+    assert ab.idle_error_code(RuntimeError("Media queue active; wait before switching")) == "media_queue_busy"
+
+
 def test_comparison_restores_entire_config_on_success(monkeypatch, tmp_path):
     profile, config, original, restarts, options = setup_fake_runtime(tmp_path, monkeypatch)
     assert ab.run(options, profile, object(), object()) == 0
