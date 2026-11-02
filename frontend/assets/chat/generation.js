@@ -484,13 +484,6 @@ function imageOptionsForRequest(
         delete merged.negative_prompt;
     }
 
-    if (operation === 'generate' && imageModel !== null) {
-        const normalizedModel = String(
-            imageModel || 'auto'
-        ).trim() || 'auto';
-        merged.model = normalizedModel;
-    }
-
     if (operation === 'generate' &&
         merged.model === 'juggernaut-xl' && samplingOverride) {
         // Visible modal values are authoritative, even if old session options
@@ -500,6 +493,14 @@ function imageOptionsForRequest(
     }
 
     if (operation !== 'generate') Object.assign(merged, options?.referenceEdit || {});
+
+    // The image-quality modal can also select an explicit edit model when
+    // editing an existing artifact (no attachment picker). Never lose that
+    // selection by retaining "auto" from the initial edit payload.
+    // For attachment edits, imageModel already reflects the dedicated picker.
+    if (imageModel !== null) {
+        merged.model = String(imageModel || 'auto').trim() || 'auto';
+    }
 
     // Negative prompts and legacy edit controls are not supported by FLUX 3
     // Klein distilled. A saved Juggernaut/Qwen choice must never break a
@@ -3343,7 +3344,9 @@ const imageFiles =
                         ? (options?.image?.model && options.image.model !== 'auto'
                             ? options.image.model
                             : savedImageCreation?.model || storedImageModel())
-                        : (options?.image?.model || options?.referenceEdit?.model || storedImageModel())) ||
+                        : resolvedTarget === 'image_edit'
+                            ? (options?.referenceEdit?.model || 'auto')
+                            : (options?.image?.model || storedImageModel())) ||
                 'auto'
             ).trim() || 'auto';
 
