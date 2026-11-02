@@ -62,6 +62,28 @@ test('image generation selections survive reopening and page reloads', () => {
     assert.equal(preferenceContext(storage).storedImageCreationPreferences().quality, 'fast');
 });
 
+test('retired FLUX 3 preference returns to auto without clearing other choices', () => {
+    const values = new Map();
+    values.set('mlx-nobby-image-creation-preferences-v1', JSON.stringify({
+        model: 'mflux-flux3-image-klein-q4',
+        quality: 'ultra',
+        format: 'portrait',
+        negative_prompt: 'existing optional value',
+    }));
+    const storage = {
+        getItem: key => values.get(key) ?? null,
+        setItem: (key, value) => values.set(key, value),
+    };
+    const reloaded = preferenceContext(storage);
+    const prefs = JSON.parse(JSON.stringify(reloaded.storedImageCreationPreferences()));
+    assert.deepEqual(prefs, {
+        model: 'auto',
+        quality: 'ultra',
+        format: 'portrait',
+        negative_prompt: 'existing optional value',
+    });
+});
+
 test('corrupt or unsupported saved options fall back safely', () => {
     let raw = '{"quality":"unknown","format":"invalid","model":123,"negative_prompt":null}';
     const storage = {
