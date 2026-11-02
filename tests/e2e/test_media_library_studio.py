@@ -26,6 +26,42 @@ def _open_library(page):
     expect(page.locator("#nobbyLibrary")).to_be_visible()
 
 
+def test_library_escape_closes_preview_then_library(ui):
+    """Real browser keydown must close only the topmost library layer."""
+    page, _agent, _allowed = ui
+    image = _png()
+    asset = {"kind": "image", "id": IMAGE_ID,
+             "url": "/api/mlx/images/" + IMAGE_ID,
+             "created_at": time.time(), "persistent": True,
+             "size_bytes": len(image)}
+
+    def respond(route, data):
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps(data))
+
+    page.route("**/api/library/assets?limit=1000",
+               lambda route: respond(route, {"assets": [asset], "total": 1}))
+    page.route("**/api/library/organize",
+               lambda route: respond(route, {"version": 1,
+                                            "favorites": [], "collections": []}))
+    page.route("**/api/library/workflows",
+               lambda route: respond(route, {"version": 1, "links": {}}))
+    page.route(f"**/api/mlx/images/{IMAGE_ID}",
+               lambda route: route.fulfill(status=200,
+                                         content_type="image/png", body=image))
+
+    _open_library(page)
+    page.locator(".nobby-library-zoom").click()
+    expect(page.locator(".nobby-library-preview")).to_be_visible()
+
+    page.keyboard.press("Escape")
+    expect(page.locator(".nobby-library-preview")).to_be_hidden()
+    expect(page.locator("#nobbyLibrary")).to_be_visible()
+
+    page.keyboard.press("Escape")
+    expect(page.locator("#nobbyLibrary")).to_be_hidden()
+
+
 def test_library_studio_engine_filter_and_reuse_photo(ui):
     page, _agent, _allowed = ui
     image = _png()
