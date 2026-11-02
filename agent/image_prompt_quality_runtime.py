@@ -70,8 +70,8 @@ _JUGGERNAUT_REALISM_SUFFIX = (
     "unretouched photographic look"
 )
 _REQUESTED_RETOUCHED_STYLE = re.compile(
-    r"\\b(?:airbrushed|beauty retouch(?:ed|ing)?|glossy glamour|"
-    r"flawless skin|smooth porcelain skin|studio beauty portrait)\\b",
+    r"\b(?:airbrushed|beauty retouch(?:ed|ing)?|glossy glamour|"
+    r"flawless skin|smooth porcelain skin|studio beauty portrait)\b",
     re.IGNORECASE,
 )
 
