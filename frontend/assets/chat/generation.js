@@ -455,7 +455,8 @@ function imageOptionsForRequest(
     negativePrompt = '',
     imageModel = null,
     operation = 'generate',
-    samplingOverride = null
+    samplingOverride = null,
+    editModelFromModal = false
 ) {
     const existing = options?.image || null;
 
@@ -498,7 +499,8 @@ function imageOptionsForRequest(
     // editing an existing artifact (no attachment picker). Never lose that
     // selection by retaining "auto" from the initial edit payload.
     // For attachment edits, imageModel already reflects the dedicated picker.
-    if (imageModel !== null) {
+    if (imageModel !== null &&
+        (operation === 'generate' || editModelFromModal)) {
         merged.model = String(imageModel || 'auto').trim() || 'auto';
     }
 
@@ -4103,7 +4105,8 @@ const imageFiles =
                     resolvedTarget === 'image_edit'
                         ? (referenceMode ? 'reference' : 'edit')
                         : 'generate',
-                    selectedSampling
+                    selectedSampling,
+                    resolvedTarget === 'image_edit' && imageModelSelectable
                 ),
                 video_options: videoOptionsForRequest(
                     options,
