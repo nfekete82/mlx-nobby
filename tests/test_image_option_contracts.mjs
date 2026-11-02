@@ -97,6 +97,47 @@ assert.equal(noCrossModel.steps, undefined);
 assert.equal(noCrossModel.guidance, undefined);
 
 
+// FLUX 3 must not inherit a saved Juggernaut negative prompt or Qwen
+// mask/strength options, even if a stale session still contains them.
+const flux3Generate = JSON.parse(JSON.stringify(
+    context.imageOptionsForRequest(
+        {image: {
+            model: 'juggernaut-xl',
+            negative_prompt: 'old saved negative',
+            width: 1024,
+            height: 1024,
+        }},
+        'image', 'square', false, 'deformed hands',
+        'mflux-flux3-image-klein-q4', 'generate'
+    )
+));
+assert.equal(flux3Generate.model, 'mflux-flux3-image-klein-q4');
+assert.equal(flux3Generate.negative_prompt, undefined);
+const flux3Edit = JSON.parse(JSON.stringify(
+    context.imageOptionsForRequest(
+        {image: {negative_prompt: 'old', strength: 0.7},
+         referenceEdit: {
+             model: 'mflux-flux3-image-klein-q4',
+             negative_prompt: 'stale', mask_path: '/tmp/mask.png',
+             auto_mask: 'face', strength: 0.7, use_step_cache: true,
+         }},
+        'image', 'square', false, 'stale',
+        null, 'edit'
+    )
+));
+assert.equal(flux3Edit.model, 'mflux-flux3-image-klein-q4');
+for (const key of ['negative_prompt', 'mask_path', 'auto_mask',
+                   'strength', 'use_step_cache']) {
+    assert.equal(flux3Edit[key], undefined, key);
+}
+const juggernautNegative = JSON.parse(JSON.stringify(
+    context.imageOptionsForRequest(
+        {image: {}}, 'image', 'square', false,
+        'keep my exclusion', 'juggernaut-xl', 'generate'
+    )
+));
+assert.equal(juggernautNegative.negative_prompt, 'keep my exclusion');
+
 // Image creation must not offer unavailable, disabled or edit-only models.
 // Even a stale persisted choice must not reappear as a disabled option.
 const modelStart = source.indexOf('async function updateImageModelOptions(');
