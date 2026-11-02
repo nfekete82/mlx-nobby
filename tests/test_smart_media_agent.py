@@ -151,3 +151,39 @@ def test_existing_image_router_independent_of_qwen_planner():
     assert decide_media_intent(
         "Erstelle ein Bild von einer Frau auf einem Fahrrad", has_image=False
     ).target == "image"
+
+
+
+def test_compiled_image_prompt_skips_translation_and_preserves_original(monkeypatch):
+    def unexpected_translation(_prompt):
+        raise AssertionError("Smart Media prompt was translated twice")
+    monkeypatch.setattr(app, "translate_image_prompt_to_english", unexpected_translation)
+    request = app.ChatActionRequest(
+        prompt="Erstelle ein Bild von einer Frau auf einem Fahrrad",
+        image_options={
+            "model": "juggernaut-xl",
+            "prompt": "Photorealistic cyclist with natural lighting.",
+        },
+    )
+    payload = app._image_generate_payload(request)
+    assert payload["prompt"] == "Photorealistic cyclist with natural lighting."
+    assert payload["original_prompt"] == request.prompt
+    assert payload["model"] == "juggernaut-xl"
+
+
+def test_compiled_t2v_prompt_skips_translation_and_retains_duration(monkeypatch):
+    def unexpected_translation(_prompt):
+        raise AssertionError("Smart Media video prompt was translated twice")
+    monkeypatch.setattr(app, "compile_video_prompt", unexpected_translation)
+    request = app.ChatActionRequest(
+        prompt="Erstelle ein Video von einer Fahrradfahrt.",
+        video_options={
+            "prompt": "A person cycling slowly; locked-off camera.",
+            "duration": 5,
+            "profile": "standard",
+        },
+    )
+    payload = app._video_payload(request, "t2v")
+    assert payload["prompt"] == "A person cycling slowly; locked-off camera."
+    assert payload["duration"] == 5
+    assert payload["profile"] == "standard"
