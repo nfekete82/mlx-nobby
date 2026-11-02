@@ -100,9 +100,10 @@ def test_full_report_compare_and_privacy(monkeypatch, tmp_path):
     calls = []
     def get(_origin, path, *args):
         return status() if path == "/api/status" else idle()
-    def stream(_origin, messages, tokens, timeout):
+    def stream(_origin, messages, tokens, timeout, **kwargs):
         case = cases[len(calls)]
         calls.append(messages)
+        assert kwargs == {"pin_active_model": "qwen-fixture", "pin_active_pid": 1234}
         assert tokens == 256 and timeout == 180
         if case["kind"] == "exact":
             assert messages[-1]["content"].endswith(bench.JSON_INSTRUCTION)
@@ -149,7 +150,7 @@ def test_fail_closed_preserves_existing_files(monkeypatch, tmp_path):
     monkeypatch.setattr(bench, "get_json",
                         lambda _origin, path: status() if path == "/api/status" else idle())
     calls = []
-    def fail(*args):
+    def fail(*args, **kwargs):
         calls.append(args)
         raise RuntimeError("Private details must not be logged")
     monkeypatch.setattr(bench, "agent_stream", fail)
@@ -170,7 +171,7 @@ def test_smoke_not_comparable(monkeypatch, tmp_path):
     monkeypatch.setattr(bench, "get_json",
                         lambda _origin, path: status() if path == "/api/status" else idle())
     monkeypatch.setattr(bench, "agent_stream",
-                        lambda *args: ({"first_content_ms": 10, "first_transport_ms": 2,
+                        lambda *args, **kwargs: ({"first_content_ms": 10, "first_transport_ms": 2,
                                        "total_ms": 20, "output_characters": 15}, '{"answer":"no"}'))
     report = bench.run(bench.DEFAULT_AGENT, tmp_path / "smoke.json", None, smoke=True)
     assert report["smoke"] is True and report["status"] == "partial"
@@ -209,7 +210,7 @@ def test_safe_abort_metadata_locates_second_case_without_leaking_private_text(mo
             return state
         return idle()
 
-    def stream(_origin, messages, _tokens, _timeout):
+    def stream(_origin, messages, _tokens, _timeout, **kwargs):
         assert messages[-1]["content"].endswith(bench.JSON_INSTRUCTION)
         answer = json.dumps({"answer": cases[0]["expected"]}, ensure_ascii=False)
         return {"first_content_ms": 50, "first_transport_ms": 3,
@@ -237,7 +238,7 @@ def test_single_case_mode_is_partial_but_can_reproduce_second_case(monkeypatch, 
     monkeypatch.setattr(bench, "get_json",
                         lambda _origin, path: status() if path == "/api/status" else idle())
 
-    def stream(_origin, messages, _tokens, _timeout):
+    def stream(_origin, messages, _tokens, _timeout, **kwargs):
         messages_seen.append(messages)
         answer = json.dumps({"answer": cases[1]["expected"]}, ensure_ascii=False)
         return {"first_content_ms": 8, "first_transport_ms": 3,
