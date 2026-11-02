@@ -5,6 +5,12 @@ request parameters are applied by the services after profile resolution.
 """
 
 IMAGE_PROFILES = {
+    "flux3-klein": {
+        # Distilled Q4: 16 steps is the working user-tested preset.
+        "fast": {"steps": 16, "guidance": 0.0, "long_edge": 768},
+        "standard": {"steps": 16, "guidance": 0.0, "long_edge": 1024},
+        "quality": {"steps": 16, "guidance": 0.0, "long_edge": 1024},
+    },
     "qwen-image21-edit": {
         "fast": {"steps": 10, "guidance": 1.0, "long_edge": 512},
         "standard": {"steps": 20, "guidance": 1.0, "long_edge": 768},
