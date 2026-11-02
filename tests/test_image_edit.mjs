@@ -173,6 +173,9 @@ const context = {
         addEventListener() {},
         removeEventListener() {},
         getElementById(id) {
+            // This legacy-contract suite exercises the unchanged Direct path.
+            // Smart-specific modal and API behavior has dedicated tests.
+            if (id === 'smartMediaEnabled') return null;
             return id === 'input'
                 ? input
                 : modalElements.get(id) || { querySelector() { return null; } };
