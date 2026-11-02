@@ -127,11 +127,25 @@ _IMAGE_EDIT_PREFIX = re.compile(
     r"(?:das|dieses)\s+(?:bild|foto)\b",
     re.IGNORECASE,
 )
-_DIRECT_EDIT_NEGATION = re.compile(r"^\s+(?:nicht|niemals)\b", re.IGNORECASE)
+_DIRECT_EDIT_NEGATION = re.compile(
+    r"^\s+(?:nicht|niemals)(?:\s+mehr)?\s*[.!?]?\s*$",
+    re.IGNORECASE,
+)
 _EDIT_TEXT_OBJECT_SUFFIX = re.compile(
     r"^\s*[- ]\s*(?:prompt|prompts|skript|script|beschreibung|description)\b",
     re.IGNORECASE,
 )
+
+
+def leading_image_edit_requested(prompt):
+    """Leading edit command: later text qualifies an image, never the route."""
+    raw_prompt = str(prompt or "")
+    match = _IMAGE_EDIT_PREFIX.match(raw_prompt)
+    if match is None:
+        return False
+    suffix = raw_prompt[match.end():]
+    return not (_DIRECT_EDIT_NEGATION.match(suffix)
+                or _EDIT_TEXT_OBJECT_SUFFIX.match(suffix))
 
 
 # A leading text-to-image command requests a new image, even if an attachment
@@ -267,11 +281,7 @@ def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, 
     a text request or negation. Quoted examples are not execution instructions.
     Independent clauses allow 'improve the prompt and generate the image'.
     """
-    raw_prompt = str(prompt or "")
-    leading_edit = _IMAGE_EDIT_PREFIX.match(raw_prompt)
-    if (leading_edit and has_image
-            and not _DIRECT_EDIT_NEGATION.match(raw_prompt[leading_edit.end():])
-            and not _EDIT_TEXT_OBJECT_SUFFIX.match(raw_prompt[leading_edit.end():])):
+    if has_image and leading_image_edit_requested(prompt):
         # The source image is already bound here; all following text is an
         # opaque edit description, including appearances, exclusions and
         # embedded creation verbs. No free-form negation parsing is allowed.
