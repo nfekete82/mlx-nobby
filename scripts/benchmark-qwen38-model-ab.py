@@ -72,6 +72,30 @@ def replace_values(content: str, changes: dict[str, str]) -> str:
     return result
 
 
+def only_expected_model_drift(current: str, candidate: str, original: str) -> bool:
+    """Allow recovery after the Agent replaced only MODEL with original model.
+
+    Never discard any other concurrently edited settings. Reconcile only
+    the known baseline/candidate model identities.
+    """
+    def without_model(content: str) -> str:
+        return "".join(
+            line for line in content.splitlines(keepends=True)
+            if not (KEY_RE.match(line) and KEY_RE.match(line).group(1) == "MODEL")
+        )
+
+    if current == candidate:
+        return True
+    try:
+        value = config_value(current, "MODEL")
+        baseline_model = config_value(original, "MODEL")
+        target_model = config_value(candidate, "MODEL")
+    except ValueError:
+        return False
+    return (value in (baseline_model, target_model)
+            and without_model(current) == without_model(candidate))
+
+
 def local_model_available(value: str) -> bool:
     if not value:
         return False
@@ -450,8 +474,12 @@ def run(args, profile, probe, quality):
     finally:
         try:
             if changed:
-                if profile.CONFIG.read_text(encoding="utf-8") != candidate:
-                    raise RuntimeError("Config changed externally; refusing to clobber it during rollback")
+                current_config = profile.CONFIG.read_text(encoding="utf-8")
+                if not only_expected_model_drift(current_config, candidate, original):
+                    raise RuntimeError(
+                        "Config changed beyond the expected role-driven MODEL switch; "
+                        "refusing to overwrite unrelated edits during rollback"
+                    )
                 print("[model-ab] restoring original 6-bit configuration", file=sys.stderr, flush=True)
                 profile.write_config(original)
                 profile.restart()
