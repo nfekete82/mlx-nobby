@@ -131,6 +131,23 @@ _DIRECT_EDIT_NEGATION = re.compile(
     r"^\s+(?:nicht|niemals)(?:\s+mehr)?\s*[.!?]?\s*$",
     re.IGNORECASE,
 )
+# Only clear, stand-alone withdrawals cancel a leading image-edit command.
+# A negative visual property such as "nicht die Haare" or "not a model"
+# must never be mistaken for a withdrawal.
+_EDIT_WITHDRAWAL_SUFFIX = re.compile(
+    r"^\s*(?:,\s*)?(?:und|aber|and|but)\s+"
+    r"(?:(?:doch|bitte|please)\s+)?"
+    r"(?:nicht|nein|not|no|vergiss\s+es|forget\s+it)"
+    r"(?:\s+mehr)?\s*[.!?]?\s*$",
+    re.IGNORECASE,
+)
+_REPEATED_EDIT_WITHDRAWAL_SUFFIX = re.compile(
+    r"^\s*(?:,\s*)?(?:und|aber|and|but)\s+"
+    r"(?:ändere|aendere|bearbeite|verändere|veraendere|edit|change|modify)\s+"
+    r"(?:das|dieses|this|the)\s+(?:bild|foto|image|picture|photo)\s+"
+    r"(?:nicht|niemals|not|never)(?:\s+mehr)?\s*[.!?]?\s*$",
+    re.IGNORECASE,
+)
 _EDIT_TEXT_OBJECT_SUFFIX = re.compile(
     r"^\s*[- ]\s*(?:prompt|prompts|skript|script|beschreibung|description)\b",
     re.IGNORECASE,
@@ -144,7 +161,9 @@ def leading_image_edit_requested(prompt):
     if match is None:
         return False
     suffix = raw_prompt[match.end():]
-    return not (_DIRECT_EDIT_NEGATION.match(suffix)
+    return not (_DIRECT_EDIT_NEGATION.fullmatch(suffix)
+                or _EDIT_WITHDRAWAL_SUFFIX.fullmatch(suffix)
+                or _REPEATED_EDIT_WITHDRAWAL_SUFFIX.fullmatch(suffix)
                 or _EDIT_TEXT_OBJECT_SUFFIX.match(suffix))
 
 
