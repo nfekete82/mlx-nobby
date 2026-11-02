@@ -464,7 +464,8 @@ function imageOptionsForRequest(
     negativePrompt = '',
     imageModel = null,
     operation = 'generate',
-    samplingOverride = null
+    samplingOverride = null,
+    editModelFromModal = false
 ) {
     const existing = options?.image || null;
 
@@ -509,6 +510,9 @@ function imageOptionsForRequest(
     }
 
     if (operation !== 'generate') Object.assign(merged, options?.referenceEdit || {});
+    if (operation === 'edit' && editModelFromModal && imageModel !== null) {
+        merged.model = String(imageModel || 'auto').trim() || 'auto';
+    }
 
     if (!allowFormat) {
         return merged;
@@ -3410,7 +3414,9 @@ const imageFiles =
                         ? (options?.image?.model && options.image.model !== 'auto'
                             ? options.image.model
                             : savedImageCreation?.model || storedImageModel())
-                        : (options?.image?.model || options?.referenceEdit?.model || storedImageModel())) ||
+                        : resolvedTarget === 'image_edit'
+                            ? (options?.referenceEdit?.model || 'auto')
+                            : (options?.image?.model || storedImageModel())) ||
                 'auto'
             ).trim() || 'auto';
 
@@ -3977,10 +3983,9 @@ const imageFiles =
                                 imageModelSelectable &&
                                 imageModelSelect
                             ) {
-                                selectedImageModel =
-                                    storeImageModel(
-                                        imageModelSelect.value
-                                    );
+                                selectedImageModel = resolvedTarget === 'image'
+                                    ? storeImageModel(imageModelSelect.value)
+                                    : String(imageModelSelect.value || 'auto').trim() || 'auto';
                             }
 
                             if (
@@ -4170,7 +4175,9 @@ const imageFiles =
                     resolvedTarget === 'image_edit'
                         ? (referenceMode ? 'reference' : 'edit')
                         : 'generate',
-                    selectedSampling
+                    selectedSampling,
+                    resolvedTarget === 'image_edit' &&
+                        !hasAttachmentEditModelPicker
                 ),
                 video_options: videoOptionsForRequest(
                     options,
