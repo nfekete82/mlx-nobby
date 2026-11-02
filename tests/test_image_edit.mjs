@@ -102,6 +102,8 @@ const modalElements = new Map([
     ['mediaFormat', new ModalTestElement({ id: 'mediaFormat' })],
     ['imageModelField', new ModalTestElement({ id: 'imageModelField' })],
     ['imageModel', new ModalTestElement({ id: 'imageModel' })],
+    ['imageNegativePromptField', new ModalTestElement({ id: 'imageNegativePromptField' })],
+    ['imageNegativePrompt', new ModalTestElement({ id: 'imageNegativePrompt' })],
     ['videoDurationField', new ModalTestElement({ id: 'videoDurationField' })],
     ['videoDuration', new ModalTestElement({ id: 'videoDuration' })],
     ['mediaQuality', new ModalTestElement({ id: 'mediaQuality' })],
@@ -1897,6 +1899,12 @@ context.fetch = async (url, options = {}) => {
                         available: true,
                         capabilities: ['text_to_image'],
                     }, {
+                        id: 'mflux-flux3-image-klein-q4',
+                        name: 'FLUX 3 Image Klein · Q4 · Test',
+                        enabled: true,
+                        available: true,
+                        capabilities: ['text_to_image', 'image_edit'],
+                    }, {
                         id: 'qwen-image-2.1',
                         name: 'Qwen Image 2.1',
                         enabled: true,
@@ -2000,13 +2008,38 @@ for (const [prompt, expectedTarget, expectedModal] of [
         const select = modalElements.get('imageModel');
         assert.equal(field.hidden, false, prompt);
         assert.equal(select.disabled, false, prompt);
-        assert.equal(select.children.length, 2, prompt);
+        assert.equal(select.children.length, 3, prompt);
         assert.equal(select.children[0].value, 'auto', prompt);
         assert.equal(select.children[1].value, 'juggernaut-xl', prompt);
+        assert.equal(select.children[2].value, 'mflux-flux3-image-klein-q4', prompt);
         assert.equal(select.children.some(item => item.value === 'qwen-image-2.1'), false, prompt);
         assert.equal(select.children.some(item => item.value === 'qwen-image-edit'), false, prompt);
     }
 }
+
+// Selecting FLUX 3 must suppress negative-prompt UI even when a previous
+// model's negative prompt was remembered in the same chat session.
+const originalFlux3Frame = context.requestAnimationFrame;
+context.MLXChatRuntime.getSessionNegativePrompt = () => 'stale SDXL negative';
+const flux3Prompt = 'Erstelle ein Bild einer Katze im Studio';
+routeTargets.set(flux3Prompt, 'image');
+context.requestAnimationFrame = callback => {
+    const select = modalElements.get('imageModel');
+    select.value = 'mflux-flux3-image-klein-q4';
+    select.listeners.get('change')?.();
+    const negativeField = modalElements.get('imageNegativePromptField');
+    const negativeInput = modalElements.get('imageNegativePrompt');
+    assert.equal(negativeField.hidden, true);
+    assert.equal(negativeInput.disabled, true);
+    callback();
+    modalElements.get('mediaQualityModalConfirm').click();
+};
+input.value = flux3Prompt;
+await window.MLXChatGeneration.sendMessage();
+assert.equal(routedActionPayloads.at(-1).image_options.model, 'mflux-flux3-image-klein-q4');
+assert.equal(routedActionPayloads.at(-1).image_options.negative_prompt, undefined);
+context.requestAnimationFrame = originalFlux3Frame;
+delete context.MLXChatRuntime.getSessionNegativePrompt;
 
 console.log(
     'Image jobs, routing, progress, cancellation, artifacts, and errors passed.',
