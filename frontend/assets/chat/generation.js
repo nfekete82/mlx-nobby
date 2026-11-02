@@ -3911,10 +3911,11 @@ const imageFiles =
                                 imageModelSelectable &&
                                 imageModelSelect
                             ) {
-                                selectedImageModel =
-                                    storeImageModel(
-                                        imageModelSelect.value
-                                    );
+                                // Choosing an edit model must not change the
+                                // remembered text-to-image model preference.
+                                selectedImageModel = resolvedTarget === 'image'
+                                    ? storeImageModel(imageModelSelect.value)
+                                    : String(imageModelSelect.value || 'auto').trim() || 'auto';
                             }
 
                             if (
