@@ -72,6 +72,22 @@ show_status() {
     echo "Draft model:          ${SPECULATIVE_DRAFT_MODEL:-<none>}"
     echo "Draft kind:           ${SPECULATIVE_DRAFT_KIND:-dflash}"
     echo "Draft block size:     ${SPECULATIVE_DRAFT_BLOCK_SIZE:-auto}"
+    # A cached drafter is not necessarily selected for this model. Mirror
+    # mlx-server-start's opt-in / exact-target checks without touching state.
+    local disposition
+    if [ "${MLX_CHAT_PERFORMANCE_PROFILE:-default}" = "apc" ]; then
+        disposition="disabled (APC profile)"
+    elif [ -z "${SPECULATIVE_TARGET:-}" ] || [ -z "${SPECULATIVE_DRAFT_MODEL:-}" ]; then
+        disposition="disabled (not configured)"
+    elif [ "${MODEL:-}" != "$SPECULATIVE_TARGET" ]; then
+        disposition="disabled (target mismatch)"
+    elif ! hf_model_cached "$SPECULATIVE_DRAFT_MODEL"; then
+        disposition="disabled (draft model is not cached locally)"
+    else
+        disposition="eligible (runtime and draft compatibility not verified)"
+    fi
+    echo "Configured use:       $disposition"
+    echo "Note: this is configuration only; check running process flags for actual use."
     if hf_model_cached "$DRAFT_MODEL"; then
         echo "Qwen3.8 DFlash2:      ready"
     else
