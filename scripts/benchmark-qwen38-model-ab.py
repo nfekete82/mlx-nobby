@@ -10,6 +10,8 @@ changes are performed. SIGKILL/power loss cannot be recovered automatically.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
+import fcntl
 import importlib.util
 import json
 import math
@@ -325,6 +327,22 @@ def run(args, profile, probe, quality):
     return 0
 
 
+@contextmanager
+def exclusive_runner_lock():
+    """Prevent overlapping benchmark runners; unrelated Nobby clients remain protected by idle checks."""
+    lock_path = Path.home() / ".config" / "mlx-server" / ".model-ab.lock"
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(lock_path, flags, 0o600)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise RuntimeError("Another model A/B run is already in progress") from exc
+        yield
+    finally:
+        os.close(fd)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--confirm-restarts", action="store_true",
@@ -341,6 +359,9 @@ def main(argv=None):
     probe = load_module("nobby_chat_latency_ab", "benchmark-chat-latency.py")
     quality = load_module("nobby_chat_quality_ab", "benchmark-chat-quality.py")
     try:
+        if args.confirm_restarts:
+            with exclusive_runner_lock():
+                return run(args, profile, probe, quality)
         return run(args, profile, probe, quality)
     except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError,
             KeyboardInterrupt, TimeoutError) as exc:
