@@ -485,6 +485,12 @@ function imageOptionsForRequest(
         delete merged.negative_prompt;
     }
 
+    if (operation === 'generate' && imageModel !== null) {
+        // Pick the requested generator before applying its sampling presets.
+        const normalizedModel = String(imageModel || 'auto').trim() || 'auto';
+        merged.model = normalizedModel;
+    }
+
     if (operation === 'generate' &&
         merged.model === 'juggernaut-xl' && samplingOverride) {
         // Visible modal values are authoritative, even if old session options
@@ -499,8 +505,8 @@ function imageOptionsForRequest(
     // editing an existing artifact (no attachment picker). Never lose that
     // selection by retaining "auto" from the initial edit payload.
     // For attachment edits, imageModel already reflects the dedicated picker.
-    if (imageModel !== null &&
-        (operation === 'generate' || editModelFromModal)) {
+    if (operation !== 'generate' && editModelFromModal &&
+        imageModel !== null) {
         merged.model = String(imageModel || 'auto').trim() || 'auto';
     }
 
