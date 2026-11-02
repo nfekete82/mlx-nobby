@@ -4201,6 +4201,13 @@ class ChatActionRequest(BaseModel):
         strict=True,
     )
 
+class SmartMediaPlanRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+    target: Literal["image", "image_edit", "video"]
+    source_kind: Literal["none", "image", "images", "video", "audio"] = "none"
+    selected_model: str = Field(default="auto", max_length=96)
+
+
 class KnowledgeSourceRequest(BaseModel):
     path: str
     name: str | None = None
@@ -9992,6 +9999,43 @@ def _chat_decision_for_request(request, routing_file_context):
         return None
     from agent.chat_decision import plan_chat_decision
     return plan_chat_decision(request.prompt, request.conversation_context)
+
+
+@app.post("/api/chat/media/plan")
+def smart_media_plan(request: SmartMediaPlanRequest):
+    """Opt-in prompt preparation only. This endpoint never dispatches jobs.
+
+    Existing action routing and the image/video request validators remain the
+    only authorities for job type, source artifact and model permissions.
+    """
+    from agent import media_copilot
+    import image_registry
+
+    candidates = []
+    if request.target in {"image", "image_edit"}:
+        capability = "text_to_image" if request.target == "image" else "image_edit"
+        candidates = [
+            item for item in image_registry.load_registry()["models"]
+            if item.get("enabled") is True
+            and capability in (item.get("capabilities") or ())
+        ]
+
+    def complete(messages):
+        response = agent_model_provider().complete(
+            ModelRequest(
+                messages=messages, role="chat",
+                temperature=0.15, max_tokens=850,
+            ),
+            run_context=run_state.current_run_context(),
+        )
+        return response.text
+
+    return media_copilot.plan_media(
+        prompt=request.prompt, target=request.target,
+        source_kind=request.source_kind,
+        candidate_models=candidates, selected_model=request.selected_model,
+        complete=complete,
+    )
 
 
 @app.post("/api/chat/actions/route")
