@@ -603,7 +603,17 @@ def availability(model):
         compatible, reason = mflux_weight_contract(model, root)
         if not compatible:
             return False, reason
-        return mflux_contract(model, command)
+        ready, reason = mflux_contract(model, command)
+        if not ready:
+            return ready, reason
+        if model.get("model_family") == "flux3-klein":
+            edit_cli = mflux_executable(model, edit=True)
+            edit_ready, edit_reason = mflux_contract(model, edit_cli)
+            if not edit_ready:
+                return edit_ready, edit_reason
+            if "--image-paths" not in probe_mflux_cli(str(edit_cli))["supported_flags"]:
+                return False, "FLUX 3 Referenzbearbeitung nicht mit installierter CLI kompatibel"
+        return True, reason
     return True, "Lokale Gewichte vorhanden"
 
 
