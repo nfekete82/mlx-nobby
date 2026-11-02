@@ -21,6 +21,17 @@ from image_registry import FAMILIES, MODEL_ROOTS, OSAURUS_QWEN21_EDIT_ID, valida
 from mflux_capabilities import probe_mflux_cli, mflux_contract, mflux_weight_contract
 
 MFLUX_BIN = Path(os.environ.get("MLX_IMAGE_MFLUX_BIN", str(Path.home() / ".local/bin")))
+# FLUX 3 was already installed and rendered in this isolated user venv.
+# Do not replace the existing MFLUX runtime used by other models.
+FLUX3_MFLUX_BIN = Path(os.environ.get(
+    "MLX_IMAGE_FLUX3_MFLUX_BIN", str(Path.home() / ".venvs/flux3-test/bin"),
+))
+
+
+def mflux_executable(model, *, edit=False):
+    if model.get("model_family") == "flux3-klein":
+        return FLUX3_MFLUX_BIN / ("mflux-generate-flux3-edit" if edit else "mflux-generate-flux3")
+    return MFLUX_BIN / FAMILIES[model["model_family"]][0]
 MLXGEN_BIN = Path(os.environ.get("MLX_IMAGE_MLXGEN_BIN", str(Path.home() / ".local/share/mlx-gen-venv/bin/mlxgen")))
 
 MLXSERVE_URL = os.environ.get(
@@ -564,9 +575,13 @@ def availability(model):
             return False, str(exc)
         return True, "Lokaler SDXL-Checkpoint und lokale Runtime-Konfiguration vorhanden"
     if model["provider"] == "mflux":
-        command = MFLUX_BIN / FAMILIES[model["model_family"]][0]
+        command = mflux_executable(model)
         if not command.is_file() or not os.access(command, os.X_OK):
             return False, "MFLUX-CLI nicht installiert"
+        if model.get("model_family") == "flux3-klein":
+            edit_command = mflux_executable(model, edit=True)
+            if not edit_command.is_file() or not os.access(edit_command, os.X_OK):
+                return False, "FLUX 3 Edit-CLI fehlt im isolierten Test-Venv"
     root = model_directory(model)
     if not root or not root.is_dir() or not any(root.rglob("*.safetensors")):
         return False, "Lokale Modellgewichte fehlen; keine automatischen Downloads"
@@ -615,11 +630,45 @@ def sdxl_files(model):
 
 def mflux_command(model, params, output):
     family = model["model_family"]
-    executable = MFLUX_BIN / FAMILIES[family][0]
+    executable = mflux_executable(model, edit=family == "flux3-klein" and bool(
+        params.get("source_path") or params.get("source_paths")
+    ))
     ready, reason = mflux_contract(model, executable)
     if not ready:
         raise ProviderFailure(reason, error_code='IMAGE_PROVIDER_INCOMPATIBLE', provider='mflux', model=model.get('id'))
     flags = probe_mflux_cli(str(executable))['supported_flags']
+
+    if family == "flux3-klein":
+        source_paths = params.get("source_paths") or (
+            [params["source_path"]] if params.get("source_path") else []
+        )
+        if len(source_paths) > 10:
+            raise ProviderFailure("Maximal zehn Referenzbilder erlaubt",
+                                  provider="mflux", model=model.get("id"))
+        if source_paths and "--image-paths" not in flags:
+            raise ProviderFailure("FLUX 3 Edit-CLI unterstützt keine Referenzbilder",
+                                  error_code="IMAGE_PROVIDER_INCOMPATIBLE")
+        unsupported = {
+            "negative_prompt": params.get("negative_prompt"),
+            "mask_path": params.get("mask_path"),
+            "auto_mask": params.get("auto_mask"),
+            "strength": params.get("strength"),
+        }
+        if any(value is not None and value != "" for value in unsupported.values()):
+            raise ProviderFailure("FLUX 3 Klein unterstützt diese Edit-/Negativ-Prompt-Optionen nicht",
+                                  error_code="IMAGE_PROVIDER_INCOMPATIBLE",
+                                  provider="mflux", model=model.get("id"))
+        cmd = [str(executable), "--model", str(model_directory(model)),
+               "--base-model", model["base_model"], "--prompt", params["prompt"],
+               "--steps", str(params["steps"]), "--seed", str(params["seed"]),
+               "--output", str(output)]
+        if source_paths:
+            cmd += ["--image-paths", *map(str, source_paths)]
+        if params.get("width") and params.get("height"):
+            cmd += ["--width", str(params["width"]), "--height", str(params["height"])]
+        # Keep runtime memory isolated even if the chat LLM is also loaded.
+        cmd += ["--low-ram"]
+        return cmd
 
     # Source aspect is already resolved by the service into width/height.
     # Qwen Edit 0.19.1/0.20.0 have no --canvas-policy; quantize only on request.
