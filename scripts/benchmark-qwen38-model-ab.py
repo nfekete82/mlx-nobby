@@ -304,8 +304,17 @@ def speed_tests(probe, model: str, samples: int, timeout: int, memory_probe=None
     with httpx.Client(base_url="http://127.0.0.1:8000", trust_env=False) as client:
         for name in ("long", "coding"):
             prompt, limit = probe.PROFILES[name]
-            rows = [probe.sample(client, model, timeout, prompt, limit)
-                    for _ in range(samples)]
+            print(f"[model-ab] {name}: {samples} requests, token cap {limit}", file=sys.stderr, flush=True)
+            rows = []
+            for index in range(1, samples + 1):
+                print(f"[model-ab] {name} request {index}/{samples} running...", file=sys.stderr, flush=True)
+                row = probe.sample(client, model, timeout, prompt, limit)
+                rows.append(row)
+                print(
+                    f"[model-ab] {name} request {index}/{samples} done: "
+                    f"{row['completion_tokens']} tokens, {row['wall_ms']} ms",
+                    file=sys.stderr, flush=True,
+                )
             result[name] = {
                 "samples": len(rows),
                 "total_wall_ms": probe.summarize([r["wall_ms"] for r in rows]),
@@ -389,6 +398,7 @@ def run(args, profile, probe, quality):
         verify_process(profile, status["original_model"], dflash=False)
         profile.ensure_idle()
         result["baseline_before"] = profile.memory_snapshot()
+        print("[model-ab] baseline: 6-bit speed probes starting", file=sys.stderr, flush=True)
         result["baseline_speed"] = speed_tests(
             probe, status["original_model"], args.samples, args.timeout, lambda: memory_blockers(profile))
         result["baseline_after"] = profile.memory_snapshot()
@@ -403,6 +413,7 @@ def run(args, profile, probe, quality):
                     raise RuntimeError("Memory admission failed after baseline")
                 if profile.CONFIG.read_text(encoding="utf-8") != original:
                     raise RuntimeError("Config changed externally before candidate")
+                print("[model-ab] switching to configured 4-bit DFlash2 target", file=sys.stderr, flush=True)
                 profile.write_config(candidate)
                 changed = True
                 profile.restart()
@@ -411,7 +422,9 @@ def run(args, profile, probe, quality):
                 result["candidate_before"] = profile.memory_snapshot()
                 if memory_blockers(profile):
                     raise RuntimeError("Memory admission failed after candidate start")
-                result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout, lambda: memory_blockers(profile))
+                print("[model-ab] candidate: 4-bit DFlash2 speed probes starting", file=sys.stderr, flush=True)
+                print("[model-ab] candidate: 4-bit DFlash2 speed probes starting", file=sys.stderr, flush=True)
+            result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout, lambda: memory_blockers(profile))
                 result["candidate_after"] = profile.memory_snapshot()
                 candidate_quality = quality_test(p / "candidate.json", args.timeout)
                 result["quality"] = quality.compare(baseline_quality, candidate_quality)
@@ -421,6 +434,7 @@ def run(args, profile, probe, quality):
                 raise RuntimeError("Memory admission failed after baseline")
             if profile.CONFIG.read_text(encoding="utf-8") != original:
                 raise RuntimeError("Config changed externally before candidate")
+            print("[model-ab] switching to configured 4-bit DFlash2 target", file=sys.stderr, flush=True)
             profile.write_config(candidate)
             changed = True
             profile.restart()
@@ -438,6 +452,7 @@ def run(args, profile, probe, quality):
             if changed:
                 if profile.CONFIG.read_text(encoding="utf-8") != candidate:
                     raise RuntimeError("Config changed externally; refusing to clobber it during rollback")
+                print("[model-ab] restoring original 6-bit configuration", file=sys.stderr, flush=True)
                 profile.write_config(original)
                 profile.restart()
                 verify_process(profile, status["original_model"], dflash=False)
