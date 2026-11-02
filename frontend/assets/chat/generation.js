@@ -114,6 +114,7 @@ const IMAGE_FORMATS = Object.freeze([
 ]);
 
 const IMAGE_MODEL_STORAGE_KEY = 'mlx-nobby-image-model';
+const FLUX3_KLEIN_Q4_MODEL = 'mflux-flux3-image-klein-q4';
 const IMAGE_CREATION_PREFERENCES_KEY = 'mlx-nobby-image-creation-preferences-v1';
 const IMAGE_CREATION_QUALITIES = Object.freeze(['fast', 'standard', 'quality', 'ultra']);
 
@@ -499,6 +500,19 @@ function imageOptionsForRequest(
     }
 
     if (operation !== 'generate') Object.assign(merged, options?.referenceEdit || {});
+
+    // Negative prompts and legacy edit controls are not supported by FLUX 3
+    // Klein distilled. A saved Juggernaut/Qwen choice must never break a
+    // later FLUX 3 request; keep preferences intact for switching back.
+    if (merged.model === FLUX3_KLEIN_Q4_MODEL) {
+        for (const key of [
+            'negative_prompt', 'mask_path', 'auto_mask', 'strength',
+            'use_kv_cache', 'use_step_cache', 'step_cache_threshold',
+            'enhance_prompt', 'verify', 'region_edit', 'region_feather_px'
+        ]) {
+            delete merged[key];
+        }
+    }
 
     if (!allowFormat) {
         return merged;
@@ -3655,9 +3669,11 @@ const imageFiles =
                         renderDurationOptions();
                         renderSampling();
 
+                        const flux3Selected =
+                            selectedImageModel === FLUX3_KLEIN_Q4_MODEL;
                         if (negativePromptField) {
                             negativePromptField.hidden =
-                                resolvedTarget !== 'image';
+                                resolvedTarget !== 'image' || flux3Selected;
                         }
 
                         if (
@@ -3666,6 +3682,7 @@ const imageFiles =
                         ) {
                             negativePromptInput.value =
                                 selectedNegativePrompt;
+                            negativePromptInput.disabled = flux3Selected;
                         }
                     };
 
@@ -3897,7 +3914,8 @@ const imageFiles =
 
                             if (
                                 resolvedTarget === 'image' &&
-                                negativePromptInput
+                                negativePromptInput &&
+                                selectedImageModel !== FLUX3_KLEIN_Q4_MODEL
                             ) {
                                 selectedNegativePrompt =
                                     negativePromptInput.value.trim();
