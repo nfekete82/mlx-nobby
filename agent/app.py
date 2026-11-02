@@ -8827,13 +8827,20 @@ def _video_payload(request, operation):
     options = dict(request.video_options or {})
     allowed = {
         "model", "resolution", "duration", "fps", "seed", "resize_mode",
-        "width", "height", "aspect_ratio",
+        "width", "height", "aspect_ratio", "prompt",
         "profile",
     }
     if set(options) - allowed:
         raise HTTPException(422, "Unbekannte Videoparameter")
     if options.get("profile", "standard") not in ("standard", "uncensored"):
         raise HTTPException(422, "Video profile muss standard oder uncensored sein")
+    # The opt-in copilot provides a model-specific movement prompt without
+    # replacing the original request.prompt used by the deterministic router.
+    planned_prompt = options.pop("prompt", None)
+    if planned_prompt is not None:
+        if not isinstance(planned_prompt, str) or not 3 <= len(planned_prompt.strip()) <= 4000:
+            raise HTTPException(422, "Ungültiger Smart-Media-Videoprompt")
+        payload["prompt"] = planned_prompt.strip()
     payload.update(options)
     if operation == "multi_i2v":
         payload.update(images=multi_sources, multi_image_mode=request.multi_image_mode)
