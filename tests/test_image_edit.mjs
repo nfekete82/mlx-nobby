@@ -2064,6 +2064,18 @@ assert.equal(routedActionPayloads.at(-1).action, 'image_edit');
 assert.equal(routedActionPayloads.at(-1).resolved_target, 'image_edit');
 selectedImageMode = 'auto';
 
+// With an explicit leading "Ändere das Bild", all following text belongs
+// to the edit description—even a literal creation phrase or "not" wording.
+const opaqueEditPrompt =
+    'Ändere das Bild: natural portrait, not a model; erstelle ein Bild mit weichem Licht.';
+routeTargets.set(opaqueEditPrompt, 'image_edit');
+selectedAttachments = [imageAttachment];
+selectedImageMode = 'auto';
+input.value = opaqueEditPrompt;
+await window.MLXChatGeneration.sendMessage();
+assert.equal(routedActionPayloads.at(-1).resolved_target, 'image_edit');
+assert.equal(routedActionPayloads.at(-1).file_context.kind, 'image');
+
 // A failed preflight cannot authorize jobs through local regexes or options.
 const workingFetch = context.fetch;
 context.fetch = async (url, options) => {
