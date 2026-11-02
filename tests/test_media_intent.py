@@ -84,6 +84,12 @@ MATRIX = [
     ("Ändere das Bild: erstelle ein Bild mit einer natürlichen Lichtstimmung.", True, "image_edit"),
     ("Ändere das Bild, kein Make-up und ohne Studiohintergrund.", True, "image_edit"),
     ("Ändere das Bild nicht mehr", True, "chat"),
+    ("Ändere das Bild und doch nicht", True, "chat"),
+    ("Ändere das Bild, aber bitte nicht", True, "chat"),
+    ("Bearbeite das Bild und bearbeite das Bild nicht", True, "chat"),
+    ("Ändere das Bild, aber nicht die Person", True, "image_edit"),
+    ("Ändere das Bild und nicht die Kleidung", True, "image_edit"),
+    ("Ändere das Bild: not a model, not perfectly symmetrical.", True, "image_edit"),
     ("Ändere das Bild-Prompt für ein Foto", True, "chat"),
     # An explicit withdrawal of the job must still win.
     ("Ändere das Bild und doch nicht", True, "chat"),
