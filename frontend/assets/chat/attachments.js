@@ -347,6 +347,7 @@ function attachmentT(key, fallback = '', variables = {}) {
             select.value = editOptions.model || 'auto';
             updateStrength();
             updateSamplingVisibility();
+            updateMaskVisibility();
         }).catch(() => {
             modelOptionsLoaded = true;
             // Keep automatic routing available even if model discovery is offline.
@@ -359,6 +360,7 @@ function attachmentT(key, fallback = '', variables = {}) {
             }
             updateStrength();
             updateSamplingVisibility();
+            updateMaskVisibility();
         });
 
         updateStrength();
@@ -480,7 +482,20 @@ function attachmentT(key, fallback = '', variables = {}) {
         maskLabel.append(mask, maskStatus);
         fields.append(maskLabel);
         const updateMaskVisibility = () => {
-            maskLabel.hidden = selectedSdxl();
+            const flux3Selected =
+                select.value === 'mflux-flux3-image-klein-q4';
+            negativeLabel.hidden = flux3Selected;
+            maskLabel.hidden = selectedSdxl() || flux3Selected;
+            if (flux3Selected) {
+                // Don't carry old Qwen/SDXL controls into FLUX 3 edits.
+                for (const key of [
+                    'negative_prompt', 'mask_path', 'auto_mask', 'strength',
+                    'use_kv_cache', 'use_step_cache', 'step_cache_threshold',
+                    'enhance_prompt', 'verify', 'region_edit', 'region_feather_px'
+                ]) delete editOptions[key];
+                negative.value = '';
+                maskStatus.textContent = '';
+            }
         };
         select.addEventListener('change', updateMaskVisibility);
         updateMaskVisibility();
