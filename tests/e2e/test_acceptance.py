@@ -206,6 +206,34 @@ def media_start(page, prompt, profile=None):
     page.locator('#mediaQualityModalConfirm').click()
 
 
+@pytest.mark.parametrize("smart", [True, False])
+def test_smart_media_quality_toggle_and_agent_planner(ui, smart):
+    page, agent, _ = ui
+    send(page, "Generate an image: A red ceramic mug on a wooden table")
+    modal = page.locator('#mediaQualityModal')
+    expect(modal).to_be_visible()
+    toggle = page.locator('#smartMediaEnabled')
+    expect(toggle).to_be_visible()
+    expect(toggle).to_be_checked()
+    if not smart:
+        toggle.uncheck()
+    page.locator('#mediaQualityModalConfirm').click()
+    expect(page.locator('.image-artifact-card')).to_be_visible()
+    assert agent.count('/api/chat/media/plan', 'POST') == (1 if smart else 0)
+    action = next(body for method, path, body in agent.calls
+                  if path == '/api/chat/actions')
+    assert action['resolved_target'] == 'image'
+    assert 'mug' in action['prompt'].lower()
+    if smart:
+        planned = next(body for method, path, body in agent.calls
+                       if path == '/api/chat/media/plan')
+        assert planned['target'] == 'image'
+        assert 'mug' in planned['prompt'].lower()
+        assert action['image_options']['prompt'] == planned['prompt']
+    else:
+        assert 'prompt' not in action['image_options']
+
+
 def test_image_job_preview_download(ui):
     page, agent, _ = ui
     media_start(page, 'A red ceramic mug on a wooden table')
