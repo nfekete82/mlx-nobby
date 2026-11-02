@@ -57,9 +57,9 @@ def test_juggernaut_photorealistic_person_gets_restrained_realism_hints():
     enhanced = enhance_juggernaut_payload(payload, model="juggernaut-xl")
 
     assert "natural skin texture" in enhanced["prompt"]
-    assert "visible pores" in enhanced["prompt"]
-    assert "waxy skin" in enhanced["negative_prompt"]
-    assert "3D render" in enhanced["negative_prompt"]
+    assert "physically plausible light" in enhanced["prompt"]
+    assert "unretouched photographic look" in enhanced["prompt"]
+    assert "negative_prompt" not in enhanced
 
 
 def test_german_fallback_prompt_can_still_receive_juggernaut_realism_hints():
@@ -99,3 +99,45 @@ def test_non_human_juggernaut_photo_is_not_enriched():
     enhanced = enhance_juggernaut_payload(payload, model="juggernaut-xl")
 
     assert enhanced == {"prompt": "Create a photorealistic photo of a red sports car."}
+
+
+def test_negative_prompt_is_empty_by_default_for_ragnarok():
+    payload = {"prompt": "Photorealistic portrait of a woman."}
+
+    enhanced = enhance_juggernaut_payload(payload, model="juggernaut-xl")
+
+    assert "negative_prompt" not in enhanced
+
+
+def test_explicit_retouched_style_wins_over_automatic_hints():
+    payload = {"prompt": "Glossy glamour photorealistic portrait of a woman."}
+
+    enhanced = enhance_juggernaut_payload(payload, model="juggernaut-xl")
+
+    assert enhanced == {"prompt": "Glossy glamour photorealistic portrait of a woman."}
+
+
+def test_long_user_prompt_is_not_extended_with_default_suffix():
+    prompt = "A photorealistic portrait of a woman, " + " ".join(
+        ["specific visual direction"] * 30
+    )
+    payload = {"prompt": prompt}
+
+    enhanced = enhance_juggernaut_payload(payload, model="juggernaut-xl")
+
+    assert enhanced["prompt"] == prompt
+    assert "negative_prompt" not in enhanced
+
+
+def test_ragnarok_short_hint_is_not_applied_twice():
+    payload = {"prompt": "A photorealistic portrait of a woman."}
+
+    first = enhance_juggernaut_payload(payload, model="juggernaut-xl")
+    second = enhance_juggernaut_payload(first, model="juggernaut-xl")
+
+    assert second["prompt"].count("natural skin texture") == 1
+
+
+def test_nonphotographic_user_negative_is_untouched():
+    payload = {"prompt": "A watercolor painting of a cat", "negative_prompt": "photograph"}
+    assert enhance_juggernaut_payload(payload, model="juggernaut-xl") == payload
