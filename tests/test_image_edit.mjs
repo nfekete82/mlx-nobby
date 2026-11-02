@@ -2239,6 +2239,58 @@ for (const steps of [30, 35, 40]) {
 }
 context.requestAnimationFrame = originalAnimationFrame;
 
+// An explicit FLUX 3 selection in the image modal for an already generated
+// artifact must survive the edit payload. Before this regression fix the modal
+// showed FLUX 3 but the action carried model=auto and dispatched to Qwen.
+const artifactFlux3Prompt = 'Ändere den Hintergrund dieses Bildes in neutrales Grau.';
+routeTargets.set(artifactFlux3Prompt, 'image_edit');
+session.messages = [{
+    role: 'assistant', tool_result: {
+        tool: 'image_generate', status: 'completed', artifacts: [imageArtifact],
+    },
+}];
+session.workspace = {active_artifact_id: imageArtifact.artifact_id};
+selectedAttachments = [];
+selectedImageMode = 'auto';
+const artifactEditFrame = context.requestAnimationFrame;
+context.requestAnimationFrame = callback => {
+    const select = modalElements.get('imageModel');
+    assert.equal(modalElements.get('imageModelField').hidden, false);
+    assert.equal(select.children.some(option =>
+        option.value === 'mflux-flux3-image-klein-q4'), true);
+    select.value = 'mflux-flux3-image-klein-q4';
+    select.listeners.get('change')?.();
+    callback();
+    modalElements.get('mediaQualityModalConfirm').click();
+};
+input.value = artifactFlux3Prompt;
+await window.MLXChatGeneration.sendMessage();
+const flux3ArtifactAction = routedActionPayloads.at(-1);
+assert.equal(flux3ArtifactAction.resolved_target, 'image_edit');
+assert.equal(flux3ArtifactAction.active_artifact_id, imageArtifact.artifact_id);
+assert.equal(flux3ArtifactAction.image_options.model, 'mflux-flux3-image-klein-q4');
+assert.equal(flux3ArtifactAction.image_options.negative_prompt, undefined);
+context.requestAnimationFrame = artifactEditFrame;
+
+// A manual model in the attachment edit picker must remain authoritative;
+// the image modal must not replace it with the saved generation model.
+const attachmentFlux3Prompt = 'Bearbeite dieses hochgeladene Foto.';
+routeTargets.set(attachmentFlux3Prompt, 'image_edit');
+selectedAttachments = [imageAttachment];
+selectedImageMode = 'edit';
+session.workspace = {};
+const originalGetEditOptions = context.MLXChatAttachments.getEditOptions;
+context.MLXChatAttachments.getEditOptions =
+    () => ({model: 'mflux-flux3-image-klein-q4'});
+input.value = attachmentFlux3Prompt;
+await window.MLXChatGeneration.sendMessage();
+const flux3AttachmentAction = routedActionPayloads.at(-1);
+assert.equal(flux3AttachmentAction.resolved_target, 'image_edit');
+assert.equal(flux3AttachmentAction.image_options.model, 'mflux-flux3-image-klein-q4');
+context.MLXChatAttachments.getEditOptions = originalGetEditOptions;
+selectedImageMode = 'auto';
+selectedAttachments = [];
+
 // Reference routing uses the current upload or explicit workspace selection.
 // An old historical image and ambiguous attachments cannot authorize a source.
 for (const kind of ['upload', 'selected', 'historical', 'multiple', 'composition', 'followup']) {
