@@ -8726,7 +8726,12 @@ def _automatic_image_dimensions(prompt):
 
 def _image_generate_payload(request):
     source_prompt = str(request.prompt or "").strip()
-    prepared = translate_image_prompt_to_english(source_prompt)
+    # A validated, precompiled per-job prompt can be supplied by Smart Media.
+    # Avoid translating the raw prompt a second time after Qwen planned it.
+    precompiled = (request.image_options or {}).get("prompt")
+    prepared = precompiled if isinstance(precompiled, str) and precompiled.strip() else (
+        translate_image_prompt_to_english(source_prompt)
+    )
 
     if isinstance(prepared, dict):
         prompt = str(prepared.get("prompt") or "").strip()
@@ -8818,7 +8823,10 @@ def _video_payload(request, operation):
                                   **{key: item[key] for key in ("frame_index", "strength") if key in item}})
     elif request.multi_images or request.multi_image_mode:
         raise HTTPException(422, "Multi-Image-Bilder benötigen einen Modus")
-    prompt = compile_video_prompt(request.prompt)
+    precompiled = (request.video_options or {}).get("prompt")
+    prompt = precompiled.strip() if isinstance(precompiled, str) and precompiled.strip() else (
+        compile_video_prompt(request.prompt)
+    )
     if len(prompt) < 3:
         raise HTTPException(400, "Bitte beschreibe das gewünschte Video")
     payload = {"prompt": prompt, "model": "auto"}
