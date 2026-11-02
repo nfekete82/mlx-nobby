@@ -504,7 +504,7 @@ function imageOptionsForRequest(
     // Negative prompts and legacy edit controls are not supported by FLUX 3
     // Klein distilled. A saved Juggernaut/Qwen choice must never break a
     // later FLUX 3 request; keep preferences intact for switching back.
-    if (merged.model === FLUX3_KLEIN_Q4_MODEL) {
+    if (merged.model === 'mflux-flux3-image-klein-q4') {
         for (const key of [
             'negative_prompt', 'mask_path', 'auto_mask', 'strength',
             'use_kv_cache', 'use_step_cache', 'step_cache_threshold',
