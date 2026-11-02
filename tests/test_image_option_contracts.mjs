@@ -138,6 +138,13 @@ assert.equal(elements[0].textContent, 'Automatic (Juggernaut Ragnarok)');
 assert.equal(select.disabled, false);
 assert.equal(savedChoices.length, 0);
 
+// Retired FLUX 3 was removed intentionally, unlike a temporarily
+// unavailable model. Its obsolete stored picker value must return to Auto.
+assert.equal(await modelContext.updateImageModelOptions(
+    select, 'mflux-flux3-image-klein-q4'
+), 'auto');
+assert.deepEqual(options(), ['auto', 'juggernaut-xl', 'mlxserve-qwen-image-2.1']);
+
 // An unavailable or edit-only model cannot silently replace a manual
 // generation preference with Auto/Qwen.
 for (const stale of ['mflux-osaurus-qwen-image-2.1-edit', 'missing-weights',
