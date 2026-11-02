@@ -289,7 +289,7 @@ def run(args, profile, probe, quality):
                 if memory_gate(result["candidate_before"]):
                     raise RuntimeError("Memory admission failed after candidate start")
                 result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout, profile.memory_snapshot)
-            result["candidate_after"] = profile.memory_snapshot()
+                result["candidate_after"] = profile.memory_snapshot()
                 candidate_quality = quality_test(p / "candidate.json", args.timeout)
                 result["quality"] = quality.compare(baseline_quality, candidate_quality)
         else:
@@ -307,7 +307,7 @@ def run(args, profile, probe, quality):
             if memory_gate(result["candidate_before"]):
                 raise RuntimeError("Memory admission failed after candidate start")
             result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout, profile.memory_snapshot)
-                result["candidate_after"] = profile.memory_snapshot()
+            result["candidate_after"] = profile.memory_snapshot()
     except BaseException as exc:
         primary_error = exc
     finally:
