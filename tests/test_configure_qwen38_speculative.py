@@ -61,6 +61,46 @@ class ConfigureQwen38SpeculativeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Qwen3.8 DFlash2:      ready", result.stdout)
 
+    def test_status_explains_target_mismatch_even_when_draft_cached(self):
+        self.make_hf_symlink_cache()
+        other = self.root / "other-model"
+        self.config.write_text(
+            f'MODEL="{other}"\n'
+            f'SPECULATIVE_TARGET="{self.target}"\n'
+            f'SPECULATIVE_DRAFT_MODEL="{DRAFT_REPO}"\n',
+            encoding="utf-8",
+        )
+        result = self.run_script("status")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Configured use:       disabled (target mismatch)", result.stdout)
+        self.assertIn("Qwen3.8 DFlash2:      ready", result.stdout)
+
+    def test_status_reports_matching_cached_draft_as_eligible_only(self):
+        self.make_hf_symlink_cache()
+        self.config.write_text(
+            f'MODEL="{self.target}"\n'
+            f'SPECULATIVE_TARGET="{self.target}"\n'
+            f'SPECULATIVE_DRAFT_MODEL="{DRAFT_REPO}"\n',
+            encoding="utf-8",
+        )
+        result = self.run_script("status")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Configured use:       eligible", result.stdout)
+        self.assertIn("compatibility not verified", result.stdout)
+
+    def test_status_apc_takes_precedence_over_matching_target(self):
+        self.make_hf_symlink_cache()
+        self.config.write_text(
+            f'MODEL="{self.target}"\n'
+            f'SPECULATIVE_TARGET="{self.target}"\n'
+            f'SPECULATIVE_DRAFT_MODEL="{DRAFT_REPO}"\n'
+            'MLX_CHAT_PERFORMANCE_PROFILE="apc"\n',
+            encoding="utf-8",
+        )
+        result = self.run_script("status")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Configured use:       disabled (APC profile)", result.stdout)
+
     def test_enable_accepts_hugging_face_symlink_snapshot(self):
         self.make_hf_symlink_cache()
         result = self.run_script("enable")
