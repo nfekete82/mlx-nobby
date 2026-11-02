@@ -710,9 +710,12 @@ def _resolve_generation(request):
     if request.sdxl_vae_mode is not None:
         params["sdxl_vae_mode"] = request.sdxl_vae_mode
     negative_prompt = str(request.negative_prompt or "").strip()
-    if negative_prompt:
+    if negative_prompt and model["model_family"] != "flux3-klein":
         params["negative_prompt"] = negative_prompt
     else:
+        # Older clients may forward a remembered SDXL negative prompt even
+        # after switching to FLUX 3. It must never turn a normal image job
+        # into a failed request; FLUX 3 has no supported negative-prompt path.
         params.pop("negative_prompt", None)
     profile = resolve_image_profile(model, request.quality) if request.quality else None
     params["steps"] = (
