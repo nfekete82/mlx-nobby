@@ -2257,6 +2257,15 @@ def mlx_chat_actions(request: dict):
     )
 
 
+@app.post("/api/mlx/chat/media/plan")
+def mlx_smart_media_plan(request: dict):
+    # Only a planning request; the existing guarded /chat/actions path starts
+    # jobs. Keep model inference outside the web container.
+    return agent_json_request(
+        "POST", "/api/chat/media/plan", payload=request, timeout=120,
+    )
+
+
 @app.post("/api/mlx/chat/actions/route")
 def mlx_chat_actions_route(request: dict):
     return agent_json_request(
