@@ -29,8 +29,8 @@ BINARY_EXTS = {
     ".sqlite", ".sqlite3", ".db", ".pem", ".key", ".p12", ".pfx",
     ".docx", ".xlsx",
 }
-EXAMPLE_USERS = {"runner", "example", "user", "username", "yourname", "test", "demo", "nobody", "ubuntu", "oai", "shared", "name"}
-UNIX_HOME = re.compile(r"/(?:Users|home)/([A-Za-z][A-Za-z0-9._-]{1,60})(?=[/\\\s\"']|$)")
+EXAMPLE_USERS = {"runner", "example", "user", "username", "yourname", "test", "demo", "nobody", "ubuntu", "oai", "shared", "name", "private"}
+UNIX_HOME = re.compile(r"(?<![A-Za-z0-9:/])/(?:Users|home)/([A-Za-z][A-Za-z0-9._-]{1,60})(?=[/\\\s\"']|$)")
 WIN_HOME = re.compile(r"[A-Za-z]:\\{1,2}Users\\{1,2}([A-Za-z][A-Za-z0-9._-]{1,60})", re.I)
 PRIVATE_EMAIL = re.compile(r"\b[\w.+-]+@(?:gmail|googlemail|icloud|me|outlook|hotmail|yahoo|protonmail|proton|gmx|web|dpolg-service)\.[a-z.]+\b", re.I)
 SECRET = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{25,}|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,})\b")
@@ -66,6 +66,15 @@ def audit() -> list[tuple[str, str]]:
     for name in tracked_files():
         path = ROOT / name
         if not path.is_file():
+            continue
+        # Existing third-party KaTeX fonts and the application favicon are static assets.
+        if name.startswith("frontend/assets/vendor/katex/fonts/") and path.suffix.lower() == ".woff2":
+            if path.read_bytes()[:4] != b"wOF2":
+                issues.append((name, "unrecognized vendor font format"))
+            continue
+        if name == "frontend/favicon.ico":
+            if path.read_bytes()[:4] != b"\x00\x00\x01\x00":
+                issues.append((name, "unrecognized favicon format"))
             continue
         if path.suffix.lower() in BINARY_EXTS:
             expected = REVIEWED_SCREENSHOTS.get(name)
