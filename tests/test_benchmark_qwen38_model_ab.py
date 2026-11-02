@@ -43,6 +43,36 @@ def test_memory_admission_fails_closed():
     assert "unavailable" in "; ".join(ab.memory_gate({"free_percent": 30}))
 
 
+def test_swap_interval_parser_uses_second_row_only():
+    output = (
+        "Mach Virtual Memory Statistics: (page size of 16384 bytes)\n"
+        "  free  active  swapins swapouts\n"
+        "  5000  12000  56572K   76198K\n"
+        "  5100  12010  256      0\n"
+    )
+    assert ab.parse_vm_stat_swap_delta(output, 3) == {
+        "window_seconds": 3, "swapins_pages": 256, "swapouts_pages": 0,
+    }
+    with pytest.raises(ValueError, match="unavailable"):
+        ab.parse_vm_stat_swap_delta("invalid output", 3)
+    with pytest.raises(ValueError, match="malformed"):
+        ab.parse_vm_stat_swap_delta(output.replace("256      0", "256      1K"), 3)
+
+
+def test_high_historical_swap_requires_verified_zero_swapouts():
+    high = dict(free_percent=88, headroom_gb=36.24,
+                swap_used_gb=11.58, pressure="normal")
+    inactive = {"window_seconds": 3, "swapins_pages": 200, "swapouts_pages": 0}
+    assert ab.memory_gate(high, inactive) == []
+    assert ab.memory_gate(high, {"window_seconds": 3, "swapouts_pages": 1}) == [
+        "active swapouts detected"
+    ]
+    assert "not verified" in "; ".join(ab.memory_gate(high))
+    assert ab.memory_gate({**high, "pressure": "critical"}, inactive) == [
+        "memory pressure is not normal"
+    ]
+
+
 def setup_fake_runtime(tmp_path, monkeypatch):
     current = tmp_path / "6-bit"
     candidate = tmp_path / "4-bit"
@@ -123,6 +153,53 @@ def test_idle_guard_failure_prevents_restart_even_with_good_memory(monkeypatch, 
 def test_unknown_guard_errors_are_redacted():
     assert ab.idle_error_code(RuntimeError("private response body from upstream")) == "idle_guard_unavailable"
     assert ab.idle_error_code(RuntimeError("Media queue active; wait before switching")) == "media_queue_busy"
+
+
+def test_high_swap_plan_passes_only_with_fresh_inactive_sample(monkeypatch, tmp_path, capsys):
+    profile, config, original, restarts, options = setup_fake_runtime(tmp_path, monkeypatch)
+    monkeypatch.setattr(profile, "memory_snapshot",
+                        lambda: dict(free_percent=88, headroom_gb=36.24,
+                                     swap_used_gb=11.58, pressure="normal"))
+    monkeypatch.setattr(ab, "sample_swap_activity",
+                        lambda: {"window_seconds": 3, "swapins_pages": 256, "swapouts_pages": 0})
+    options.confirm_restarts = False
+    assert ab.run(options, profile, object(), object()) == 0
+    import json
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["ready"] is True
+    assert plan["status"]["swap_activity"]["swapouts_pages"] == 0
+    assert config.read_text() == original
+    assert restarts == []
+
+
+def test_active_swapout_plan_remains_blocked(monkeypatch, tmp_path, capsys):
+    profile, config, original, restarts, options = setup_fake_runtime(tmp_path, monkeypatch)
+    monkeypatch.setattr(profile, "memory_snapshot",
+                        lambda: dict(free_percent=88, headroom_gb=36.24,
+                                     swap_used_gb=11.58, pressure="normal"))
+    monkeypatch.setattr(ab, "sample_swap_activity",
+                        lambda: {"window_seconds": 3, "swapins_pages": 0, "swapouts_pages": 1})
+    options.confirm_restarts = False
+    assert ab.run(options, profile, object(), object()) == 0
+    import json
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["ready"] is False
+    assert "active swapouts detected" in plan["blockers"]
+    assert config.read_text() == original
+    assert not restarts
+
+
+def test_vm_stat_failure_blocks_benchmark(monkeypatch, tmp_path):
+    profile, config, original, restarts, options = setup_fake_runtime(tmp_path, monkeypatch)
+    monkeypatch.setattr(profile, "memory_snapshot",
+                        lambda: dict(free_percent=88, headroom_gb=36.24,
+                                     swap_used_gb=11.58, pressure="normal"))
+    monkeypatch.setattr(ab, "sample_swap_activity",
+                        lambda: (_ for _ in ()).throw(ValueError("measurement failed")))
+    with pytest.raises(RuntimeError, match="Preflight blocked"):
+        ab.run(options, profile, object(), object())
+    assert config.read_text() == original
+    assert not restarts
 
 
 def test_comparison_restores_entire_config_on_success(monkeypatch, tmp_path):
