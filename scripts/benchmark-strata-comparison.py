@@ -43,16 +43,15 @@ def main(argv=None):
     # Alternate order to limit simple warmup/time drift bias.
     # Each server gets an unreported warmup request.
     try:
-        if True:
-            for name, endpoint in endpoints.items():
-                # Independent client per origin, never pass a key to either server.
+        for name, endpoint in endpoints.items():
+            # Independent client per origin, never pass a key to either server.
+            with httpx.Client(base_url=endpoint["url"], trust_env=False) as local:
+                probe.sample(local, endpoint["model"], args.timeout, prompt, max_tokens)
+        for i in range(args.samples):
+            for name in (("mlx", "strata") if i % 2 == 0 else ("strata", "mlx")):
+                endpoint = endpoints[name]
                 with httpx.Client(base_url=endpoint["url"], trust_env=False) as local:
-                    probe.sample(local, endpoint["model"], args.timeout, prompt, max_tokens)
-            for i in range(args.samples):
-                for name in (("mlx", "strata") if i % 2 == 0 else ("strata", "mlx")):
-                    endpoint = endpoints[name]
-                    with httpx.Client(base_url=endpoint["url"], trust_env=False) as local:
-                        samples[name].append(probe.sample(local, endpoint["model"], args.timeout, prompt, max_tokens))
+                    samples[name].append(probe.sample(local, endpoint["model"], args.timeout, prompt, max_tokens))
     except (httpx.HTTPError, ValueError) as exc:
         print(f"Benchmark failed: {exc}", file=sys.stderr)
         return 1
