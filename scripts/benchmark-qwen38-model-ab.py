@@ -423,8 +423,7 @@ def run(args, profile, probe, quality):
                 if memory_blockers(profile):
                     raise RuntimeError("Memory admission failed after candidate start")
                 print("[model-ab] candidate: 4-bit DFlash2 speed probes starting", file=sys.stderr, flush=True)
-                print("[model-ab] candidate: 4-bit DFlash2 speed probes starting", file=sys.stderr, flush=True)
-            result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout, lambda: memory_blockers(profile))
+                result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout, lambda: memory_blockers(profile))
                 result["candidate_after"] = profile.memory_snapshot()
                 candidate_quality = quality_test(p / "candidate.json", args.timeout)
                 result["quality"] = quality.compare(baseline_quality, candidate_quality)
@@ -443,6 +442,7 @@ def run(args, profile, probe, quality):
             result["candidate_before"] = profile.memory_snapshot()
             if memory_blockers(profile):
                 raise RuntimeError("Memory admission failed after candidate start")
+            print("[model-ab] candidate: 4-bit DFlash2 speed probes starting", file=sys.stderr, flush=True)
             result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout, lambda: memory_blockers(profile))
             result["candidate_after"] = profile.memory_snapshot()
     except BaseException as exc:
