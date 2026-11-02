@@ -2279,15 +2279,15 @@ routeTargets.set(attachmentFlux3Prompt, 'image_edit');
 selectedAttachments = [imageAttachment];
 selectedImageMode = 'edit';
 session.workspace = {};
-const originalGetEditOptions = context.MLXChatAttachments.getEditOptions;
-context.MLXChatAttachments.getEditOptions =
+const originalGetEditOptions = window.MLXChatAttachments.getEditOptions;
+window.MLXChatAttachments.getEditOptions =
     () => ({model: 'mflux-flux3-image-klein-q4'});
 input.value = attachmentFlux3Prompt;
 await window.MLXChatGeneration.sendMessage();
 const flux3AttachmentAction = routedActionPayloads.at(-1);
 assert.equal(flux3AttachmentAction.resolved_target, 'image_edit');
 assert.equal(flux3AttachmentAction.image_options.model, 'mflux-flux3-image-klein-q4');
-context.MLXChatAttachments.getEditOptions = originalGetEditOptions;
+window.MLXChatAttachments.getEditOptions = originalGetEditOptions;
 selectedImageMode = 'auto';
 selectedAttachments = [];
 
