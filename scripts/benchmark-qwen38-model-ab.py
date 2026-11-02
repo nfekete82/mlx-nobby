@@ -118,6 +118,26 @@ def memory_gate(snapshot: dict) -> list[str]:
     return errors
 
 
+def idle_error_code(exc: BaseException) -> str:
+    """Keep actionable guard reasons without leaking upstream exception payloads."""
+    if isinstance(exc, RuntimeError):
+        known = (
+            ("Agent observatory unavailable", "observatory_unavailable"),
+            ("Incomplete runtime status", "runtime_status_incomplete"),
+            ("Chat/image/video workload active", "workload_active"),
+            ("Media queue active", "media_queue_busy"),
+            ("Invalid runtime lease status", "runtime_lease_invalid"),
+            ("Runtime lease active or queued", "runtime_lease_busy"),
+            ("Runtime lease waiters present", "runtime_lease_waiters"),
+        )
+        for prefix, code in known:
+            if str(exc).startswith(prefix):
+                return code
+    if isinstance(exc, OSError):
+        return "observatory_request_failed"
+    return "idle_guard_unavailable"
+
+
 def preflight(content: str, profile, candidate_model: str | None) -> tuple[dict, list[str]]:
     base = config_value(content, "MODEL")
     target = candidate_model or config_value(content, "SPECULATIVE_TARGET")
@@ -140,24 +160,47 @@ def preflight(content: str, profile, candidate_model: str | None) -> tuple[dict,
 
     status = {"original_model": base, "candidate_model": target, "draft_model": draft,
               "current_profile": profile.configured_profile(content)}
+    # Independent read-only probes: a failing idle guard must still BLOCK any
+    # active run, but should not hide model/memory diagnostic information.
     try:
         profile.ensure_idle()
+        status["idle_check"] = "passed"
+    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
+        reason = idle_error_code(exc)
+        status["idle_check"] = reason
+        checks.append(f"Idle guard blocked ({reason})")
+
+    try:
         args = profile.current_server_args()
         status["running_model"] = process_model(args)
         if process_model(args) != base:
             checks.append("Running chat process model does not match configuration")
-        if "--draft-model" in shlex.split(args) or "--draft-kind" in shlex.split(args):
+        flags = shlex.split(args)
+        if "--draft-model" in flags or "--draft-kind" in flags:
             checks.append("Baseline already has a speculative drafter")
+    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError):
+        checks.append("Live model process inspection unavailable")
+
+    try:
         health = profile.json_get(profile.SERVER + "/health")
+        status["runtime_health"] = {
+            "healthy": health.get("status") == "healthy",
+            "model_loaded": bool(health.get("loaded_model")),
+            "apc_enabled": health.get("apc_enabled") is True,
+        }
         if health.get("status") != "healthy" or not health.get("loaded_model"):
             checks.append("Chat server not healthy or not loaded")
         if health.get("apc_enabled") is True:
             checks.append("Baseline APC is active")
+    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError):
+        checks.append("Chat server health unavailable")
+
+    try:
         memory = profile.memory_snapshot()
         status["memory"] = memory
         checks.extend(memory_gate(memory))
-    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
-        checks.append(f"Live preflight unavailable ({type(exc).__name__})")
+    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError):
+        checks.append("Agent memory snapshot unavailable")
     return status, checks
 
 
