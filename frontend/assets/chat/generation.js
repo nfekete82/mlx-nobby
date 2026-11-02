@@ -2353,6 +2353,75 @@ async function approveAgentAction(
 }
 
 
+// Explicit, persisted opt-out for the optional Qwen media planner.
+// In test/legacy UIs without the new checkbox the direct path is unchanged.
+const SMART_MEDIA_STORAGE_KEY = 'mlx-nobby-smart-media-v1';
+
+function smartMediaPreference() {
+    try {
+        const preference = window.localStorage?.getItem?.(SMART_MEDIA_STORAGE_KEY);
+        return preference !== 'direct';
+    } catch (_) {
+        return true;
+    }
+}
+
+function setSmartMediaPreference(enabled) {
+    try {
+        window.localStorage?.setItem?.(
+            SMART_MEDIA_STORAGE_KEY, enabled ? 'smart' : 'direct'
+        );
+    } catch (_) {
+        // Missing storage must never block image/video jobs.
+    }
+}
+
+// The original user prompt remains the authoritative routing input.
+// Only image_options.prompt or video_options.prompt may be enhanced.
+// Never change source artifact, operation, quality, duration or manual model.
+async function applySmartMediaPlan(payload, target, sourceKind) {
+    if (!['image', 'image_edit', 'video'].includes(target)) return payload;
+    const existing = target === 'video'
+        ? (payload.video_options || {})
+        : (payload.image_options || {});
+    const manualModel = String(existing.model || 'auto').trim() || 'auto';
+    try {
+        const response = await fetch('/api/mlx/chat/media/plan', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                prompt: payload.prompt,
+                target,
+                source_kind: sourceKind,
+                selected_model: target === 'video' ? 'auto' : manualModel
+            })
+        });
+        if (!response.ok) throw new Error('Smart Media planner unavailable');
+        const plan = await response.json();
+        if (plan.mode !== 'smart' || plan.target !== target ||
+            typeof plan.prompt !== 'string' || !plan.prompt.trim()) {
+            return payload;
+        }
+        if (target === 'video') {
+            payload.video_options = {...existing, prompt: plan.prompt};
+        } else {
+            const next = {...existing, prompt: plan.prompt};
+            if (manualModel === 'auto' && typeof plan.model === 'string' && plan.model.trim()) {
+                next.model = plan.model;
+            }
+            if (!next.negative_prompt && plan.negative_prompt &&
+                next.model === 'juggernaut-xl' && target === 'image') {
+                next.negative_prompt = plan.negative_prompt;
+            }
+            payload.image_options = next;
+        }
+        return payload;
+    } catch (error) {
+        console.warn('[MLX Smart Media] planner unavailable; using direct prompt', error);
+        return payload;
+    }
+}
+
 async function sendMessage(options = {}) {
     if (agentRunActive) return;
 if (MLXChatRuntime.isSwitching()) {
@@ -3314,6 +3383,7 @@ const imageFiles =
                 }
             }
             selectedMediaQuality = normalizedMediaQuality;
+            let smartMediaSelected = false;
             let selectedVideoProfile = 'standard';
             let multiVideoSelection = null;
             let selectedVideoDuration = VIDEO_DURATIONS.has(
@@ -3368,6 +3438,11 @@ const imageFiles =
                     document.getElementById('mediaQualityModalCancel');
                 const confirm =
                     document.getElementById('mediaQualityModalConfirm');
+                const smartMediaToggle =
+                    document.getElementById('smartMediaEnabled');
+                if (smartMediaToggle) {
+                    smartMediaToggle.checked = smartMediaPreference();
+                }
                 const formatField =
                     document.getElementById('mediaFormatField');
                 const formatSelect =
@@ -3851,6 +3926,8 @@ const imageFiles =
                         };
 
                         const onConfirm = () => {
+                            smartMediaSelected = Boolean(smartMediaToggle?.checked);
+                            if (smartMediaToggle) setSmartMediaPreference(smartMediaSelected);
                             try {
                                 multiVideoSelection = window.MLXMultiImageVideo?.selection(choice) || null;
                             } catch (error) {
@@ -4111,6 +4188,24 @@ const imageFiles =
                 chat_revision: persistentChatRevision(session)
 
             };
+
+            if (smartMediaSelected && !multiVideoSelection) {
+                const sourceKind = fileContext?.image_count > 1 ? 'images'
+                    : (hasImageEditSource(fileContext, activeArtifactIdForEdit)
+                        ? 'image' : 'none');
+                await applySmartMediaPlan(actionPayload, resolvedTarget, sourceKind);
+                // Expose the final prompt for inspecting the saved request,
+                // but never overwrite the user's original message.
+                if (actionPayload.image_options?.prompt ||
+                    actionPayload.video_options?.prompt) {
+                    userMessage.smart_media = {
+                        prompt: actionPayload.image_options?.prompt ||
+                            actionPayload.video_options?.prompt,
+                        model: actionPayload.image_options?.model || 'auto'
+                    };
+                    MLXChatSessions.saveSessions();
+                }
+            }
 
             const actionResponse = await fetch(multiVideoSelection ? '/api/mlx/video/jobs' : '/api/mlx/chat/actions', {
                 method: 'POST',
