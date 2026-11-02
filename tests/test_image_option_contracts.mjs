@@ -138,6 +138,36 @@ const juggernautNegative = JSON.parse(JSON.stringify(
 ));
 assert.equal(juggernautNegative.negative_prompt, 'keep my exclusion');
 
+// A selected editing model from the image quality modal must be forwarded
+// for existing artifacts, but old image-generation settings must never
+// override an attachment edit's explicit or automatic model choice.
+const existingArtifactFlux3 = JSON.parse(JSON.stringify(
+    context.imageOptionsForRequest(
+        {image: {model: 'juggernaut-xl', negative_prompt: 'old SDXL text'},
+         referenceEdit: {}},
+        'image', 'square', false, 'old SDXL text',
+        'mflux-flux3-image-klein-q4', 'edit', null, true
+    )
+));
+assert.equal(existingArtifactFlux3.model, 'mflux-flux3-image-klein-q4');
+assert.equal(existingArtifactFlux3.negative_prompt, undefined);
+
+const attachmentAuto = JSON.parse(JSON.stringify(
+    context.imageOptionsForRequest(
+        {image: {model: 'juggernaut-xl'}, referenceEdit: {}},
+        'image', 'square', false, '', 'juggernaut-xl', 'edit'
+    )
+));
+assert.equal(attachmentAuto.model, 'auto');
+const attachmentManual = JSON.parse(JSON.stringify(
+    context.imageOptionsForRequest(
+        {image: {model: 'juggernaut-xl'},
+         referenceEdit: {model: 'mflux-flux3-image-klein-q4'}},
+        'image', 'square', false, '', null, 'edit'
+    )
+));
+assert.equal(attachmentManual.model, 'mflux-flux3-image-klein-q4');
+
 // Image creation must not offer unavailable, disabled or edit-only models.
 // Even a stale persisted choice must not reappear as a disabled option.
 const modelStart = source.indexOf('async function updateImageModelOptions(');
