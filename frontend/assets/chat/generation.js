@@ -3444,8 +3444,10 @@ const imageFiles =
                     document.getElementById('mediaQualityModalCancel');
                 const confirm =
                     document.getElementById('mediaQualityModalConfirm');
-                const smartMediaToggle =
+                const smartMediaCandidate =
                     document.getElementById('smartMediaEnabled');
+                const smartMediaToggle = smartMediaCandidate?.id === 'smartMediaEnabled'
+                    ? smartMediaCandidate : null;
                 if (smartMediaToggle) {
                     smartMediaToggle.checked = smartMediaPreference();
                 }
