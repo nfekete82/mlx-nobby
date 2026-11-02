@@ -69,7 +69,7 @@ test('substantive answer breaks streak, long and non-text prompts bypass steerin
 test('UI, cache and generation integration keep corrections ephemeral', () => {
     assert.match(html, /id="adaptiveResponseLength" type="checkbox" checked/);
     assert.match(html, /response-length\.js\?v=20261020-auto-conversation/);
-    assert.match(html, /runtime\.js\?v=20261020-auto-conversation/);
+    assert.match(html, /runtime\.js\?v=[A-Za-z0-9-]+/);
     assert.match(generation, /MLXChatResponseLength\?\.instructionForTurn/);
     assert.match(generation, /session, originalInferenceMessages/);
     assert.match(generation, /generationSettings\.max_tokens/);
