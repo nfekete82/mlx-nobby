@@ -97,6 +97,10 @@ EDIT_EXCLUDED_SUBJECTS = {
     "people", "person", "woman", "man", "face", "faces", "hair",
     "clothing", "clothes", "body", "pose", "background",
 }
+# Negated visual descriptors qualify the output, not execution. Keep this
+# deliberately narrow: a bare "nicht" or "do not edit" must still cancel.
+APPEARANCE_NOUNS = {"model", "modell", "supermodel", "supermodell"}
+APPEARANCE_ADVERBS = {"perfectly", "perfect", "perfekt", "vollkommen", "ganz"}
 BARE_RETRACTION = re.compile(
     r"^(?:(?:aber|doch|bitte|please)\s+)*(?:nicht|not|nein|no|"
     r"vergiss\s+es|forget\s+it)\s*$",
@@ -160,6 +164,24 @@ def _negates_execution(words, command):
             if command is None or any(word in OBJECTS for word in words[command + 1:index]):
                 continue
         if command is not None and index > command and word in {"nicht", "not"}:
+            # "Edit the image: candid portrait, not a model, not perfectly
+            # symmetrical" is an appearance description, not a withdrawal.
+            # Only allow this when the command has already bound an explicit
+            # image/video object. "Don't edit" and "edit the image not" stay
+            # negated; do not silently turn unsupported text into a job.
+            referent_bound = any(token in OBJECTS for token in words[command + 1:index])
+            rest = words[index + 1:]
+            if referent_bound and (
+                (len(rest) >= 2 and rest[0] in {"a", "an", "ein", "eine", "einen"}
+                 and rest[1] in APPEARANCE_NOUNS)
+                or (len(rest) >= 3 and rest[0] in {"like", "wie"} and
+                    rest[1] in {"a", "an", "ein", "eine", "einen"} and
+                    rest[2] in APPEARANCE_NOUNS)
+                or (len(rest) >= 2 and rest[0] in APPEARANCE_ADVERBS
+                    and rest[1] in {"symmetrical", "symmetric", "symmetrisch",
+                                    "smooth", "glatt", "perfect", "perfekt"})
+            ):
+                continue
             following = index + 1
             while following < len(words) and words[following] in DEGREE_WORDS:
                 following += 1
