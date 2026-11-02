@@ -34,6 +34,8 @@ MFLUX_QWEN_IMAGE21_ID = "mflux-qwen-image-2.1"
 OSAURUS_QWEN21_EDIT_ID = "mflux-osaurus-qwen-image-2.1-edit"
 OSAURUS_QWEN21_EDIT_REPO = "OsaurusAI/Qwen-Image-2.1-mflux-4bit"
 MFLUX_BOOGU_ID = "mflux-boogu-image-turbo"
+FLUX3_KLEIN_Q4_ID = "mflux-flux3-image-klein-q4"
+FLUX3_KLEIN_Q4_REPO = "mflux-community/flux-3-image-klein-mflux-q4"
 JUGGERNAUT_XL_ID = "juggernaut-xl"
 JUGGERNAUT_XL_DIRECTORY = Path.home() / "Models/JuggernautXL"
 JUGGERNAUT_RAGNAROK_NAME = "Juggernaut XL Ragnarok"
@@ -53,6 +55,10 @@ FAMILIES = {
     "flux1": (
         "mflux-generate",
         ("schnell", "dev"),
+    ),
+    "flux3-klein": (
+        "mflux-generate-flux3",
+        ("flux3-image-klein",),
     ),
     "flux2-klein": (
         "mflux-generate-flux2",
@@ -237,6 +243,15 @@ class ImageModel(BaseModel):
             raise ValueError(
                 f"{self.model_family} unterstützt in MFLUX 0.20.0 keine LoRAs"
             )
+        if self.model_family == "flux3-klein":
+            # This integration is only for the user-tested prequantized Q4
+            # snapshot, never the 20 GB raw checkpoint or Base model.
+            if (self.provider != "mflux" or self.id != FLUX3_KLEIN_Q4_ID
+                    or self.repository != FLUX3_KLEIN_Q4_REPO or self.local_path
+                    or self.base_model != "flux3-image-klein" or self.quantization != "q4"
+                    or self.quantize_on_load or self.default_guidance != 0
+                    or any(lora.enabled for lora in self.loras)):
+                raise ValueError("FLUX 3 Klein nur mit dem geprüften Q4-Cache ohne zweite Quantisierung")
         if self.model_family == "flux2-klein" and "base" not in self.base_model and self.default_guidance != 1:
             raise ValueError("FLUX.2 Klein distilled benötigt Guidance 1")
         # Capabilities describe adapter support, never arbitrary HTTP claims.
@@ -246,6 +261,8 @@ class ImageModel(BaseModel):
                 "lora",
                 "multi_lora",
             ]
+        elif self.model_family == "flux3-klein":
+            self.capabilities = ["text_to_image", "image_edit", "multi_image_edit", "variation"]
         elif self.model_family in {"qwen-image-edit", "qwen-image21-edit"}:
             self.capabilities = ["image_edit"]
             if self.provider == "mflux":
@@ -372,6 +389,16 @@ def builtin_models():
         models.append(
             ImageModel(**model_kwargs).model_dump()
         )
+    # Downloaded and rendered by the user in an isolated MFLUX 0.24.0 venv.
+    # The normal automatic generation and Juggernaut XL default stay intact.
+    models.append(ImageModel(
+        id=FLUX3_KLEIN_Q4_ID,
+        name="FLUX 3 Image Klein · Q4 · Test",
+        provider="mflux", repository=FLUX3_KLEIN_Q4_REPO,
+        model_family="flux3-klein", base_model="flux3-image-klein",
+        quantization="q4", quantize_on_load=False, enabled=False,
+        default_steps=16, default_guidance=0,
+    ).model_dump())
     models.append(ImageModel(
         id="mflux-qwen-image-2.1-edit",
         name="Qwen Image 2.1 Edit · MFLUX · Q4 (Opt-in)",
