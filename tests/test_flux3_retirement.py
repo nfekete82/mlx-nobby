@@ -83,6 +83,8 @@ def test_retired_flux3_is_absent_and_cannot_be_readded(tmp_path, monkeypatch):
     state = registry.load_registry()
     assert FLUX3_ID in registry.RETIRED_MODEL_IDS
     assert FLUX3_ID not in {model["id"] for model in state["models"]}
-    former = saved_test_registry()["models"][-1]
+    # Use a schema-valid SDXL record: a retired ID must be blocked even
+    # before considering whether its historical experimental family exists.
+    former = next(m for m in state["models"] if m["id"] == registry.JUGGERNAUT_XL_ID)
     with pytest.raises(ValueError, match="entfernt"):
-        registry.add_model(former)
+        registry.add_model({**former, "id": FLUX3_ID})
