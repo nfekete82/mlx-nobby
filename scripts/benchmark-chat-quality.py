@@ -357,7 +357,14 @@ def run(origin: str, output: Path, review_file: Path | None, max_tokens: int = 2
             phase = "case_idle:" + case["id"]
             check_idle(get_json(origin, "/api/performance/observatory?limit=100"))
             phase = "case_stream:" + case["id"]
-            timing, answer = agent_stream(origin, active_messages(case), max_tokens, timeout)
+            # Freeze the live model/PID for every case. The Agent's normal chat
+            # role can otherwise switch back to a persisted default checkpoint,
+            # invalidating this comparison and changing shared MLX config.
+            timing, answer = agent_stream(
+                origin, active_messages(case), max_tokens, timeout,
+                pin_active_model=before["model"],
+                pin_active_pid=before["pid"],
+            )
             phase = "case_grade:" + case["id"]
             row = {"id": case["id"], "category": case["category"], "kind": case["kind"], **timing}
             if case["kind"] == "exact":
