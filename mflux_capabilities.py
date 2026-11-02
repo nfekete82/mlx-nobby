@@ -45,6 +45,13 @@ def probe_mflux_cli(executable):
 def required_mflux_flags(model):
     flags = {'--model', '--prompt', '--width', '--height', '--steps', '--seed', '--output'}
     family = model['model_family']
+    if family == 'flux3-klein':
+        # Both FLUX 3 CLIs operate on an already quantized checkpoint.
+        # The distilled variant ignores CFG guidance; never re-quantize Q4.
+        flags |= {'--base-model', '--low-ram'}
+        if 'image_edit' in model.get('_requested_capability', ''):
+            flags.add('--image-paths')
+        return flags
     if family in {'qwen-image-edit', 'qwen-image21-edit'}:
         flags |= {'--image-paths', '--guidance'}
     else:
