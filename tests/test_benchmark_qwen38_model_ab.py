@@ -237,10 +237,17 @@ def test_quality_error_after_role_switch_still_restores_baseline(monkeypatch, tm
             return {"baseline": True}
         # Simulate the historical Agent role resolver changing MODEL
         # and failing in the first streamed quality case.
-        interim = config.read_text().replace(
-            ab.config_value(config.read_text(), "MODEL"),
-            ab.config_value(original, "MODEL"),
+        interim = config.read_text()
+        candidate_model = ab.config_value(interim, "MODEL")
+        baseline_model = ab.config_value(original, "MODEL")
+        # Change ONLY the MODEL assignment. An unrestricted string replace
+        # also modifies SPECULATIVE_TARGET, falsely simulating config drift.
+        interim = "".join(
+            f'MODEL="{baseline_model}"\n'
+            if line.startswith('MODEL=') else line
+            for line in interim.splitlines(keepends=True)
         )
+        assert candidate_model != baseline_model
         config.write_text(interim)
         raise RuntimeError("Agent stream error")
     monkeypatch.setattr(ab, "quality_test", quality_run)
