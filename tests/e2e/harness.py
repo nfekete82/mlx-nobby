@@ -103,6 +103,17 @@ class AgentFixture:
                 ]},
                 'performance': {'1Y': {'percent': 18.4}}
             }
+        if path == '/api/chat/media/plan':
+            # The isolated browser fixture never loads local LLM weights.
+            # Return a bounded, deterministic synthetic plan for the exact
+            # same path used by production's Qwen chat-role planner.
+            return {
+                'mode': 'smart',
+                'target': payload.get('target'),
+                'prompt': str(payload.get('prompt') or ''),
+                'model': payload.get('selected_model') or 'auto',
+                'negative_prompt': '',
+            }
         if path in {'/api/chat/actions/route', '/api/chat/actions'}:
             from backend.finance_intent import finance_intent
             finance_action = finance_intent(payload.get('prompt', ''))
