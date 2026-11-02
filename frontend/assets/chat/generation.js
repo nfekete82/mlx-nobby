@@ -4106,7 +4106,9 @@ const imageFiles =
                         ? (referenceMode ? 'reference' : 'edit')
                         : 'generate',
                     selectedSampling,
-                    resolvedTarget === 'image_edit' && imageModelSelectable
+                    resolvedTarget === 'image_edit' &&
+                        mediaQualityKind === 'image' &&
+                        !hasAttachmentEditModelPicker
                 ),
                 video_options: videoOptionsForRequest(
                     options,
