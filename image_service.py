@@ -204,8 +204,8 @@ def describe(model):
     available, reason = availability(model)
     result = model | {"available": available, "availability_note": reason}
     if model['provider'] == 'mflux':
-        from image_providers import MFLUX_BIN, probe_mflux_cli
-        capabilities = probe_mflux_cli(str(MFLUX_BIN / registry.FAMILIES[model['model_family']][0]))
+        from image_providers import mflux_executable, probe_mflux_cli
+        capabilities = probe_mflux_cli(str(mflux_executable(model)))
         result['cli_capabilities'] = capabilities | {'supported_flags': sorted(capabilities['supported_flags'])}
     return result
 
