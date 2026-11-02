@@ -53,6 +53,10 @@ const IMAGE_QUESTION_PATTERN =
 // This explicit German instruction always means a NEW image job, regardless
 // of position in the sentence or whether a previous image is attached.
 const ALWAYS_GENERATE_IMAGE_PATTERN = /(?:^|[^\p{L}\p{N}_])erstelle\s+ein\s+bild(?=$|[^\p{L}\p{N}_])/iu;
+// An image-edit prefix binds all later wording to the edit. A quoted or
+// secondary "erstelle ein Bild" in the edit description is not a new job.
+const LEADING_IMAGE_EDIT_PATTERN =
+    /^\s*(?:bitte\s+)?(?:ändere|aendere|bearbeite|verändere|veraendere)\s+(?:das|dieses)\s+(?:bild|foto)\b/iu;
 
 const IMAGE_CREATION_VERB_PATTERN =
     /(?:^|[^\p{L}\p{N}_])(?:erstelle|erstellen|generiere|generieren|erzeuge|erzeugen|zeichne|zeichnen|mach|mache|create|generate|draw|make)(?=$|[^\p{L}\p{N}_])/iu;
@@ -2570,7 +2574,8 @@ const imageFiles =
     const activeImageArtifact =
         imageState.active;
 
-    const alwaysGenerateImage = ALWAYS_GENERATE_IMAGE_PATTERN.test(prompt);
+    const alwaysGenerateImage = !LEADING_IMAGE_EDIT_PATTERN.test(prompt) &&
+        ALWAYS_GENERATE_IMAGE_PATTERN.test(prompt);
     const explicitImageEditRequest =
         isImageEditRequest(
             prompt,
