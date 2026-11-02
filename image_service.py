@@ -863,12 +863,14 @@ def _edit_result_inner(
             working = OUTPUT / (".edit-source-" + secrets.token_hex(12) + ".png")
             temporary_sources.append(working)
             prepare_sdxl_img2img_source(original, working)
-        elif model.get('model_family') == 'qwen-image21-edit' or len(sources) > 1:
+        elif model.get('model_family') in {'qwen-image21-edit', 'flux3-klein'} or len(sources) > 1:
             OUTPUT.mkdir(parents=True, exist_ok=True)
             working = OUTPUT / ('.edit-source-' + secrets.token_hex(12) + '.png')
             temporary_sources.append(working)
             with Image.open(original) as image:
-                image = ImageOps.exif_transpose(image).convert('RGBA')
+                image = ImageOps.exif_transpose(image).convert(
+                    'RGB' if model.get('model_family') == 'flux3-klein' else 'RGBA'
+                )
                 edge = (resolve_image_profile(model, request.quality or 'standard').get('long_edge') or 768)
                 image.thumbnail((edge, edge), Image.Resampling.LANCZOS)
                 with open(working, 'xb', opener=lambda path, flags: os.open(path, flags, 0o600)) as stream:
@@ -929,7 +931,7 @@ def _edit_result_inner(
     # Qwen must render at the prepared working resolution too. Resizing only
     # the source image is not enough because MFLUX may otherwise select a
     # substantially larger output canvas.
-    if resolved is None and model.get("model_family") in {"qwen-image-edit", "qwen-image21-edit"}:
+    if resolved is None and model.get("model_family") in {"qwen-image-edit", "qwen-image21-edit", "flux3-klein"}:
         from PIL import Image
 
         with Image.open(edit_source) as prepared_image:
