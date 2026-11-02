@@ -118,6 +118,22 @@ def always_generate_image_requested(prompt):
     return bool(_ALWAYS_GENERATE_IMAGE.search(str(prompt or "")))
 
 
+# A leading edit instruction binds the *rest of this message* to the source
+# image. Do not interpret "not", "nicht", "ohne" or later verbs in its
+# description as a cancellation or as an instruction to create a new image.
+# Only "Ändere das Bild nicht" (immediately after the object) withdraws it.
+_IMAGE_EDIT_PREFIX = re.compile(
+    r"^\s*(?:bitte\s+)?(?:ändere|aendere|bearbeite|verändere|veraendere)\s+"
+    r"(?:das|dieses)\s+(?:bild|foto)\b",
+    re.IGNORECASE,
+)
+_DIRECT_EDIT_NEGATION = re.compile(r"^\s+(?:nicht|niemals)\b", re.IGNORECASE)
+_EDIT_TEXT_OBJECT_SUFFIX = re.compile(
+    r"^\s*[- ]\s*(?:prompt|prompts|skript|script|beschreibung|description)\b",
+    re.IGNORECASE,
+)
+
+
 # A leading text-to-image command requests a new image, even if an attachment
 # or later edit/composition wording would otherwise route to image editing.
 _IMAGE_CREATE_PREFIX = re.compile(
@@ -251,6 +267,16 @@ def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, 
     a text request or negation. Quoted examples are not execution instructions.
     Independent clauses allow 'improve the prompt and generate the image'.
     """
+    raw_prompt = str(prompt or "")
+    leading_edit = _IMAGE_EDIT_PREFIX.match(raw_prompt)
+    if (leading_edit and has_image
+            and not _DIRECT_EDIT_NEGATION.match(raw_prompt[leading_edit.end():])
+            and not _EDIT_TEXT_OBJECT_SUFFIX.match(raw_prompt[leading_edit.end():])):
+        # The source image is already bound here; all following text is an
+        # opaque edit description, including appearances, exclusions and
+        # embedded creation verbs. No free-form negation parsing is allowed.
+        return RoutingDecision("image_edit", "image_edit", True, "image",
+                               1.0, "Leading explicit edit command binds all following text to source image")
     if always_generate_image_requested(prompt):
         return RoutingDecision("image_generate", "image", True,
                                "image" if has_image else None,
