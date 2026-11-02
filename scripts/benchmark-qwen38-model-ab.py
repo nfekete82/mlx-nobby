@@ -175,7 +175,7 @@ def verify_process(profile, expected_model: str, *, dflash: bool) -> None:
         raise RuntimeError("Baseline unexpectedly has draft flags")
 
 
-def speed_tests(probe, model: str, samples: int, timeout: int) -> dict:
+def speed_tests(probe, model: str, samples: int, timeout: int, memory_probe=None) -> dict:
     import httpx
     result = {}
     with httpx.Client(base_url="http://127.0.0.1:8000", trust_env=False) as client:
@@ -196,6 +196,8 @@ def speed_tests(probe, model: str, samples: int, timeout: int) -> dict:
                     max(r["completion_tokens"] for r in rows),
                 ],
             }
+            if memory_probe and memory_gate(memory_probe()):
+                raise RuntimeError("Memory admission failed during speed test")
     return result
 
 
@@ -223,6 +225,8 @@ def save_private(path: Path, report: dict) -> None:
 
 def run(args, profile, probe, quality):
     original = profile.CONFIG.read_text(encoding="utf-8")
+    if args.output and (args.output.exists() or args.output.is_symlink()):
+        raise FileExistsError("Report output already exists; refusing to overwrite")
     status, failures = preflight(original, profile, args.candidate_model)
     if not args.confirm_restarts:
         print(json.dumps({"plan_only": True, "ready": not failures,
@@ -263,7 +267,8 @@ def run(args, profile, probe, quality):
         profile.ensure_idle()
         result["baseline_before"] = profile.memory_snapshot()
         result["baseline_speed"] = speed_tests(
-            probe, status["original_model"], args.samples, args.timeout)
+            probe, status["original_model"], args.samples, args.timeout, profile.memory_snapshot)
+        result["baseline_after"] = profile.memory_snapshot()
         if args.with_quality:
             with tempfile.TemporaryDirectory(prefix="nobby-quality-ab-") as workspace:
                 # Capture the baseline and candidate in a secure temporary directory.
@@ -283,7 +288,8 @@ def run(args, profile, probe, quality):
                 result["candidate_before"] = profile.memory_snapshot()
                 if memory_gate(result["candidate_before"]):
                     raise RuntimeError("Memory admission failed after candidate start")
-                result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout)
+                result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout, profile.memory_snapshot)
+                result["candidate_after"] = profile.memory_snapshot()
                 candidate_quality = quality_test(p / "candidate.json", args.timeout)
                 result["quality"] = quality.compare(baseline_quality, candidate_quality)
         else:
@@ -300,7 +306,8 @@ def run(args, profile, probe, quality):
             result["candidate_before"] = profile.memory_snapshot()
             if memory_gate(result["candidate_before"]):
                 raise RuntimeError("Memory admission failed after candidate start")
-            result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout)
+            result["candidate_speed"] = speed_tests(probe, target, args.samples, args.timeout, profile.memory_snapshot)
+                result["candidate_after"] = profile.memory_snapshot()
     except BaseException as exc:
         primary_error = exc
     finally:
