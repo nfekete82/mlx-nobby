@@ -653,6 +653,8 @@
   "ui.close_dialog": "Close dialog",
   "ui.eml_anonymizer": "Email anonymization",
   "ui.eml_anonymizer_hint": "Open local EML batch processor",
+  "ui.smart_media_label": "Smart Media · Qwen prepares prompt and model",
+  "ui.smart_media_hint": "Turn off for direct prompts. Manual model choices take priority.",
   "ui.settings": "Settings",
   "ui.close_settings": "Close settings",
   "ui.configuration": "Configuration",
