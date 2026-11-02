@@ -200,3 +200,17 @@ FRONTEND_REFACTOR_PLAN.md
 
 # Private runtime configuration backups from opt-in coding benchmarks.
 /artifacts/**/private-config-backup-*/
+
+# MLX Nobby on-device experiments and performance captures. Never publish.
+# These may contain local prompts, runtime paths or generated samples.
+/.ltx-lab/
+/ltx_lab/
+/artifacts/ltx-quality*/
+/artifacts/ltx-quality-causes*/
+/evidence-benchmark.json
+/live-capture.jsonl
+/performance-benchmark-*.jsonl
+/performance-benchmark-*-report.json
+/performance-capture*.jsonl
+/performance-questions.json
+/questions.json
