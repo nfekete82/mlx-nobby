@@ -75,6 +75,16 @@ MATRIX = [
     ("Edit this image: a portrait not perfectly symmetrical.", True, "image_edit"),
     ("Bearbeite das Bild: natürlich, nicht wie ein Modell.", True, "image_edit"),
     ("Bearbeite das Bild: nicht perfekt symmetrisch.", True, "image_edit"),
+    # Leading edit command takes precedence over every following descriptor.
+    ("Ändere das Bild: A candid woman, not a model, slightly asymmetrical features, not perfectly symmetrical.", True, "image_edit"),
+    ("Ändere das Bild: A candid woman, not a model, slightly asymmetrical features, not perfectly symmetrical.", False, "chat"),
+    ("Ändere das Bild: not a model, not perfectly symmetrical, without studio lighting.", True, "image_edit"),
+    ("Ändere das Bild nicht so dunkel", True, "image_edit"),
+    ("Bearbeite dieses Foto: natural portrait, without retouching.", True, "image_edit"),
+    ("Ändere das Bild: erstelle ein Bild mit einer natürlichen Lichtstimmung.", True, "image_edit"),
+    ("Ändere das Bild, kein Make-up und ohne Studiohintergrund.", True, "image_edit"),
+    ("Ändere das Bild nicht mehr", True, "chat"),
+    ("Ändere das Bild-Prompt für ein Foto", True, "chat"),
     # An explicit withdrawal of the job must still win.
     ("Ändere das Bild und doch nicht", True, "chat"),
     ("Bearbeite das Bild und bearbeite das Bild nicht", True, "chat"),
@@ -376,6 +386,27 @@ def test_exact_german_image_command_forces_job_even_with_stale_chat_preflight(pr
     assert result["tool"] == "image_generate"
     assert result["data"]["routing"]["target"] == "image"
     assert start.call_args.args[0] == "image_generate"
+
+
+@pytest.mark.parametrize("prompt", [
+    "Ändere das Bild: natural portrait, not a model, not perfectly symmetrical.",
+    "Ändere das Bild: erstelle ein Bild im Stil eines Fotos.",
+    "Bearbeite dieses Foto: ohne Filter, nicht zu glatt.",
+])
+def test_explicit_edit_prefix_overrides_stale_chat_preflight(prompt):
+    request = app.ChatActionRequest(
+        prompt=prompt, file_context=IMAGE,
+        action="image_generate", resolved_target="chat",
+    )
+    preflight = app.preflight_chat_action(request)
+    assert preflight["target"] == "image_edit"
+    with patch.object(app, "_start_chat_image_job", return_value={
+        "id": "a" * 24, "status": "queued",
+    }) as start:
+        result = app.run_chat_action(request)
+    assert result["tool"] == "image_edit"
+    assert result["data"]["routing"]["target"] == "image_edit"
+    assert start.call_args.args[0] == "image_edit"
 
 
 def test_similar_words_are_not_the_unconditional_creation_phrase():
