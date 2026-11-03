@@ -20,6 +20,22 @@ def guarded_app():
     async def root():
         return {"ok": True}
 
+    @app.get("/chat")
+    async def chat():
+        return {"page": "chat"}
+
+    @app.get("/settings/{page:path}")
+    async def settings(page: str):
+        return {"page": page}
+
+    @app.get("/api/health")
+    async def api_health():
+        return {"ok": True}
+
+    @app.post("/api/mutate")
+    async def mutate():
+        return {"changed": True}
+
     return app
 
 
@@ -90,6 +106,46 @@ class LocalRequestGuardTests(unittest.TestCase):
             headers={"Origin": "null"},
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_clicked_external_link_can_open_local_chat_page(self):
+        navigation = {
+            "Sec-Fetch-Site": "cross-site",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-User": "?1",
+        }
+        with patch.dict(os.environ, {"MLX_ALLOWED_HOSTS": ALLOWED_HOSTS}, clear=False):
+            with TestClient(guarded_app(), base_url="http://127.0.0.1:8091") as client:
+                for path in ("/", "/chat", "/settings/appearance"):
+                    with self.subTest(path=path):
+                        result = client.get(path, headers=navigation)
+                        self.assertEqual(result.status_code, 200, result.text)
+
+    def test_cross_site_api_and_noninteractive_requests_remain_blocked(self):
+        navigation = {
+            "Sec-Fetch-Site": "cross-site",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-User": "?1",
+        }
+        with patch.dict(os.environ, {"MLX_ALLOWED_HOSTS": ALLOWED_HOSTS}, clear=False):
+            with TestClient(guarded_app(), base_url="http://127.0.0.1:8091") as client:
+                # Even user-activated cross-site navigation cannot reach API routes.
+                self.assertEqual(client.get("/api/health", headers=navigation).status_code, 403)
+                self.assertEqual(client.post("/api/mutate", headers=navigation).status_code, 403)
+                # An iframe or programmatic cross-origin fetch must not open pages.
+                for changed in (
+                    {"Sec-Fetch-Mode": "cors"},
+                    {"Sec-Fetch-Dest": "iframe"},
+                    {"Sec-Fetch-User": "?0"},
+                    {"Origin": "https://example.org"},
+                ):
+                    with self.subTest(changed=changed):
+                        headers = {**navigation, **changed}
+                        self.assertEqual(client.get("/chat", headers=headers).status_code, 403)
+                self.assertEqual(client.get("/chat", headers={
+                    **navigation, "Host": "untrusted.example",
+                }).status_code, 403)
 
     def test_rejects_host_not_in_allowlist(self):
         response = self.request(
