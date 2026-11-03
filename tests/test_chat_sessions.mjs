@@ -141,6 +141,9 @@ for (const updated of [19, 20]) {
 assert.equal(renderCount, rendersAfterUpdate);
 
 generating = false;
+// A no-op save is intentionally skipped by the new persistence guard. Mutate
+// this chat so the simulated response is exercised through an actual PUT.
+session.updated = 25;
 nextResponse = async () => ({
     response: { ok: true },
     data: { chat: chat(30, [{ role: 'user', content: 'server' }]) },
