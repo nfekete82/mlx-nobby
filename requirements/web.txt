@@ -5,3 +5,8 @@ pypdf==6.17.0
 pydantic==2.13.5
 pillow==12.3.0
 pillow-heif==1.1.1
+
+# Read/edit local Word, Excel and legacy .xls files without cloud APIs.
+python-docx==1.2.0
+openpyxl==3.1.5
+xlrd==2.0.2
