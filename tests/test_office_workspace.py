@@ -107,8 +107,9 @@ def test_reject_invalid_plan_and_readonly_legacy_excel():
         office.edit(b"legacy", "legacy.xls", [{"old": "a", "new": "b"}])
 
 
-def test_model_response_is_not_executeable_instruction(monkeypatch):
+def test_model_response_is_not_executeable_instruction(monkeypatch, tmp_path):
     from backend import app as web
+    monkeypatch.setattr(office_routes, "OUTPUT_ROOT", tmp_path)
 
     def model(_method, _route, payload=None, timeout=None):
         assert payload["messages"][0]["role"] == "system"
