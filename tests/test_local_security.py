@@ -41,6 +41,56 @@ class LocalRequestGuardTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json(), {"ok": True})
 
+    def test_allows_same_port_literal_loopback_aliases(self):
+        for base, origin in (
+            ("http://127.0.0.1:8091", "http://localhost:8091"),
+            ("http://localhost:8091", "http://127.0.0.1:8091"),
+            ("http://[::1]:8091", "http://localhost:8091"),
+        ):
+            with self.subTest(base=base, origin=origin):
+                result = self.request(base, headers={
+                    "Origin": origin,
+                    "Sec-Fetch-Site": "cross-site",
+                })
+                self.assertEqual(result.status_code, 200, result.text)
+
+    def test_rejects_loopback_alias_on_other_port(self):
+        response = self.request(
+            "http://127.0.0.1:8091",
+            headers={
+                "Origin": "http://localhost:8090",
+                "Sec-Fetch-Site": "cross-site",
+            },
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_rejects_external_origin_even_for_loopback_host(self):
+        response = self.request(
+            "http://127.0.0.1:8091",
+            headers={
+                "Origin": "https://external.example",
+                "Sec-Fetch-Site": "cross-site",
+            },
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_loopback_alias_requires_literal_host(self):
+        response = self.request(
+            "http://macbook.example-tailnet.ts.net:8091",
+            headers={
+                "Origin": "http://localhost:8091",
+                "Sec-Fetch-Site": "cross-site",
+            },
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_rejects_null_origin_from_sandbox(self):
+        response = self.request(
+            "http://localhost:8091",
+            headers={"Origin": "null"},
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_rejects_host_not_in_allowlist(self):
         response = self.request(
             "http://untrusted.example-tailnet.ts.net",
