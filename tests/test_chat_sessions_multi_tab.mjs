@@ -221,3 +221,27 @@ test('active-generation conflict survives reload as a separate chat without stal
     assert.equal(server.chats.get('chat-a').messages.at(-1).content, 'Other tab wins');
     assert.equal(server.chats.get('new-chat-id').messages.at(-1).content, 'Final generated draft');
 });
+
+
+test('offline cache with a future timestamp cannot overwrite another tab on reload', async () => {
+    const server = store();
+    const offline = record('chat-a', 99, 'Offline version from earlier tab');
+    const cache = new Map([
+        ['mlx-web-chats-v1', JSON.stringify([offline])],
+    ]);
+    const client = tab(server, cache);
+    client.sessions.loadSessions();
+    await client.sessions.syncWithServer();
+
+    const original = client.state.sessions.find(chat => chat.id === 'chat-a');
+    const recovered = client.state.sessions.find(chat => chat.id === 'new-chat-id');
+    assert.ok(original);
+    assert.ok(recovered, 'offline changes must be retained as a separate copy');
+    assert.equal(original.messages[0].content, 'Original A');
+    assert.equal(recovered.messages[0].content, 'Offline version from earlier tab');
+    await client.sessions.persistSession(recovered);
+
+    assert.equal(server.chats.get('chat-a').messages[0].content, 'Original A');
+    assert.equal(server.chats.get('new-chat-id').messages[0].content,
+        'Offline version from earlier tab');
+});
