@@ -30,7 +30,7 @@ Download-Link angeboten. Das Original bleibt unberührt.
 - ZIP-Traversal, Symlinks, verschlüsselte Archive und auffällige
   Komprimierungsraten werden abgelehnt
 - Office-XML-Container werden vor dem Öffnen ebenfalls auf gefährliche ZIPs geprüft
-- Keine Makroausführung oder Dateipfad-Freigaben. Für alte DOC-Binärdateien wird ausschließlich der lokale, fest vorgegebene \`antiword\`-Text-Extractor im unprivilegierten Web-Container ohne Shell und mit 10-Sekunden-Timeout aufgerufen.
+- Keine Makroausführung oder Dateipfad-Freigaben. Für alte DOC-Binärdateien wird ausschließlich der lokale, fest vorgegebene `antiword`- und `catdoc`-Text-Extractor im unprivilegierten Web-Container ohne Shell und mit 10-Sekunden-Timeout aufgerufen.
 - Keine unkontrollierte Office-/ZIP-Byte-Einbettung in Chatverlauf oder Git
 - Modell sieht höchstens 11.000 Zeichen aus dem Auszug; bei großen
   Dokumenten nur Teilprüfung – keine Vollständigkeitsgarantie
