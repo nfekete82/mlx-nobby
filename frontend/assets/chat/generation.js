@@ -2543,6 +2543,73 @@ return;
         return;
     }
 
+    // Binary office/archive attachments use a dedicated local model-backed
+    // workflow. Never inline the binary bytes into chat history or prompts.
+    const officeFiles = currentAttachments.filter(file => file.kind === 'office');
+    if (officeFiles.length) {
+        if (officeFiles.length !== currentAttachments.length) {
+            alert(gt('office_separate', 'Upload Word, Excel and ZIP separately from other attachments.'));
+            return;
+        }
+        if (!prompt) {
+            alert(gt('office_instruction_required', 'Describe what should be checked or edited in this file.'));
+            return;
+        }
+        const userEntry = {role: 'user', content: prompt, display_content: prompt,
+            attachments: officeFiles.map(file => ({name: file.name, kind: 'office',
+                extension: file.extension, size: file.size}))};
+        const progress = {role: 'assistant', content: gt('office_processing', 'Analyzing file locally …')};
+        session.messages.push(userEntry, progress);
+        MLXChatSessions.updateTitle(session);
+        session.updated = Date.now();
+        MLXChatSessions.saveSessions();
+        MLXChatRendering.renderAll({contentUpdated: true});
+        try {
+            const summaries = [];
+            for (const file of officeFiles) {
+                const form = new FormData();
+                form.append('file', file.file, file.name);
+                form.append('instruction', prompt);
+                const response = await fetch('/api/mlx/office/process', {
+                    method: 'POST', body: form,
+                });
+                if (!response.ok) {
+                    let reason = 'HTTP ' + response.status;
+                    try {
+                        const detail = (await response.json()).detail;
+                        if (typeof detail === 'string') reason = detail;
+                    } catch (_) {}
+                    throw new Error(reason);
+                }
+                const result = await response.json();
+                let summary = '**' + file.name.replace(/[\\[\\]()*_`]/g, '') + '**\n\n'
+                    + (result.summary || gt('office_no_summary', 'No summary available.'));
+                if (result.status === 'modified' && result.download_url) {
+                    summary += '\n\n' + gt('office_changes', 'Changes:') + ' ' + result.changes
+                        + '\n\n[' + gt('office_download', 'Download edited file') + '](' + result.download_url + ')';
+                } else if (result.status === 'not_modified') {
+                    summary += '\n\n' + gt('office_no_changes', 'No changes saved.');
+                }
+                if (result.preview_truncated) {
+                    summary += '\n\n' + gt('office_truncated', 'Note: the model inspected only a limited excerpt of this file.');
+                }
+                summaries.push(summary);
+            }
+            progress.content = summaries.join('\n\n---\n\n');
+            MLXChatAttachments.clearAttachments();
+            input.value = '';
+            MLXChatRuntime.autoResize();
+        } catch (error) {
+            progress.content = gt('office_error', 'File processing failed:') + ' '
+                + String(error?.message || gt('office_unknown_error', 'Unknown error'));
+            // Preserve attachments for retry after a failed request.
+        }
+        session.updated = Date.now();
+        MLXChatSessions.saveSessions();
+        MLXChatRendering.renderAll({contentUpdated: true});
+        return;
+    }
+
 const imageFiles =
         currentAttachments.filter(
             file => file.kind === 'image'

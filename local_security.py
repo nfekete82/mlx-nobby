@@ -65,6 +65,28 @@ class LocalRequestGuard:
             return origin.scheme == "https" and backend_scheme == "http"
         return LocalRequestGuard._loopback_origin_alias(origin, host, backend_scheme)
 
+    @staticmethod
+    def _safe_external_navigation(scope, headers):
+        """Permit an intentional cross-site link to a read-only app page.
+
+        A clicked link from another site has Sec-Fetch-Site: cross-site
+        but normally no Origin. Only top-level document GET navigations
+        to frontend routes qualify; API requests and all writes stay blocked.
+        """
+        path = scope.get("path", "")
+        page = (
+            path in {"/", "/chat", "/settings"}
+            or path.startswith("/settings/")
+        )
+        return (
+            page
+            and scope.get("method") == "GET"
+            and "origin" not in headers
+            and headers.get("sec-fetch-mode") == "navigate"
+            and headers.get("sec-fetch-dest") == "document"
+            and headers.get("sec-fetch-user") == "?1"
+        )
+
     def _with_identity_headers(self, message):
         if message.get("type") != "http.response.start":
             return message
@@ -109,11 +131,14 @@ class LocalRequestGuard:
                     host,
                     scope.get("scheme", "http"),
                 )
-            # Never accept a cross-site browser request except when the
-            # verified Origin and Host are *both* literal loopback aliases
-            # for the very same HTTP port (localhost / 127.0.0.1 / ::1).
+            # Block cross-site API requests, form posts and embedded resources.
+            # Exceptions: a same-port literal loopback alias, or a deliberate
+            # top-level GET navigation to an app HTML page (no Origin header).
+            # The Host allowlist and Origin validation above still apply.
             allowed = allowed and (
-                headers.get("sec-fetch-site") != "cross-site" or local_alias
+                headers.get("sec-fetch-site") != "cross-site"
+                or local_alias
+                or self._safe_external_navigation(scope, headers)
             )
         except ValueError:
             allowed = False

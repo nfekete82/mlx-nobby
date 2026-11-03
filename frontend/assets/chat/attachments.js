@@ -138,7 +138,11 @@ function attachmentT(key, fallback = '', variables = {}) {
         'webp',
         'gif',
         'pdf',
-        'eml'
+        'eml',
+        'docx',
+        'xlsx',
+        'xls',
+        'zip'
     ]);
 
     const IMAGE_EXTENSIONS = new Set([
@@ -149,6 +153,8 @@ function attachmentT(key, fallback = '', variables = {}) {
         'gif'
     ]);
 
+    const OFFICE_EXTENSIONS = new Set(['docx', 'xlsx', 'xls', 'zip']);
+    const MAX_OFFICE_SIZE = 20 * 1024 * 1024;
     const MAX_FILE_SIZE = 250 * 1024 * 1024;
     const MAX_IMAGE_SIZE = 20 * 1024 * 1024;
     const MAX_EML_SIZE = 30 * 1024 * 1024;
@@ -762,9 +768,11 @@ function attachmentT(key, fallback = '', variables = {}) {
 
             const sizeLimit = isImage
                 ? MAX_IMAGE_SIZE
-                : ext === 'eml'
-                    ? MAX_EML_SIZE
-                    : MAX_FILE_SIZE;
+                : OFFICE_EXTENSIONS.has(ext)
+                    ? MAX_OFFICE_SIZE
+                    : ext === 'eml'
+                        ? MAX_EML_SIZE
+                        : MAX_FILE_SIZE;
 
             if (file.size > sizeLimit) {
                 alert(
@@ -801,6 +809,20 @@ function attachmentT(key, fallback = '', variables = {}) {
                     type: file.type || 'message/rfc822',
                     extension: 'eml', kind: 'eml',
                     file, context_omitted: true
+                });
+                continue;
+            }
+
+            if (OFFICE_EXTENSIONS.has(ext)) {
+                attachments.push({
+                    id: uid(),
+                    name: file.name,
+                    size: file.size,
+                    type: file.type || 'application/octet-stream',
+                    extension: ext,
+                    kind: 'office',
+                    file,
+                    context_omitted: true
                 });
                 continue;
             }
@@ -1083,7 +1105,7 @@ function attachmentT(key, fallback = '', variables = {}) {
 
         const textFiles =
             attachments.filter(
-                file => file.kind !== 'image' && file.kind !== 'eml'
+                file => file.kind !== 'image' && file.kind !== 'eml' && file.kind !== 'office'
             );
 
         if (!textFiles.length) {
