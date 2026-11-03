@@ -53,6 +53,16 @@ function sessionT(key, fallback = '', variables = {}) {
         saveConflictMarkers();
     }
 
+    function conflictCopy(session) {
+        const copy = withoutStreamingFields(session);
+        copy.id = uid();
+        copy.title = copy.title + ' (' +
+            sessionT('sessions.concurrent_copy', 'Conflict copy') + ')';
+        copy.created = Date.now();
+        copy.updated = Date.now();
+        return copy;
+    }
+
     function recoverConflictedChats() {
         if (isGenerating() || !pendingConflicts.size) return false;
         let changed = false;
@@ -62,11 +72,7 @@ function sessionT(key, fallback = '', variables = {}) {
             if (original) {
                 // Never discard an in-flight local draft or overwrite the
                 // version another tab saved. Preserve ours under a fresh ID.
-                const copy = withoutStreamingFields(original);
-                copy.id = uid();
-                copy.title = copy.title + ' (conflict copy)';
-                copy.created = Date.now();
-                copy.updated = Date.now();
+                const copy = conflictCopy(original);
                 state.sessions.unshift(copy);
                 if (state.activeId === id) {
                     state.activeId = copy.id;
@@ -469,6 +475,28 @@ function sessionT(key, fallback = '', variables = {}) {
                     // A pending live edit remains local until it can be
                     // forked safely; never push it as the winning version.
                     merged.set(id, local);
+                    return;
+                }
+                if (server && local && local.updated > server.updated &&
+                        acknowledgedUpdated.get(id) !== server.updated) {
+                    // A newer browser cache does not prove that the user has
+                    // seen the server's current state. This may be an old
+                    // offline tab; keep both histories instead of forcing
+                    // the local copy over another tab's saved work.
+                    if (isGenerating()) {
+                        pendingConflicts.set(id, server);
+                        saveConflictMarkers();
+                        merged.set(id, local);
+                    } else {
+                        const copy = conflictCopy(local);
+                        updateFromServer(local, server, false);
+                        merged.set(id, local);
+                        merged.set(copy.id, copy);
+                        localWinners.push(copy);
+                        if (state.activeId === id) {
+                            state.activeId = copy.id;
+                        }
+                    }
                     return;
                 }
                 if (!server || (local && local.updated > server.updated)) {
