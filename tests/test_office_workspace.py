@@ -231,3 +231,113 @@ def test_plain_model_text_does_not_permit_edits(monkeypatch):
         "choices": [{"message": {"content": "Changed it already"}}]})
     with pytest.raises(office.OfficeError, match="MODEL_RESPONSE_INVALID"):
         office_routes._work(word_bytes(), "review.docx", "Ersetze Altstadt")
+
+
+# Legacy MS Word support is intentionally read-only. The CI runner does not
+# need antiword installed: validate invocation, limits and HTTP contracts here.
+def test_legacy_doc_reads_with_bounded_local_reader(monkeypatch):
+    import subprocess
+    data = bytes.fromhex("d0cf11e0a1b11ae1") + b"synthetic-old-word"
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        source = Path(command[-1])
+        assert source.name == "document.doc"
+        assert source.read_bytes() == data
+        assert source.stat().st_mode & 0o777 == 0o600
+        assert kwargs["timeout"] == 10
+        assert kwargs["stdin"] == subprocess.DEVNULL
+        assert kwargs["env"]["PATH"] == "/usr/bin:/bin"
+        return subprocess.CompletedProcess(command, 0, "Ein älteres Dokument".encode(), b"")
+
+    monkeypatch.setattr(office.subprocess, "run", fake_run)
+    info = office.inspect(data, "bericht.doc")
+    assert info.kind == "doc"
+    assert "älteres Dokument" in info.preview
+    assert len(calls) == 1
+    assert calls[0][0][:5] == [
+        "/usr/bin/antiword", "-m", "UTF-8.txt", "-t", "-w"
+    ]
+
+
+def test_legacy_doc_rejects_invalid_format_timeout_and_missing_reader(monkeypatch):
+    import subprocess
+    data = bytes.fromhex("d0cf11e0a1b11ae1") + b"fake"
+    with pytest.raises(office.OfficeError, match="INVALID_OR_UNREADABLE_DOCUMENT"):
+        office.inspect(b"not a binary Word file", "file.doc")
+    monkeypatch.setattr(
+        office.subprocess, "run",
+        lambda command, **kwargs: (_ for _ in ()).throw(
+            subprocess.TimeoutExpired(command, 10)
+        ),
+    )
+    with pytest.raises(office.OfficeError, match="INVALID_OR_UNREADABLE_DOCUMENT"):
+        office.inspect(data, "file.doc")
+    monkeypatch.setattr(
+        office.subprocess, "run",
+        lambda command, **kwargs: (_ for _ in ()).throw(
+            FileNotFoundError("antiword missing")
+        ),
+    )
+    with pytest.raises(office.OfficeError, match="LEGACY_DOC_READER_UNAVAILABLE"):
+        office.inspect(data, "file.doc")
+
+
+def test_legacy_doc_is_never_editable(monkeypatch):
+    import subprocess
+    data = bytes.fromhex("d0cf11e0a1b11ae1") + b"fake"
+    monkeypatch.setattr(
+        office.subprocess, "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0, b"Vorhandener Text", b""
+        ),
+    )
+    assert ".doc" in office.SUPPORTED
+    assert ".doc" not in office.EDITABLE
+    assert office.inspect(data, "legacy.doc").kind == "doc"
+    with pytest.raises(office.OfficeError, match="READ_ONLY_FORMAT"):
+        office.edit(data, "legacy.doc", [{"old": "Vorhandener", "new": "Neuer"}])
+    with pytest.raises(office.OfficeError, match="READ_ONLY_FORMAT"):
+        office_routes._work(data, "legacy.doc", "Ersetze Vorhandener durch Neuer")
+
+
+def test_legacy_doc_http_process_readonly(monkeypatch):
+    import asyncio
+    import httpx
+    import subprocess
+    from backend import app as web
+    data = bytes.fromhex("d0cf11e0a1b11ae1") + b"fake"
+    monkeypatch.setattr(
+        office.subprocess, "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0, "Früheres Word-Dokument".encode(), b""
+        ),
+    )
+    monkeypatch.setattr(web, "agent_json_request", lambda *a, **k: {
+        "choices": [{"message": {"content":
+            '{"summary":"Altes Word gelesen","replacements":[]}'}}]
+    })
+
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=web.app),
+            base_url="http://localhost",
+        ) as client:
+            result = await client.post(
+                "/api/mlx/office/process",
+                files={"file": ("file.doc", data, "application/msword")},
+                data={"instruction": "Fasse das Dokument zusammen"},
+            )
+            assert result.status_code == 200, result.text
+            assert result.json()["format"] == "doc"
+            assert result.json()["summary"] == "Altes Word gelesen"
+            edited = await client.post(
+                "/api/mlx/office/process",
+                files={"file": ("file.doc", data, "application/msword")},
+                data={"instruction": "Ersetze Früheres durch Neues"},
+            )
+            assert edited.status_code == 422
+            assert edited.json()["detail"] == "READ_ONLY_FORMAT"
+
+    asyncio.run(scenario())
