@@ -158,6 +158,8 @@ nextResponse = () => new Promise(resolve => { respond = resolve; });
 const changedWhilePending = sessions.persistSession(session);
 const localMessage = { role: 'assistant', content: 'new local text' };
 session.messages.push(localMessage);
+session.title = 'Local rename while saving';
+session.workspace = { active_artifact_id: 'local-draft' };
 respond({
     response: { ok: true },
     data: { chat: chat(35, [{ role: 'user', content: 'old text' }]) },
@@ -165,6 +167,8 @@ respond({
 await changedWhilePending;
 assert.strictEqual(state.sessions[0], session);
 assert.strictEqual(session.messages[1], localMessage);
+assert.equal(session.title, 'Local rename while saving');
+assert.equal(session.workspace.active_artifact_id, 'local-draft');
 assert.equal(session.revision, 35);
 
 generating = true;
