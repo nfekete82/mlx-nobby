@@ -43,6 +43,7 @@ from backend.system_health_routes import (
 from backend.talking_photo_routes import install_routes as install_talking_photo_routes
 from backend.talking_photo_ui import TalkingPhotoUiMiddleware
 from backend.version_routes import install_routes as install_version_routes
+from backend.energy_routes import install_routes as install_energy_routes
 from backend.voice_manager_routes import install_routes as install_voice_manager_routes
 
 
@@ -73,6 +74,7 @@ install_speech_streaming_routes(app, AGENT_URL)
 install_voice_manager_routes(app, AGENT_URL)
 install_talking_photo_routes(app, AGENT_URL)
 install_version_routes(app)
+install_energy_routes(app, agent_json_request)
 install_system_health_routes(app, agent_json_request)
 install_performance_observatory_routes(app, agent_json_request)
 install_routing_observatory_routes(app)
