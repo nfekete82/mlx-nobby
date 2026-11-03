@@ -71,7 +71,14 @@ def _model_result(instruction, inspection, editing=False):
         if text.startswith("```"):
             text = re.sub(r"^\`\`\`(?:json)?\s*", "", text, flags=re.I)
             text = re.sub(r"\s*\`\`\`$", "", text)
-        obj = json.loads(text)
+        try:
+            obj = json.loads(text)
+        except json.JSONDecodeError:
+            # Inspection is read-only: a non-JSON but useful answer is safe
+            # to surface. Editing still requires the strict machine plan.
+            if not editing and text:
+                return text[:3500], []
+            raise
         if not isinstance(obj, dict):
             raise ValueError("INVALID_MODEL_PLAN")
         summary = obj.get("summary")
