@@ -390,7 +390,13 @@
     if (preview.hidden) return;
     if (event.key === "Escape") {
       event.preventDefault();
-      closePreview();
+      event.stopImmediatePropagation();
+      if (event.repeat) return;
+      if (document.fullscreenElement === shell) {
+        document.exitFullscreen?.().catch(() => {});
+      } else {
+        closePreview();
+      }
     } else if (event.key === "Tab") {
       const focusable = [previewClose, previewFull, ...previewBody.querySelectorAll("button, a[href]")];
       if (event.shiftKey && document.activeElement === focusable[0]) {
@@ -907,6 +913,10 @@
     });
   }
   document.addEventListener("keydown", event => {
-    if (event.key === "Escape" && !panel.hidden) setVisible(false);
+    if (event.key === "Escape" && !panel.hidden) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!event.repeat) setVisible(false);
+    }
   });
 })();
