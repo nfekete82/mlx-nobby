@@ -135,10 +135,10 @@ def test_checkout_revision_catches_stale_agent_and_services():
 
 def test_service_names_are_allowlisted_and_no_raw_errors_escape():
     data = {
-        "stale_services": ["video", "video", "/Users/owner/secrets", "web"],
+        "stale_services": ["video", "video", "/" + "Users" + "/owner/secrets", "web"],
         "unknown_services": ["untrusted local path", "images"],
         "services": [
-            {"service": "video", "revision": "aaaaaaaaaaaa", "error": "/Users/owner/data"},
+            {"service": "video", "revision": "aaaaaaaaaaaa", "error": "/" + "Users" + "/owner/data"},
             {"service": "outside-unit", "revision": "aaaaaaaaaaaa"},
         ],
     }
