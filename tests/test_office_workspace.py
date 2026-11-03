@@ -341,3 +341,13 @@ def test_legacy_doc_http_process_readonly(monkeypatch):
             assert edited.json()["detail"] == "READ_ONLY_FORMAT"
 
     asyncio.run(scenario())
+
+
+def test_legacy_doc_picker_and_cache_contract():
+    root = Path(__file__).resolve().parents[1]
+    attachments = (root / "frontend/assets/chat/attachments.js").read_text("utf-8")
+    html = (root / "frontend/chat.html").read_text("utf-8")
+    assert "'doc'," in attachments
+    assert "new Set(['doc', 'docx', 'xlsx', 'xls', 'zip'])" in attachments
+    assert ".pdf,.doc,.docx,.xlsx" in html
+    assert "attachments.js?v=20261103-legacy-doc" in html
