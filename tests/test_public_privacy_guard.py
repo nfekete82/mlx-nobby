@@ -27,3 +27,10 @@ def test_credentials_and_personal_email():
 
 def test_neutral_text():
     assert get_scan()("MLX documentation https://example.org") == []
+
+
+def test_private_file_urls_are_rejected():
+    file_url = "file:" + "///" + "Users" + "/actualowner/Library/item.txt"
+    assert "machine-specific home path" in get_scan()(file_url)
+    approved_example = "file:" + "///" + "Users" + "/example/Documents/manual.txt"
+    assert "machine-specific home path" not in get_scan()(approved_example)
