@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 from e2e_watchdog import run_e2e
+from official_pytest import tracked_python_tests
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -15,7 +16,7 @@ def main():
     args = parser.parse_args()
     python = sys.executable
     steps = [
-        ('Python and subtests', [python, '-m', 'pytest', '-q']),
+        ('Python and subtests', [python, '-m', 'pytest', '-q', *tracked_python_tests(ROOT)]),
         ('JavaScript', ['node', '--test', *map(str, sorted((ROOT / 'tests').glob('*.mjs')))]),
         ('Syntax / translations / metadata', [python, str(ROOT / 'tests/acceptance/validate.py')]),
         ('Dependencies', [python, '-m', 'pip', 'check']),
