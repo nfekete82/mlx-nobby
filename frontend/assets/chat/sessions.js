@@ -31,6 +31,62 @@ function sessionT(key, fallback = '', variables = {}) {
     const acknowledgedSnapshots = new Map();
     const acknowledgedUpdated = new Map();
     const activePersists = new Map();
+    const CONFLICT_KEY = 'mlx-web-chats-pending-conflicts-v1';
+    // Keep a durable marker when a concurrent edit cannot be reconciled while
+    // a generation is active. No stale write may be retried under a fresh CAS.
+    const pendingConflicts = new Map();
+
+    function saveConflictMarkers() {
+        try {
+            if (pendingConflicts.size) {
+                localStorage.setItem(CONFLICT_KEY, JSON.stringify([...pendingConflicts.keys()]));
+            } else {
+                localStorage.removeItem(CONFLICT_KEY);
+            }
+        } catch (error) {
+            console.warn('[MLX nobby] Could not persist chat conflict marker:', error);
+        }
+    }
+
+    function clearConflictMarker(id) {
+        pendingConflicts.delete(id);
+        saveConflictMarkers();
+    }
+
+    function recoverConflictedChats() {
+        if (isGenerating() || !pendingConflicts.size) return false;
+        let changed = false;
+        let activeChanged = false;
+        for (const [id, serverChat] of [...pendingConflicts]) {
+            const original = state.sessions.find(item => item.id === id);
+            if (original) {
+                // Never discard an in-flight local draft or overwrite the
+                // version another tab saved. Preserve ours under a fresh ID.
+                const copy = withoutStreamingFields(original);
+                copy.id = uid();
+                copy.title = copy.title + ' (conflict copy)';
+                copy.created = Date.now();
+                copy.updated = Date.now();
+                state.sessions.unshift(copy);
+                if (state.activeId === id) {
+                    state.activeId = copy.id;
+                    activeChanged = true;
+                }
+                if (serverChat) {
+                    updateFromServer(original, serverChat, false);
+                } else {
+                    // On reload the authoritative version comes from sync.
+                    state.sessions = state.sessions.filter(item => item !== original);
+                }
+                changed = true;
+            }
+            pendingConflicts.delete(id);
+        }
+        saveConflictMarkers();
+        if (activeChanged) onSessionSelected();
+        if (changed) renderSidebar();
+        return changed;
+    }
 
     function configure(options) {
         state = options.state;
@@ -208,7 +264,8 @@ function sessionT(key, fallback = '', variables = {}) {
 
     async function persistSession(session) {
         if (clearingHistory || !serverReady || !validSession(session) ||
-                !state.sessions.includes(session)) {
+                !state.sessions.includes(session) ||
+                pendingConflicts.has(session.id)) {
             return;
         }
 
@@ -221,7 +278,8 @@ function sessionT(key, fallback = '', variables = {}) {
         const epoch = historyEpoch;
         const operation = (async () => {
             while (!clearingHistory && epoch === historyEpoch &&
-                    state.sessions.includes(session)) {
+                    state.sessions.includes(session) &&
+                    !pendingConflicts.has(id)) {
                 const sentSession = withoutStreamingFields(session);
                 const sentSnapshot = JSON.stringify(sentSession);
                 if (acknowledgedSnapshots.get(id) === sentSnapshot) {
@@ -260,8 +318,7 @@ function sessionT(key, fallback = '', variables = {}) {
                     persistedSnapshot(session) !== sentSnapshot;
                 acknowledgedUpdated.set(id, serverChat.updated);
 
-                if (result.data.conflict ||
-                        serverChat.updated > sentSession.updated) {
+                if (result.data.conflict === true) {
                     // A different tab won. Keep its saved data and never
                     // blindly retry with our stale original timestamp.
                     acknowledgedSnapshots.set(id, persistedSnapshot(serverChat));
@@ -270,9 +327,12 @@ function sessionT(key, fallback = '', variables = {}) {
                         cacheSessions();
                         renderAll();
                     } else {
-                        // Preserve live, unsent edits in localStorage.
-                        // A later explicit save can reconcile them.
-                        console.warn('[MLX nobby] Concurrent chat edit detected; preserving local draft.');
+                        // The local draft may have changed after the request
+                        // started. Do not accept the server timestamp as
+                        // permission to overwrite it on a later save.
+                        pendingConflicts.set(id, serverChat);
+                        saveConflictMarkers();
+                        console.warn('[MLX nobby] Concurrent chat edit: local draft will become a separate conflict copy.');
                         cacheSessions();
                     }
                     return;
@@ -321,6 +381,17 @@ function sessionT(key, fallback = '', variables = {}) {
     function loadSessions() {
         acknowledgedSnapshots.clear();
         acknowledgedUpdated.clear();
+        pendingConflicts.clear();
+        try {
+            const ids = JSON.parse(localStorage.getItem(CONFLICT_KEY) || '[]');
+            if (Array.isArray(ids)) {
+                ids.filter(id => typeof id === 'string').forEach(id =>
+                    pendingConflicts.set(id, null)
+                );
+            }
+        } catch {
+            // Invalid recovery metadata must not delete cached chat data.
+        }
         try {
             const cached = JSON.parse(
                 localStorage.getItem(STORAGE_KEY)
@@ -336,10 +407,14 @@ function sessionT(key, fallback = '', variables = {}) {
         if (state.sessions.length) {
             state.activeId = state.sessions[0].id;
         }
+        if (recoverConflictedChats()) {
+            cacheSessions();
+        }
     }
 
     function saveSessions() {
         if (clearingHistory) return;
+        recoverConflictedChats();
         cacheSessions();
 
         if (serverReady) {
@@ -390,6 +465,12 @@ function sessionT(key, fallback = '', variables = {}) {
                 const local = localById.get(id);
                 const server = serverById.get(id);
 
+                if (pendingConflicts.has(id) && local) {
+                    // A pending live edit remains local until it can be
+                    // forked safely; never push it as the winning version.
+                    merged.set(id, local);
+                    return;
+                }
                 if (!server || (local && local.updated > server.updated)) {
                     merged.set(id, local);
                     localWinners.push(local);
@@ -548,6 +629,8 @@ function sessionT(key, fallback = '', variables = {}) {
             state.activeId = null;
             acknowledgedSnapshots.clear();
             acknowledgedUpdated.clear();
+            pendingConflicts.clear();
+            saveConflictMarkers();
             localStorage.removeItem(STORAGE_KEY);
             window.MLXChatAttachments?.clearAttachments?.();
             try {
@@ -629,6 +712,7 @@ function sessionT(key, fallback = '', variables = {}) {
         );
         acknowledgedSnapshots.delete(id);
         acknowledgedUpdated.delete(id);
+        clearConflictMarker(id);
 
         deleteServerSession(id);
 
