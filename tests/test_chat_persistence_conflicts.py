@@ -74,3 +74,32 @@ def test_identical_chat_put_is_no_op_and_legacy_clients_still_work(tmp_path, mon
         assert response.status_code == 200
         assert response.json()["conflict"] is True
         assert agent.read_chat("legacy-compatible")["messages"] == changed["messages"]
+
+
+
+def test_equal_millisecond_edits_cannot_beat_compare_and_swap(tmp_path, monkeypatch):
+    """Timestamp ties must not let a second tab overwrite a first tab's edit."""
+    monkeypatch.setattr(agent, "CHAT_DIRECTORY", tmp_path / "chats")
+    with TestClient(agent.app, base_url="http://localhost") as client:
+        base = record("same-millisecond", 1000, "Initial")
+        assert client.put(
+            "/api/chats/same-millisecond", json=base | {"expected_updated": -1}
+        ).status_code == 200
+
+        first = record("same-millisecond", 1000, "First tab's update")
+        response = client.put(
+            "/api/chats/same-millisecond", json=first | {"expected_updated": 1000}
+        )
+        assert response.status_code == 200
+        assert response.json()["conflict"] is False
+        assert response.json()["chat"]["updated"] > 1000
+
+        second = record("same-millisecond", 1000, "Second tab's stale update")
+        response = client.put(
+            "/api/chats/same-millisecond", json=second | {"expected_updated": 1000}
+        )
+        assert response.status_code == 200
+        assert response.json()["conflict"] is True
+        current = agent.read_chat("same-millisecond")
+        assert current["messages"] == first["messages"]
+        assert current["updated"] > 1000
