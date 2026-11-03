@@ -347,3 +347,25 @@ def test_legacy_doc_api_summary_and_refused_edit(monkeypatch):
             assert edit.json()["detail"] == "READ_ONLY_FORMAT"
 
     asyncio.run(check())
+
+
+def test_legacy_doc_falls_back_to_catdoc_for_small_word_file(monkeypatch):
+    import subprocess
+
+    lookup = {"antiword": "/usr/bin/antiword", "catdoc": "/usr/bin/catdoc"}
+    monkeypatch.setattr(office.shutil, "which", lambda command: lookup.get(command))
+    used = []
+
+    def extractor(command, **kwargs):
+        used.append(command)
+        if command[0].endswith("antiword"):
+            return subprocess.CompletedProcess(command, 1)
+        assert command == ["/usr/bin/catdoc", "-d", "utf-8", "-w", "-"]
+        kwargs["stdout"].write("Kurzer Word-Brief über München".encode("utf-8"))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(office.subprocess, "run", extractor)
+    info = office.inspect(legacy_word_bytes(), "short.doc")
+    assert info.kind == "doc"
+    assert "München" in info.preview
+    assert len(used) == 2

@@ -31,7 +31,7 @@ Download-Link angeboten. Das Original bleibt unberührt.
 - ZIP-Traversal, Symlinks, verschlüsselte Archive und auffällige
   Komprimierungsraten werden abgelehnt
 - Office-XML-Container werden vor dem Öffnen ebenfalls auf gefährliche ZIPs geprüft
-- Legacy-DOC wird nur mit gültiger OLE-Signatur an den lokal installierten `antiword`-Text-Extractor übergeben; keine Makroausführung, maximal 12 s Laufzeit und 512 KiB extrahierter Text
+- Legacy-DOC wird nur mit gültiger OLE-Signatur an lokal installierte `antiword`- und `catdoc`-Text-Extractor übergeben (`catdoc` als Fallback für kleine DOC-Dateien); keine Makroausführung, je Versuch maximal 12 s und höchstens 512 KiB extrahierter Text
 - Keine Makroausführung, keine Shell-Aufrufe oder Dateipfad-Freigaben
 - Keine unkontrollierte Office-/ZIP-Byte-Einbettung in Chatverlauf oder Git
 - Modell sieht höchstens 11.000 Zeichen aus dem Auszug; bei großen
