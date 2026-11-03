@@ -107,7 +107,7 @@ def _work(data, filename, instruction):
     answer = {
         "status": "completed", "filename": Path(filename).name[:180],
         "format": info.kind, "summary": summary,
-        "preview": info.preview[:4500], "preview_truncated": info.truncated,
+        "preview": info.preview[:4500], "preview_truncated": info.truncated or len(info.preview) > 11000,
         "file_count": info.files, "cell_count": info.cells,
         "paragraph_count": info.paragraphs, "changes": 0,
         "download_url": None,
@@ -119,6 +119,10 @@ def _work(data, filename, instruction):
             "status": "not_modified",
             "summary": summary + "\n\nKeine sichere Textänderung aus der Anweisung ableitbar.",
         }
+    # A proposed edit may only target text actually shown to the model;
+    # do not allow hallucinated replacements elsewhere in a long document.
+    if any(old not in info.preview[:11000] for old, _ in office.validated_replacements(replacements)):
+        raise office.OfficeError("EDIT_TEXT_NOT_IN_MODEL_EXCERPT")
     modified, count = office.edit(data, filename, replacements)
     _cleanup_expired()
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
