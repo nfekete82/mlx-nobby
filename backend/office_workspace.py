@@ -105,6 +105,11 @@ def inspect(data: bytes, filename: str) -> Inspection:
     if not data or len(data) > MAX_BYTES:
         raise OfficeError("FILE_EMPTY_OR_TOO_LARGE")
     try:
+        if suffix in {".docx", ".xlsx"}:
+            # Office Open XML is a ZIP container; apply the same bounded
+            # member and decompression checks before passing it to a parser.
+            with zipfile.ZipFile(BytesIO(data)) as zipped:
+                _zip_entries(zipped)
         if suffix == ".docx":
             doc = Document(BytesIO(data))
             parts = _document_parts(doc)
@@ -115,7 +120,8 @@ def inspect(data: bytes, filename: str) -> Inspection:
             try:
                 for sheet in book:
                     parts.append(f"[Sheet: {sheet.title}]")
-                    for row in sheet.iter_rows():
+                    for row in sheet.iter_rows(min_row=1, max_row=min(sheet.max_row, 500),
+                                                   min_col=1, max_col=min(sheet.max_column, 60)):
                         nonempty = [f"{cell.coordinate}={str(cell.value)[:300]}" for cell in row if cell.value is not None]
                         cell_count += len(nonempty)
                         if nonempty:
@@ -219,6 +225,8 @@ def _xlsx_edit(data, rules):
                     continue
                 modified, count = _replace_text(cell.value, rules)
                 if count:
+                    if modified.lstrip().startswith("="):
+                        raise OfficeError("FORMULA_INJECTION_BLOCKED")
                     cell.value = modified
                     changes += count
     output = BytesIO()
@@ -259,6 +267,11 @@ def edit(data: bytes, filename: str, replacements):
     suffix = extension(filename)
     if suffix not in EDITABLE:
         raise OfficeError("READ_ONLY_FORMAT")
+    if len(data) > MAX_BYTES or not data:
+        raise OfficeError("FILE_EMPTY_OR_TOO_LARGE")
+    if suffix in {".docx", ".xlsx"}:
+        with zipfile.ZipFile(BytesIO(data)) as zipped:
+            _zip_entries(zipped)
     rules = validated_replacements(replacements)
     if not rules:
         raise OfficeError("NO_EDIT_RULES")
