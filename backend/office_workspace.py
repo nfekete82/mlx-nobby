@@ -64,6 +64,7 @@ def _zip_entries(zf: zipfile.ZipFile):
         raise OfficeError("ZIP_TOO_MANY_ENTRIES")
     size = 0
     result = []
+    seen = set()
     for info in items:
         name = info.filename.replace("\\", "/")
         path = PurePosixPath(name)
@@ -71,6 +72,9 @@ def _zip_entries(zf: zipfile.ZipFile):
                 or ".." in path.parts or not path.parts
                 or ":" in path.parts[0] or len(name) > 350):
             raise OfficeError("UNSAFE_ZIP_PATH")
+        if name in seen:
+            raise OfficeError("ZIP_DUPLICATE_PATH")
+        seen.add(name)
         if stat.S_ISLNK(info.external_attr >> 16):
             raise OfficeError("ZIP_SYMLINK_BLOCKED")
         if info.flag_bits & 1:
