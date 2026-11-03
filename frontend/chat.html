@@ -17,6 +17,8 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
 
+<script src="/assets/chat/media-privacy.js?v=20261103-1"></script>
+<link rel="stylesheet" href="/assets/chat/media-privacy.css?v=20261103-1">
 <link rel="stylesheet" href="/assets/chat.css?v=20261026-juggernaut-hq-steps">
 <link rel="stylesheet" href="/assets/chat/charts.css?v=1-11-0">
 <link rel="stylesheet" href="/assets/chat/finance.css?v=20261008-finance-speed">
@@ -337,6 +339,19 @@
                     </svg>
                 </button>
 
+                <button id="mediaPrivacyQuickToggle"
+                    class="icon-btn top-action-button"
+                    type="button"
+                    aria-pressed="false"
+                    aria-label="Anonymmodus für Medien aktivieren"
+                    title="Anonymmodus für Medien aktivieren">
+                    <svg class="top-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M4 20 20 4"></path>
+                    </svg>
+                </button>
+
                 <div class="power-menu-wrap">
                     <button
                         id="powerButton"
@@ -510,6 +525,11 @@
             </div>
             <label class="settings-toggle"><input id="autoScroll" type="checkbox" checked> <span data-i18n="ui.auto_scroll_streaming">Auto-Scroll während Streaming</span></label>
             <label class="settings-toggle"><input id="showRuntimeThinking" type="checkbox" checked> <span data-i18n="ui.show_runtime_thinking">Runtime-/Thinking-Infos anzeigen</span></label>
+            <label class="settings-toggle">
+                <input id="mediaPrivacyToggle" type="checkbox">
+                <span data-i18n="ui.media_privacy_toggle">Anonymmodus für Bilder und Videos</span>
+            </label>
+            <p class="settings-hint" data-i18n="ui.media_privacy_hint">Medien bleiben verschwommen, bis du mit der Maus darüberfährst. Auf Touch-Geräten tippen, um sie anzuzeigen.</p>
             <div class="field">
                 <label for="interactiveQuestionsMode" data-i18n="interactive_questions.settings_label">Interaktive Rückfragen</label>
                 <select id="interactiveQuestionsMode">
