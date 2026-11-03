@@ -14,7 +14,7 @@
             document.documentElement.lang || 'de').toLowerCase().startsWith('de');
     }
 
-    function tr(de, en) {
+    function localText(de, en) {
         return german() ? de : en;
     }
 
@@ -51,15 +51,15 @@
         const hasData = Number(report?.seven_days_kwh) > 0;
         const live = report?.active === true;
         status.textContent = live
-            ? tr('● Messung aktiv', '● Collecting')
-            : tr('○ Logger offline oder noch keine Werte', '○ Logger offline or no values yet');
+            ? localText('● Messung aktiv', '● Collecting')
+            : localText('○ Logger offline oder noch keine Werte', '○ Logger offline or no values yet');
         metrics.replaceChildren(
-            stat(tr('Aktuell', 'Now'),
+            stat(localText('Aktuell', 'Now'),
                 live && report.current_w != null ? format(report.current_w, 1) + ' W' : '—'),
-            stat(tr('Heute', 'Today'), format(report.today_kwh, 3) + ' kWh'),
-            stat(tr('Heute (geschätzt)', 'Today (estimated)'),
+            stat(localText('Heute', 'Today'), format(report.today_kwh, 3) + ' kWh'),
+            stat(localText('Heute (geschätzt)', 'Today (estimated)'),
                 format(report.today_eur, 2) + ' €'),
-            stat(tr('Erfasste Zeit heute', 'Measured today'),
+            stat(localText('Erfasste Zeit heute', 'Measured today'),
                 format(report.today_measured_hours, 2) + ' h')
         );
         days.replaceChildren();
@@ -97,14 +97,14 @@
             }
         } else {
             hours.append(node('p', 'mlx-energy-muted',
-                tr('Noch keine erfassten Stunden.', 'No measured hours yet.')));
+                localText('Noch keine erfassten Stunden.', 'No measured hours yet.')));
         }
         description.textContent = hasData
-            ? tr('Letzte 7 Tage: ', 'Last 7 days: ') +
+            ? localText('Letzte 7 Tage: ', 'Last 7 days: ') +
                 format(report.seven_days_kwh, 3) + ' kWh · ' +
-                tr('Strompreis ', 'Electricity price ') +
+                localText('Strompreis ', 'Electricity price ') +
                 format(report.price_eur_kwh, 2) + ' €/kWh'
-            : tr('Keine Messwerte vorhanden. macmon und den optionalen Host-Logger installieren.',
+            : localText('Keine Messwerte vorhanden. macmon und den optionalen Host-Logger installieren.',
                 'No measurements. Install macmon and the optional host logger.');
     }
 
@@ -120,7 +120,7 @@
             show(await response.json());
         } catch (_error) {
             const status = root.querySelector('[data-energy-status]');
-            if (status) status.textContent = tr('Energie-API nicht erreichbar',
+            if (status) status.textContent = localText('Energie-API nicht erreichbar',
                 'Energy API unavailable');
         } finally {
             busy = false;
@@ -169,28 +169,26 @@
         root = node('section', 'mlx-energy');
         root.id = 'mlxEnergyMonitor';
         const header = node('div', 'mlx-energy-header');
-        header.append(node('h3', '', tr('Energie · Apple Silicon', 'Energy · Apple Silicon')));
-        const button = node('button', '', tr('Aktualisieren', 'Refresh'));
+        header.append(node('h3', '', localText('Energie · Apple Silicon', 'Energy · Apple Silicon')));
+        const button = node('button', '', localText('Aktualisieren', 'Refresh'));
         button.type = 'button';
         button.addEventListener('click', refresh);
         header.append(button);
-        const status = node('p', 'mlx-energy-muted', tr('Lade Messwerte …', 'Loading …'));
+        const status = node('p', 'mlx-energy-muted', localText('Lade Messwerte …', 'Loading …'));
         status.dataset.energyStatus = '1';
         const stats = node('div', 'mlx-energy-stat-grid');
         stats.dataset.energyStats = '1';
-        const subheading = node('h4', '', tr('Letzte 7 Tage', 'Last 7 days'));
+        const subheading = node('h4', '', localText('Letzte 7 Tage', 'Last 7 days'));
         const days = node('div', 'mlx-energy-bars');
         days.dataset.energyDays = '1';
-        const hoursHeading = node('h4', '', tr('Letzte erfasste Stunden', 'Recent measured hours'));
+        const hoursHeading = node('h4', '', localText('Letzte erfasste Stunden', 'Recent measured hours'));
         const hours = node('div');
         hours.dataset.energyHours = '1';
         const details = node('p', 'mlx-energy-details');
         details.dataset.energyDetails = '1';
         const note = node('p', 'mlx-energy-muted mlx-energy-note',
-            tr('Interne Systemleistung (macmon sys_power), kein Steckdosenverbrauch. ' +
-               'CPU/GPU sind darin bereits enthalten. Nur gemessene Zeiträume werden gezählt.',
-               'Internal macmon system power, not wall power. CPU/GPU already included. ' +
-               'Only measured intervals are counted.'));
+            localText('Interne Systemleistung (macmon sys_power), kein Steckdosenverbrauch. CPU/GPU sind darin bereits enthalten. Nur gemessene Zeiträume werden gezählt.',
+               'Internal macmon system power, not wall power. CPU/GPU already included. Only measured intervals are counted.'));
         root.append(header, status, stats, subheading, days, hoursHeading, hours, details, note);
         anchor.insertAdjacentElement('afterend', root);
         timer = setInterval(refresh, REFRESH_MS);
