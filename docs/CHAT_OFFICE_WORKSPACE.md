@@ -1,4 +1,4 @@
-# MLX Nobby – lokale Word-, Excel- und ZIP-Bearbeitung (Entwurf)
+# MLX Nobby – lokale Word-, Excel- und ZIP-Bearbeitung
 
 Der Chat akzeptiert direkt DOCX, XLSX, XLS und ZIP-Dateien. Die Dateien werden
 über die bestehende Webanwendung lokal in einer begrenzten Worker-Pipeline
@@ -44,20 +44,31 @@ Download-Link angeboten. Das Original bleibt unberührt.
   mit `python-docx` / `openpyxl` in Einzelfällen verändert werden. Die
   bearbeitete Kopie vor externer Weitergabe kontrollieren
 
-## Rollout
+## Integrationsstatus und Abnahme
 
-Die Änderungen verwenden neue, auf `main` basierende Feature-Branch-Dateien.
-Nach CI und lokalem Probelauf können sie freigegeben werden.
+Die Funktion ist über [PR #407](https://github.com/nfekete82/mlx-nobby/pull/407)
+am 3. November 2026 in `main` integriert. Die GitHub-Tests für den
+zusammengeführten `main`-Commit `23d1104c` sind erfolgreich
+(Python/macOS, Docker und Chromium). Das ist **keine** Bestätigung,
+dass alle individuellen DOCX-/XLSX-Layouts bereits auf dem eigenen Mac
+manuell geprüft wurden.
 
-```bash
-cd ~/mlx-web
-git fetch origin
-# Separater Feature-Branch, NICHT ungeprüft in die laufende Integration mergen.
-git switch -c feat/chat-office-archive-workspace-20261103 --track origin/feat/chat-office-archive-workspace-20261103
-python3 -m pytest -q tests/test_office_workspace.py
-docker compose build mlx-web
-```
+Beim regulären Update der laufenden Installation muss der Web-Container
+mit dem aktuellen Backend neu gebaut werden. Es ist kein separater
+Office-Feature-Branch mehr zu aktivieren.
 
-Für die Endabnahme DOCX- und XLSX-Dateien mit echten Tabellen und ein ZIP
-mit Text- und Binärdateien hochladen; Ausgabe herunterladen und öffnen.
-Während der Installation kein automatischer Modell- oder Runtime-Neustart.
+Nach dem Update die lokale UI mit echten, nicht vertraulichen Testdateien prüfen:
+
+1. Eine DOCX mit mehreren Format-Runs und Tabellen hochladen, Text prüfen
+   und die erzeugte Kopie in Word öffnen.
+2. XLSX mit Textzellen, Zahlen und Formeln bearbeiten: Nur angeforderte
+   Textzellen dürfen sich ändern; die Kopie in Excel öffnen.
+3. Ein kleines ZIP mit Text- und Binärdateien testen und sicherstellen,
+   dass ausschließlich Textdateien angepasst werden.
+4. Eine XLS-Datei lesend prüfen und verifizieren, dass keine Bearbeitung
+   angeboten wird.
+
+Vor einer Produktfreigabe zusätzlich den kanonischen lokalen Release-Gate
+`./scripts/mlx test-release` ausführen (siehe
+[Releasing](RELEASING.md)). Laufende fremde Medienjobs vorher beenden
+oder den Test bei aktiver Arbeit verschieben.

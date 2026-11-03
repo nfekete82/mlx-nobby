@@ -17,6 +17,18 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
 
 The read-only Settings → System Health panel shows internal system W and recorded daily kWh from an optional host-only macmon/SQLite logger. Disabled by default. See [Energy Monitor](docs/ENERGY_MONITOR.md) for setup and measurement limitations.
 
+## Local Office and archive workspace
+
+Chat supports local DOCX/XLSX/XLS/ZIP inspection with bounded, exact-match
+edited-copy downloads for supported text content; original files stay unchanged.
+XLS is read-only. The feature is merged into `main`, with real-document visual
+acceptance still required before the next release. See
+[Office and archive workspace](docs/CHAT_OFFICE_WORKSPACE.md).
+
+The image converter under `/converter` handles bounded local image batches
+without loading an AI model. A separate optional privacy-blur toggle conceals
+image/video previews visually; it is **not** an access-control mechanism.
+
 ## Local EML anonymization
 
 The separate /eml-anonymizer screen imports EML messages into a persistent local processing queue and exports review-required text-only anonymized EML files as ZIP. No FAQ generation or original attachments are included. See [privacy and deployment details](docs/EML_ANONYMIZER.md).

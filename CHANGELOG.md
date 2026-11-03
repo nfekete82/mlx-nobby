@@ -1,13 +1,11 @@
-## Unreleased — Lokaler Bildkonverter (Feature-Branch)
-
-- Neuer Bildkonverter unter /converter: Stapel-Upload, PNG/JPG/WebP und HEIC/HEIF, verlustfreie PNG-Optimierung und Qualitätsoptionen.
-- ZIP-Export mit JSON-Bericht, eindeutigen Dateinamen, Größen- und Dateianzahllimits.
-- Konvertierung läuft im Webdienst ohne Modelle, GPU oder Änderungen am Agent; isolierte Tests enthalten.
-- Version in VERSION bleibt bis zur Release-Zusammenführung unverändert, um parallele Release-Arbeit nicht zu überschreiben.
-
 # Changelog
 
 ## Unreleased
+
+- Add local Word/Excel/ZIP inspection and bounded edited-copy downloads in chat (DOCX/XLSX exact text replacements, XLS read-only, ZIP text-member editing). Preserve originals, reject unsafe archives and keep 24-hour private outputs; real-document acceptance remains a release gate.
+- Add optional privacy blur for image/video previews in chat and Media Library with a saved browser preference. This is visual privacy, not access control; tighten cross-site local-origin handling while retaining strict checks for other hosts and ports.
+- Add the local image converter at /converter for bounded image batches (PNG/JPG/WebP and optional HEIC/HEIF), PNG optimization, quality controls and ZIP export with a JSON report. Does not run AI models.
+
 
 - Add opt-in Apple Silicon energy telemetry using macmon internal system watts, private 30-day SQLite history, measured coverage and a read-only system dashboard. No runtime changes, automatic installation or release bump until qualification.
 
