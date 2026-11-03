@@ -168,6 +168,7 @@ class ChatSessionRequest(BaseModel):
     messages: list[dict]
     settings: dict | None = None
     workspace: dict | None = None
+    expected_updated: float | None = None
 
 
 CHAT_DIRECTORY = Path.home() / ".config/mlx-web/chats"
@@ -1204,6 +1205,16 @@ def put_chat(chat_id: str, request: ChatSessionRequest):
         if chat_id in deleted_chat_ids():
             raise HTTPException(status_code=410, detail="Chat history was deleted")
         existing = read_chat(chat_id)
+
+        if request.expected_updated is not None:
+            if existing is None:
+                if request.expected_updated != -1:
+                    raise HTTPException(409, "Chat disappeared during synchronization")
+            elif existing["updated"] != request.expected_updated:
+                return {"chat": existing, "conflict": True}
+
+        if existing == incoming:
+            return {"chat": existing, "conflict": False}
 
         if (
             existing is not None and
