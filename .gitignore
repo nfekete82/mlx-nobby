@@ -214,3 +214,12 @@ FRONTEND_REFACTOR_PLAN.md
 /performance-capture*.jsonl
 /performance-questions.json
 /questions.json
+
+# Private working notes and local-only experimental tests; review before publication.
+/docs/LTX_BENCHMARK_MODE.md
+/docs/LTX_FINAL_BLOCKERS_2026-10-21.md
+/docs/MODEL_SCOUT_USE_CASES.md
+/docs/TALKING_PHOTO_LTX_ONLY.md
+/docs/V15_FINAL_RELEASE_REPORT.md
+/tests/test_ltx_exclusive_admission.py
+/tests/test_ltx_lab_session.py
