@@ -18,7 +18,7 @@ def record(chat_id, updated, text):
 
 def test_new_chat_compare_and_swap_guards(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, "CHAT_DIRECTORY", tmp_path / "chats")
-    with TestClient(agent.app) as client:
+    with TestClient(agent.app, base_url='http://localhost') as client:
         first = record("shared-chat", 10, "Initial")
         assert client.put("/api/chats/shared-chat",
                           json=first | {"expected_updated": -1}).status_code == 200
@@ -56,7 +56,7 @@ def test_new_chat_compare_and_swap_guards(tmp_path, monkeypatch):
 
 def test_identical_chat_put_is_no_op_and_legacy_clients_still_work(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, "CHAT_DIRECTORY", tmp_path / "chats")
-    with TestClient(agent.app) as client:
+    with TestClient(agent.app, base_url='http://localhost') as client:
         payload = record("legacy-compatible", 10, "Same")
         assert client.put("/api/chats/legacy-compatible", json=payload).status_code == 200
 
