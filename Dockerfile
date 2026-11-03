@@ -2,6 +2,11 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
+# Read-only extractor for legacy binary .doc files (not .docx).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends antiword \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements/web.txt /app/requirements/web.txt
 
 RUN pip install --no-cache-dir -r /app/requirements/web.txt
