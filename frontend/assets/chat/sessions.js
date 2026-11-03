@@ -346,12 +346,19 @@ function sessionT(key, fallback = '', variables = {}) {
 
                 acknowledgedSnapshots.set(id, sentSnapshot);
                 if (serverChat.updated > session.updated) {
-                    updateFromServer(
-                        session,
-                        serverChat,
-                        (isGenerating() && state.activeId === id) ||
-                            JSON.stringify(withoutStreamingFields(session.messages)) !== sentMessages
-                    );
+                    if (changedDuringRequest) {
+                        // The server may advance the CAS timestamp even for a
+                        // same-millisecond write. Never replace title,
+                        // workspace, settings or messages edited in flight.
+                        session.updated = Math.max(session.updated, serverChat.updated);
+                        session.revision = serverChat.revision;
+                    } else {
+                        updateFromServer(
+                            session,
+                            serverChat,
+                            isGenerating() && state.activeId === id
+                        );
+                    }
                     cacheSessions();
                     renderAll();
                     return;
