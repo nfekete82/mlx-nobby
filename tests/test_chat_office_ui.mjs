@@ -7,7 +7,7 @@ const generate = readFileSync(new URL('../frontend/assets/chat/generation.js', i
 const html = readFileSync(new URL('../frontend/chat.html', import.meta.url), 'utf8');
 
 test('Office and archive attachments are selectable', () => {
-  for (const ext of ['docx', 'xlsx', 'xls', 'zip']) {
+  for (const ext of ['doc', 'docx', 'xlsx', 'xls', 'zip']) {
     assert.ok(attach.includes("'" + ext + "'"));
     assert.ok(html.includes('.' + ext));
   }

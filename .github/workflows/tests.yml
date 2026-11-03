@@ -99,6 +99,8 @@ jobs:
           import importlib.util
           assert importlib.util.find_spec('agent') is None, 'Unexpected agent installed in web image'
           from backend.web_research import retrieve_web_research, needs_web_research
+          import shutil
+          assert shutil.which('antiword'), 'Legacy Word reader missing from production image'
           from backend.search_freshness import requires_today_news
           from backend.weather_search import is_locationless_weather_question
           assert needs_web_research('Wer ist aktuell Bundeskanzler?')

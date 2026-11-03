@@ -9,8 +9,12 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
 import json
+import os
 import re
+import shutil
 import stat
+import subprocess
+import tempfile
 import zipfile
 
 from docx import Document
@@ -23,8 +27,10 @@ MAX_ARCHIVE_UNPACKED = 40 * 1024 * 1024
 MAX_ARCHIVE_ITEMS = 120
 MAX_PREVIEW_CHARS = 14000
 MAX_REPLACEMENTS = 32
+MAX_LEGACY_DOC_TEXT_BYTES = 512 * 1024
+LEGACY_DOC_TIMEOUT_SECONDS = 12
 ZIP_TEXT_EXTS = {".txt", ".md", ".csv", ".json", ".xml", ".html", ".css", ".js", ".py", ".sql", ".yaml", ".yml"}
-SUPPORTED = {".docx", ".xlsx", ".xls", ".zip", ".csv", ".txt", ".md", ".json"}
+SUPPORTED = {".doc", ".docx", ".xlsx", ".xls", ".zip", ".csv", ".txt", ".md", ".json"}
 EDITABLE = {".docx", ".xlsx", ".zip", ".csv", ".txt", ".md", ".json"}
 
 
@@ -104,11 +110,50 @@ def _document_parts(doc):
     return result
 
 
+
+def _inspect_legacy_doc(data: bytes) -> Inspection:
+    """Extract plain text from an OLE Word 97-2003 document, without macros."""
+    if not data.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        raise OfficeError("INVALID_OR_UNREADABLE_DOCUMENT")
+    reader = shutil.which("antiword")
+    if not reader:
+        raise OfficeError("DOC_READER_UNAVAILABLE")
+    # Keep extracted text in an anonymous temporary file rather than memory
+    # or logs. Never execute a shell or interpret embedded Word macros.
+    env = dict(os.environ)
+    env["LC_ALL"] = "C.UTF-8"
+    env["LANG"] = "C.UTF-8"
+    try:
+        with tempfile.TemporaryFile(mode="w+b") as output:
+            finished = subprocess.run(
+                [reader, "-m", "UTF-8.txt", "-w", "0", "-"],
+                input=data,
+                stdout=output,
+                stderr=subprocess.DEVNULL,
+                timeout=LEGACY_DOC_TIMEOUT_SECONDS,
+                check=False,
+                env=env,
+            )
+            if finished.returncode != 0 or output.tell() > MAX_LEGACY_DOC_TEXT_BYTES:
+                raise OfficeError("INVALID_OR_UNREADABLE_DOCUMENT")
+            output.seek(0)
+            text = output.read(MAX_LEGACY_DOC_TEXT_BYTES + 1).decode("utf-8", errors="replace")
+    except subprocess.TimeoutExpired as exc:
+        raise OfficeError("DOC_READER_TIMEOUT") from exc
+    except OSError as exc:
+        raise OfficeError("DOC_READER_FAILED") from exc
+    if not text.strip():
+        raise OfficeError("INVALID_OR_UNREADABLE_DOCUMENT")
+    paragraphs = sum(bool(line.strip()) for line in text.splitlines())
+    return _preview([text], "doc", paragraphs=paragraphs)
+
 def inspect(data: bytes, filename: str) -> Inspection:
     suffix = extension(filename)
     if not data or len(data) > MAX_BYTES:
         raise OfficeError("FILE_EMPTY_OR_TOO_LARGE")
     try:
+        if suffix == ".doc":
+            return _inspect_legacy_doc(data)
         if suffix in {".docx", ".xlsx"}:
             # Office Open XML is a ZIP container; apply the same bounded
             # member and decompression checks before passing it to a parser.
