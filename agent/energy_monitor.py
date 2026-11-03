@@ -151,11 +151,13 @@ def snapshot(path=DB_PATH, *, now=None, price_eur_kwh=0.30):
                 while s < e:
                     dt = datetime.fromtimestamp(s).astimezone()
                     day = str(dt.date())
-                    next_hour = dt.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-                    next_midnight = (dt + timedelta(days=1)).replace(
-                        hour=0, minute=0, second=0, microsecond=0
-                    )
-                    stop = min(e, next_hour.timestamp(), next_midnight.timestamp())
+                    # Epoch-hour buckets remain monotonic through DST fall-back;
+                    # midnight is computed in the system's local timezone.
+                    next_hour_ts = (math.floor(s / 3600) + 1) * 3600
+                    next_midnight_ts = datetime.combine(
+                        dt.date() + timedelta(days=1), datetime.min.time()
+                    ).astimezone().timestamp()
+                    stop = min(e, next_hour_ts, next_midnight_ts)
                     if stop <= s:
                         stop = min(e, s + 3600)
                     duration = stop - s
@@ -212,7 +214,9 @@ def run(macmon, interval_ms):
         raise SystemExit(0)
     signal.signal(signal.SIGTERM, terminate)
     signal.signal(signal.SIGINT, terminate)
-    previous_end = None
+    # Preserve the last recorded boundary across launcher restarts.
+    last = db.execute("SELECT MAX(end_ts) FROM samples").fetchone()
+    previous_end = last[0] if last else None
     count = 0
     try:
         for line in process.stdout:
