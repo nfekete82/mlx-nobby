@@ -613,6 +613,7 @@
   "attachments.rag_preparing": " · RAG wird vorbereitet …",
   "attachments.rag_error": " · ⚠ RAG Fehler",
   "sessions.new_chat": "Neuer Chat",
+"sessions.concurrent_copy": "Konfliktkopie",
   "sessions.rename": "Chat umbenennen:",
   "sessions.delete_confirm": "Chat \"{name}\" wirklich löschen?",
   "sessions.backup_too_large": "Die Backup-Datei ist größer als 20 MB",
