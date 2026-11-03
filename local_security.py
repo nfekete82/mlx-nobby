@@ -8,6 +8,10 @@ from starlette.responses import JSONResponse
 from service_identity import service_identity
 
 
+# These are literal loopback aliases, not wildcard LAN or Tailnet hosts.
+LOOPBACK_ALIASES = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
 class LocalRequestGuard:
     """Reject foreign browser origins, DNS rebinding hosts and oversized bodies.
 
@@ -26,15 +30,40 @@ class LocalRequestGuard:
         self.identity = service_identity()
 
     @staticmethod
-    def _origin_matches_host(origin, host, backend_scheme):
-        """Allow same-origin requests through an HTTPS-terminating reverse proxy."""
-        if origin.netloc != host.netloc or origin.scheme not in {"http", "https"}:
+    def _loopback_origin_alias(origin, host, backend_scheme):
+        """Permit only literal loopback aliases on the SAME HTTP port.
+
+        Chrome treats localhost and 127.0.0.1 as distinct sites, so
+        Sec-Fetch-Site may be cross-site even when both are on this Mac.
+        No private-network, DNS or remote-host exceptions are granted.
+        """
+        try:
+            if (origin.scheme != "http" or backend_scheme != "http"
+                    or origin.hostname not in LOOPBACK_ALIASES
+                    or host.hostname not in LOOPBACK_ALIASES
+                    or origin.username or origin.password
+                    or host.username or host.password):
+                return False
+            return (origin.port or 80) == (host.port or 80)
+        except ValueError:
             return False
-        if origin.scheme == backend_scheme:
-            return True
-        # Tailscale Serve and similar trusted proxies terminate TLS before
-        # forwarding to the loopback HTTP backend while preserving Host/Origin.
-        return origin.scheme == "https" and backend_scheme == "http"
+
+    @staticmethod
+    def _origin_matches_host(origin, host, backend_scheme):
+        """Accept a verified same-origin browser request or local alias."""
+        if origin.scheme not in {"http", "https"}:
+            return False
+        if origin.username or origin.password or origin.path not in ("", "/"):
+            return False
+        if origin.query or origin.fragment:
+            return False
+        if origin.netloc.lower() == host.netloc.lower():
+            if origin.scheme == backend_scheme:
+                return True
+            # For an explicitly allowlisted HTTPS reverse proxy, the
+            # loopback backend may see HTTP even though the browser uses TLS.
+            return origin.scheme == "https" and backend_scheme == "http"
+        return LocalRequestGuard._loopback_origin_alias(origin, host, backend_scheme)
 
     def _with_identity_headers(self, message):
         if message.get("type") != "http.response.start":
@@ -69,14 +98,23 @@ class LocalRequestGuard:
         try:
             host = urlsplit("//" + headers.get("host", ""))
             allowed = host.hostname in self.hosts and not host.username and not host.password
+            local_alias = False
             if "origin" in headers:
                 origin = urlsplit(headers["origin"])
+                local_alias = self._loopback_origin_alias(
+                    origin, host, scope.get("scheme", "http"),
+                )
                 allowed = allowed and self._origin_matches_host(
                     origin,
                     host,
                     scope.get("scheme", "http"),
                 )
-            allowed = allowed and headers.get("sec-fetch-site") != "cross-site"
+            # Never accept a cross-site browser request except when the
+            # verified Origin and Host are *both* literal loopback aliases
+            # for the very same HTTP port (localhost / 127.0.0.1 / ::1).
+            allowed = allowed and (
+                headers.get("sec-fetch-site") != "cross-site" or local_alias
+            )
         except ValueError:
             allowed = False
         if not allowed:

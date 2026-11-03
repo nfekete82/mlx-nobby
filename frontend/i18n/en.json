@@ -1164,6 +1164,10 @@
   "attachments.img2img_cfg": "CFG / Guidance (optional)",
   "attachments.img2img_seed": "Seed (optional)",
   "attachments.img2img_default": "Default",
+  "ui.media_privacy_toggle": "Privacy mode for images and videos",
+  "ui.media_privacy_hint": "Generated media stays blurred until you hover over it. On touch screens, tap once to reveal.",
+  "ui.media_privacy_enable": "Enable media privacy mode",
+  "ui.media_privacy_disable": "Disable media privacy mode",
   "interactive_questions": {
     "settings_label": "Interactive follow-up questions",
     "mode_auto": "Automatic (recommended)",
