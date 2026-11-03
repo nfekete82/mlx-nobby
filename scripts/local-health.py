@@ -48,6 +48,18 @@ def local_json(port: int, path: str, timeout: float = 3.0):
         return None, "unreachable/invalid JSON"
 
 
+def service_healthy(payload, error):
+    """HTTP 200 alone is not evidence that a native service is healthy."""
+    if error is not None or not isinstance(payload, dict):
+        return False
+    if payload.get("ok") is False:
+        return False
+    state = str(payload.get("status") or "").strip().lower()
+    if state in {"failed", "error", "unhealthy", "down", "offline"}:
+        return False
+    return True
+
+
 def git_value(*args):
     try:
         return subprocess.check_output(
@@ -102,7 +114,11 @@ def collect(include_runtime=False, request=local_json):
     results = []
     for name, port, path, required in SERVICES + (OPTIONAL_SERVICES if include_runtime else ()):
         payload, error = request(port, path)
-        results.append({"name": name, "port": port, "reachable": error is None, "required": required})
+        results.append({
+            "name": name, "port": port,
+            "reachable": service_healthy(payload, error),
+            "required": required or (include_runtime and name == "MLX runtime"),
+        })
     revisions, rev_error = request(8010, "/api/system/revisions")
     queue, queue_error = request(8010, "/api/system/job-queue")
     return {
