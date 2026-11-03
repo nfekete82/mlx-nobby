@@ -64,3 +64,35 @@ def test_required_and_optional_services():
     failures, warnings = health.findings(report)
     assert len(failures) == 1 and len(warnings) == 1
     assert len(health.findings(report, strict=True)[0]) == 2
+
+
+def test_unhealthy_http_200_is_not_reported_as_healthy():
+    assert health.service_healthy({"ok": False, "status": "failed"}, None) is False
+    assert health.service_healthy({"status": "error"}, None) is False
+    assert health.service_healthy({"status": "busy", "ok": True}, None) is True
+    assert health.service_healthy({"status": "ok"}, None) is True
+    assert health.service_healthy({"ok": True}, "HTTP 503") is False
+
+
+def test_runtime_opt_in_requires_readiness(monkeypatch):
+    monkeypatch.setattr(health, "git_summary", lambda: {
+        "branch": "test", "commit": "abc", "tracked_changes": 0,
+        "untracked_files": 0, "ahead": 0, "behind": 0, "upstream_configured": True,
+    })
+
+    def request(port, path):
+        if port == 8000:
+            return None, "unreachable"
+        if path == "/api/system/revisions":
+            return {"stale_services": [], "unknown_services": []}, None
+        if path == "/api/system/job-queue":
+            return {"active_count": 0, "waiting_count": 0}, None
+        return {"ok": True}, None
+
+    ordinary = health.collect(request=request)
+    failures, _ = health.findings(ordinary)
+    assert not failures
+    explicit = health.collect(include_runtime=True, request=request)
+    assert explicit["services"][-1]["required"] is True
+    failures, _ = health.findings(explicit)
+    assert "MLX runtime (port 8000) unreachable" in failures
