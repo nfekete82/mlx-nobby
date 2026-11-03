@@ -1,6 +1,6 @@
 # MLX Nobby – lokale Word-, Excel- und ZIP-Bearbeitung
 
-Der Chat akzeptiert direkt DOCX, XLSX, XLS und ZIP-Dateien. Die Dateien werden
+Der Chat akzeptiert direkt DOC, DOCX, XLSX, XLS und ZIP-Dateien. Die Dateien werden
 über die bestehende Webanwendung lokal in einer begrenzten Worker-Pipeline
 gelesen und der relevante Textausschnitt dem **lokalen** Chatmodell gegeben.
 Es gibt keinen Cloud-Upload und keine Ausführung von Datei-/Archiv-Inhalten.
@@ -9,7 +9,7 @@ Es gibt keinen Cloud-Upload und keine Ausführung von Datei-/Archiv-Inhalten.
 
 | Format | Prüfen / zusammenfassen | Änderungen | Einschränkungen |
 | --- | --- | --- | --- |
-| DOCX | Absätze und Tabellen | Exakte Text-Ersetzungen | Über mehrere Format-Runs geteilte Texte werden nicht verändert; keine Layout-Neugestaltung |
+| DOC | Text aus Word 97–2003 (Binärformat) | Nein | Schlüsselt keine Formatierung für Änderungen auf; zur Bearbeitung in DOCX konvertieren. Unlesbare/verschlüsselte Dokumente werden abgelehnt |\n| DOCX | Absätze und Tabellen | Exakte Text-Ersetzungen | Über mehrere Format-Runs geteilte Texte werden nicht verändert; keine Layout-Neugestaltung |
 | XLSX | Tabellen, Zelladressen und Werte | Textzellen ersetzen | Zahlen, Formeln und Datentypen bleiben erhalten; komplexe Spalten-/Formeländerungen sind noch nicht möglich |
 | XLS | Vorhandene Tabellenwerte lesen | Nein | Alte Excel-Binärdatei ist schreibgeschützt; für Bearbeitung zuerst in XLSX konvertieren |
 | ZIP | Archivliste, Textvorschau | Textdateien im ZIP ersetzen | Keine Ausführung; Office-Dateien im Archiv werden nicht inhaltlich bearbeitet |
@@ -30,7 +30,7 @@ Download-Link angeboten. Das Original bleibt unberührt.
 - ZIP-Traversal, Symlinks, verschlüsselte Archive und auffällige
   Komprimierungsraten werden abgelehnt
 - Office-XML-Container werden vor dem Öffnen ebenfalls auf gefährliche ZIPs geprüft
-- Keine Makroausführung, keine Shell-Aufrufe oder Dateipfad-Freigaben
+- Keine Makroausführung oder Dateipfad-Freigaben. Für alte DOC-Binärdateien wird ausschließlich der lokale, fest vorgegebene \`antiword\`-Text-Extractor im unprivilegierten Web-Container ohne Shell und mit 10-Sekunden-Timeout aufgerufen.
 - Keine unkontrollierte Office-/ZIP-Byte-Einbettung in Chatverlauf oder Git
 - Modell sieht höchstens 11.000 Zeichen aus dem Auszug; bei großen
   Dokumenten nur Teilprüfung – keine Vollständigkeitsgarantie
@@ -59,13 +59,13 @@ Office-Feature-Branch mehr zu aktivieren.
 
 Nach dem Update die lokale UI mit echten, nicht vertraulichen Testdateien prüfen:
 
-1. Eine DOCX mit mehreren Format-Runs und Tabellen hochladen, Text prüfen
+1. Eine alte DOC-Datei lesend hochladen und sicherstellen, dass Bearbeitungsanweisungen abgelehnt werden.\n2. Eine DOCX mit mehreren Format-Runs und Tabellen hochladen, Text prüfen
    und die erzeugte Kopie in Word öffnen.
-2. XLSX mit Textzellen, Zahlen und Formeln bearbeiten: Nur angeforderte
+3. XLSX mit Textzellen, Zahlen und Formeln bearbeiten: Nur angeforderte
    Textzellen dürfen sich ändern; die Kopie in Excel öffnen.
-3. Ein kleines ZIP mit Text- und Binärdateien testen und sicherstellen,
+4. Ein kleines ZIP mit Text- und Binärdateien testen und sicherstellen,
    dass ausschließlich Textdateien angepasst werden.
-4. Eine XLS-Datei lesend prüfen und verifizieren, dass keine Bearbeitung
+5. Eine XLS-Datei lesend prüfen und verifizieren, dass keine Bearbeitung
    angeboten wird.
 
 Vor einer Produktfreigabe zusätzlich den kanonischen lokalen Release-Gate
