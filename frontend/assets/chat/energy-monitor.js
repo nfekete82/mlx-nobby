@@ -208,7 +208,8 @@
                 mountObserver = null;
             }
         });
-        mountObserver.observe(document.body, {childList: true, subtree: true});
+        mountObserver.observe(document.querySelector('.settings') || document.body,
+            {childList: true, subtree: true});
     }
 
     window.MLXEnergyMonitor = {refresh};
