@@ -210,3 +210,24 @@ def test_model_cannot_edit_text_outside_supplied_excerpt(monkeypatch):
             '{"summary":"Change", "replacements":[{"old":"not visible content","new":"wrong"}]}'}}]})
     with pytest.raises(office.OfficeError, match="EDIT_TEXT_NOT_IN_MODEL_EXCERPT"):
         office_routes._work(word_bytes(), "doc.docx", "Ersetze Altstadt")
+
+
+
+def test_plain_model_text_allowed_for_readonly_inspection(monkeypatch):
+    from backend import app as web
+
+    monkeypatch.setattr(web, "agent_json_request", lambda *a, **k: {
+        "choices": [{"message": {"content": "Only an inspection summary, not JSON"}}]})
+    result = office_routes._work(word_bytes(), "review.docx", "Bitte analysieren")
+    assert result["status"] == "completed"
+    assert result["summary"] == "Only an inspection summary, not JSON"
+    assert result["download_url"] is None
+
+
+def test_plain_model_text_does_not_permit_edits(monkeypatch):
+    from backend import app as web
+
+    monkeypatch.setattr(web, "agent_json_request", lambda *a, **k: {
+        "choices": [{"message": {"content": "Changed it already"}}]})
+    with pytest.raises(office.OfficeError, match="MODEL_RESPONSE_INVALID"):
+        office_routes._work(word_bytes(), "review.docx", "Ersetze Altstadt")
