@@ -31,7 +31,7 @@ function store() {
                 return { response: { ok: true },
                     data: { chats: clone([...chats.values()]), deleted_ids: [] } };
             }
-            assert.match(url, /^\/api\/mlx\/chats\/chat-[ab]$/);
+            assert.match(url, /^\/api\/mlx\/chats\/(?:chat-[ab]|new-chat-id)$/);
             assert.ok(body);
             const id = url.split('/').at(-1);
             const { expected_updated, ...incoming } = clone(body);
@@ -56,9 +56,9 @@ function store() {
     };
 }
 
-function tab(server) {
+function tab(server, cache = new Map(), options = {}) {
     const state = { sessions: [], activeId: null };
-    const cache = new Map();
+    let generating = options.generating === true;
     const window = {};
     vm.runInNewContext(source, {
         window, console, crypto: { randomUUID: () => 'new-chat-id' },
@@ -75,10 +75,10 @@ function tab(server) {
     const sessions = window.MLXChatSessions;
     sessions.configure({
         state,
-        renderAll() {}, renderSidebar() {}, isGenerating() { return false; },
+        renderAll() {}, renderSidebar() {}, isGenerating() { return generating; },
         createSessionSettings() { return {}; }, onSessionSelected() {},
     });
-    return { sessions, state, cache };
+    return { sessions, state, cache, setGenerating(value) { generating = value; } };
 }
 
 test('saving one chat never resubmits unrelated unchanged chats from other tabs', async () => {
@@ -138,4 +138,86 @@ test('two rapid writes for one chat are serialized and persist the latest messag
     assert.deepEqual(server.writes.map(w => w.expected_updated), [10, 20]);
     assert.equal(server.maxActive, 1);
     assert.equal(server.chats.get('chat-a').messages.at(-1).content, 'Final');
+});
+
+
+test('a write conflict with an in-flight local edit forks a safe copy, never overwrites the other tab', async () => {
+    const server = store();
+    const first = tab(server), second = tab(server);
+    await first.sessions.syncWithServer();
+    await second.sessions.syncWithServer();
+
+    let releaseFirst;
+    const gate = new Promise(resolve => { releaseFirst = resolve; });
+    server.setBeforePut((_body, n) => n === 1 ? gate : Promise.resolve());
+
+    const local = first.state.sessions.find(chat => chat.id === 'chat-a');
+    local.updated = 20;
+    local.messages.push({ role: 'assistant', content: 'Interim local edit' });
+    const firstWrite = first.sessions.persistSession(local);
+
+    const remote = second.state.sessions.find(chat => chat.id === 'chat-a');
+    remote.updated = 30;
+    remote.messages.push({ role: 'assistant', content: 'Saved in another tab' });
+    await second.sessions.persistSession(remote);
+
+    // Edit the original session while its old request is still pending.
+    local.updated = 40;
+    local.messages.at(-1).content = 'My final unsent edit';
+    releaseFirst();
+    await firstWrite;
+
+    assert.equal(server.chats.get('chat-a').messages.at(-1).content, 'Saved in another tab');
+
+    first.sessions.saveSessions();
+    const copy = first.state.sessions.find(chat => chat.id === 'new-chat-id');
+    assert.ok(copy, 'a conflict copy must remain visible in the session list');
+    assert.match(copy.title, /conflict copy/);
+    await first.sessions.persistSession(copy);
+    assert.equal(server.chats.get('new-chat-id').messages.at(-1).content, 'My final unsent edit');
+    assert.equal(server.chats.get('chat-a').messages.at(-1).content, 'Saved in another tab');
+    assert.equal(first.state.sessions.find(chat => chat.id === 'chat-a')
+        .messages.at(-1).content, 'Saved in another tab');
+});
+
+test('active-generation conflict survives reload as a separate chat without stale overwrite', async () => {
+    const server = store();
+    const first = tab(server, new Map(), { generating: true });
+    const second = tab(server);
+    await first.sessions.syncWithServer();
+    await second.sessions.syncWithServer();
+
+    let releaseFirst;
+    const gate = new Promise(resolve => { releaseFirst = resolve; });
+    server.setBeforePut((_body, n) => n === 1 ? gate : Promise.resolve());
+
+    const local = first.state.sessions.find(chat => chat.id === 'chat-a');
+    local.updated = 20;
+    local.messages.push({ role: 'assistant', content: 'Started generation' });
+    const firstWrite = first.sessions.persistSession(local);
+
+    const remote = second.state.sessions.find(chat => chat.id === 'chat-a');
+    remote.updated = 30;
+    remote.messages.push({ role: 'assistant', content: 'Other tab wins' });
+    await second.sessions.persistSession(remote);
+
+    local.updated = 40;
+    local.messages.at(-1).content = 'Final generated draft';
+    releaseFirst();
+    await firstWrite;
+    first.sessions.saveSessions();
+    assert.equal(first.state.sessions.find(chat => chat.id === 'chat-a')
+        .messages.at(-1).content, 'Final generated draft');
+
+    const reloaded = tab(server, first.cache);
+    reloaded.sessions.loadSessions();
+    await reloaded.sessions.syncWithServer();
+
+    const rescued = reloaded.state.sessions.find(chat => chat.id === 'new-chat-id');
+    assert.ok(rescued, 'local edits must survive reload in a distinct chat');
+    assert.equal(rescued.messages.at(-1).content, 'Final generated draft');
+    await reloaded.sessions.persistSession(rescued);
+
+    assert.equal(server.chats.get('chat-a').messages.at(-1).content, 'Other tab wins');
+    assert.equal(server.chats.get('new-chat-id').messages.at(-1).content, 'Final generated draft');
 });
