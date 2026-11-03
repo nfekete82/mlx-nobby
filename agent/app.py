@@ -114,6 +114,10 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="MLX macOS Agent")
 app.add_middleware(LocalRequestGuard)
 
+# Optional read-only energy history; no collector starts with the Agent.
+from agent.energy_routes import install_routes as install_energy_routes
+install_energy_routes(app)
+
 CONFIG = Path.home() / ".config/mlx-server/config"
 MODELS = Path.home() / ".config/mlx-server/models"
 MLX = Path.home() / "bin/mlx"

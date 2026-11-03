@@ -9,6 +9,8 @@
 
 ## Unreleased
 
+- Add opt-in Apple Silicon energy telemetry using macmon internal system watts, private 30-day SQLite history, measured coverage and a read-only system dashboard. No runtime changes, automatic installation or release bump until qualification.
+
 - Reduce per-media card button clutter in the Library gallery: keep icon-labeled Download visible and group Talking Photo, video animation, region edit, details and permanent deletion under a compact SVG-icon **Aktionen / Actions** disclosure. Support keyboard Escape and click-outside dismissal, allow only one expanded card at a time, preserve native links and deletion confirmation, and cache-bust assets while keeping existing release-version prefixes. Add interactive Node regression tests.
 
 - Media Library gallery preview: place Talking Photo, Animate as Video, Edit Region and Details actions in a compact responsive row with matching inline SVG icons; make Details a true accessible Show/Hide toggle (aria-expanded, on-demand metadata cache) and ignore stale responses after closing or switching previews. Include deterministic JS DOM regression tests and fresh frontend asset versions.

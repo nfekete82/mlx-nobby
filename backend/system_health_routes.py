@@ -11,6 +11,7 @@ SYSTEM_HEALTH_SCRIPT = (
     b'<script src="/assets/chat/system-health.js?v=20260929-system-health-v1"></script>'
 )
 CHAT_SCRIPT_MARKER = b'<script src="/assets/chat.js?v=20260926-shorts-progress"></script>'
+ENERGY_SCRIPT = b'<script src="/assets/chat/energy-monitor.js?v=20261103-energy-1"></script>'
 
 
 def _is_chat_html_path(path: str) -> bool:
@@ -22,18 +23,20 @@ def _is_chat_html_path(path: str) -> bool:
 
 def inject_system_health_script(body: bytes) -> bytes:
     if SYSTEM_HEALTH_SCRIPT in body:
-        return body
+        if ENERGY_SCRIPT in body:
+            return body
+        return body.replace(SYSTEM_HEALTH_SCRIPT, SYSTEM_HEALTH_SCRIPT + b"\n" + ENERGY_SCRIPT, 1)
     if CHAT_SCRIPT_MARKER in body:
         return body.replace(
             CHAT_SCRIPT_MARKER,
-            SYSTEM_HEALTH_SCRIPT + b"\n" + CHAT_SCRIPT_MARKER,
+            SYSTEM_HEALTH_SCRIPT + b"\n" + ENERGY_SCRIPT + b"\n" + CHAT_SCRIPT_MARKER,
             1,
         )
     marker = b"</body>"
     if marker in body:
         return body.replace(
             marker,
-            SYSTEM_HEALTH_SCRIPT + b"\n" + marker,
+            SYSTEM_HEALTH_SCRIPT + b"\n" + ENERGY_SCRIPT + b"\n" + marker,
             1,
         )
     return body
