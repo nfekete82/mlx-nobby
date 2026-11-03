@@ -139,3 +139,54 @@ def test_no_model_edit_when_only_inspecting(monkeypatch):
     assert response["status"] == "completed"
     assert response["changes"] == 0
     assert response["download_url"] is None
+
+
+
+def test_xlsx_rejects_generated_formula_string():
+    source = excel_bytes()
+    with pytest.raises(office.OfficeError, match="FORMULA_INJECTION_BLOCKED"):
+        office.edit(source, "book.xlsx", [{"old": "Altstadt", "new": "=HYPERLINK(1,2)"}])
+
+
+def test_zipped_office_rejects_archive_bomb_preflight():
+    payload = b"X" * (office.MAX_ARCHIVE_UNPACKED + 1024)
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("word/document.xml", payload)
+    with pytest.raises(office.OfficeError, match="ZIP_TOO_LARGE"):
+        office.inspect(out.getvalue(), "bomb.docx")
+
+
+def test_process_and_download_api_without_real_model(monkeypatch, tmp_path):
+    import asyncio
+    import httpx
+    from backend import app as web
+
+    monkeypatch.setattr(office_routes, "OUTPUT_ROOT", tmp_path)
+    monkeypatch.setattr(web, "agent_json_request", lambda *a, **k: {
+        "choices": [{"message": {"content":
+            '{"summary":"Changed literal", "replacements":[{"old":"Altstadt","new":"Neustadt"}]}'}}]})
+
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=web.app),
+            base_url="http://localhost"
+        ) as client:
+            result = await client.post(
+                "/api/mlx/office/process",
+                files={"file": ("test.docx", word_bytes(),
+                                "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+                data={"instruction": "Ersetze Altstadt durch Neustadt"},
+            )
+            assert result.status_code == 200, result.text
+            payload = result.json()
+            assert payload["status"] == "modified"
+            assert payload["changes"] == 2
+            assert payload["download_url"].startswith("/api/mlx/office/download/")
+            downloaded = await client.get(payload["download_url"])
+            assert downloaded.status_code == 200
+            assert "Neustadt" in Document(BytesIO(downloaded.content)).paragraphs[0].text
+            blocked = await client.get("/api/mlx/office/download/not-a-valid-token.zip")
+            assert blocked.status_code == 404
+
+    asyncio.run(scenario())
