@@ -190,3 +190,23 @@ def test_process_and_download_api_without_real_model(monkeypatch, tmp_path):
             assert blocked.status_code == 404
 
     asyncio.run(scenario())
+
+
+
+def test_zip_rejects_duplicate_paths():
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w") as zf:
+        zf.writestr("config.txt", "first")
+        zf.writestr("config.txt", "second")
+    with pytest.raises(office.OfficeError, match="ZIP_DUPLICATE_PATH"):
+        office.inspect(out.getvalue(), "duplicate.zip")
+
+
+def test_model_cannot_edit_text_outside_supplied_excerpt(monkeypatch):
+    from backend import app as web
+
+    monkeypatch.setattr(web, "agent_json_request", lambda *a, **k: {
+        "choices": [{"message": {"content":
+            '{"summary":"Change", "replacements":[{"old":"not visible content","new":"wrong"}]}'}}]})
+    with pytest.raises(office.OfficeError, match="EDIT_TEXT_NOT_IN_MODEL_EXCERPT"):
+        office_routes._work(word_bytes(), "doc.docx", "Ersetze Altstadt")
