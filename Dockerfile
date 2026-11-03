@@ -4,7 +4,10 @@ WORKDIR /app
 
 COPY requirements/web.txt /app/requirements/web.txt
 
-RUN pip install --no-cache-dir -r /app/requirements/web.txt
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y antiword catdoc \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir -r /app/requirements/web.txt
 
 ARG MLX_NOBBY_BUILD_SHA=unknown
 

@@ -231,3 +231,141 @@ def test_plain_model_text_does_not_permit_edits(monkeypatch):
         "choices": [{"message": {"content": "Changed it already"}}]})
     with pytest.raises(office.OfficeError, match="MODEL_RESPONSE_INVALID"):
         office_routes._work(word_bytes(), "review.docx", "Ersetze Altstadt")
+
+
+def legacy_word_bytes():
+    # The legacy Word 97-2003 OLE signature; parser is mocked in CPU unit tests.
+    return b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 64
+
+
+def test_legacy_doc_is_accepted_but_read_only(monkeypatch):
+    import subprocess
+
+    assert office.extension("LETTER.DOC") == ".doc"
+    assert ".doc" not in office.EDITABLE
+    source = legacy_word_bytes()
+    monkeypatch.setattr(office.shutil, "which", lambda command: "/usr/bin/antiword")
+    calls = []
+
+    def extractor(command, **kwargs):
+        calls.append((command, kwargs))
+        kwargs["stdout"].write("Kunde Müller – Beispieltext\n".encode("utf-8"))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(office.subprocess, "run", extractor)
+    info = office.inspect(source, "LETTER.DOC")
+    assert info.kind == "doc"
+    assert "Müller" in info.preview
+    assert info.paragraphs == 1
+    assert len(calls) == 1
+    assert calls[0][0][-1] == "-"
+    assert calls[0][1]["input"] == source
+    assert calls[0][1]["timeout"] == office.LEGACY_DOC_TIMEOUT_SECONDS
+    assert calls[0][1]["stderr"] == subprocess.DEVNULL
+    with pytest.raises(office.OfficeError, match="READ_ONLY_FORMAT"):
+        office.edit(source, "letter.doc", [{"old": "Müller", "new": "Meier"}])
+
+
+def test_legacy_doc_rejects_invalid_binary_before_extractor(monkeypatch):
+    monkeypatch.setattr(office.shutil, "which", lambda command: pytest.fail("reader must not run"))
+    with pytest.raises(office.OfficeError, match="INVALID_OR_UNREADABLE_DOCUMENT"):
+        office.inspect(b"plain text masquerading as Word", "fake.doc")
+
+
+def test_legacy_doc_missing_reader_has_explicit_error(monkeypatch):
+    monkeypatch.setattr(office.shutil, "which", lambda command: None)
+    with pytest.raises(office.OfficeError, match="DOC_READER_UNAVAILABLE"):
+        office.inspect(legacy_word_bytes(), "archive.doc")
+
+
+def test_legacy_doc_reader_failure_and_output_limit(monkeypatch):
+    import subprocess
+
+    monkeypatch.setattr(office.shutil, "which", lambda command: "/usr/bin/antiword")
+
+    def failing(command, **kwargs):
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(office.subprocess, "run", failing)
+    with pytest.raises(office.OfficeError, match="INVALID_OR_UNREADABLE_DOCUMENT"):
+        office.inspect(legacy_word_bytes(), "bad.doc")
+
+    def excessive(command, **kwargs):
+        kwargs["stdout"].write(b"x" * (office.MAX_LEGACY_DOC_TEXT_BYTES + 1))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(office.subprocess, "run", excessive)
+    with pytest.raises(office.OfficeError, match="INVALID_OR_UNREADABLE_DOCUMENT"):
+        office.inspect(legacy_word_bytes(), "too-long.doc")
+
+    def timeout(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, 12)
+
+    monkeypatch.setattr(office.subprocess, "run", timeout)
+    with pytest.raises(office.OfficeError, match="DOC_READER_TIMEOUT"):
+        office.inspect(legacy_word_bytes(), "slow.doc")
+
+
+def test_legacy_doc_api_summary_and_refused_edit(monkeypatch):
+    import asyncio
+    import httpx
+    import subprocess
+    from backend import app as web
+
+    monkeypatch.setattr(office.shutil, "which", lambda command: "/usr/bin/antiword")
+
+    def extractor(command, **kwargs):
+        kwargs["stdout"].write(b"Legacy Word text for summary")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(office.subprocess, "run", extractor)
+    monkeypatch.setattr(web, "agent_json_request", lambda *a, **k: {
+        "choices": [{"message": {"content":
+            '{"summary":"Dokument gelesen","replacements":[]}'}}]})
+
+    async def check():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=web.app),
+            base_url="http://localhost",
+        ) as client:
+            file = {"file": ("legacy.doc", legacy_word_bytes(), "application/msword")}
+            read = await client.post(
+                "/api/mlx/office/process", files=file,
+                data={"instruction": "Bitte zusammenfassen"},
+            )
+            assert read.status_code == 200, read.text
+            assert read.json()["format"] == "doc"
+            assert read.json()["status"] == "completed"
+            assert read.json()["summary"] == "Dokument gelesen"
+            assert read.json()["download_url"] is None
+
+            edit = await client.post(
+                "/api/mlx/office/process", files=file,
+                data={"instruction": "Ersetze Legacy durch Neu"},
+            )
+            assert edit.status_code == 422, edit.text
+            assert edit.json()["detail"] == "READ_ONLY_FORMAT"
+
+    asyncio.run(check())
+
+
+def test_legacy_doc_falls_back_to_catdoc_for_small_word_file(monkeypatch):
+    import subprocess
+
+    lookup = {"antiword": "/usr/bin/antiword", "catdoc": "/usr/bin/catdoc"}
+    monkeypatch.setattr(office.shutil, "which", lambda command: lookup.get(command))
+    used = []
+
+    def extractor(command, **kwargs):
+        used.append(command)
+        if command[0].endswith("antiword"):
+            return subprocess.CompletedProcess(command, 1)
+        assert command == ["/usr/bin/catdoc", "-d", "utf-8", "-w", "-"]
+        kwargs["stdout"].write("Kurzer Word-Brief über München".encode("utf-8"))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(office.subprocess, "run", extractor)
+    info = office.inspect(legacy_word_bytes(), "short.doc")
+    assert info.kind == "doc"
+    assert "München" in info.preview
+    assert len(used) == 2

@@ -1,6 +1,6 @@
 # MLX Nobby – lokale Word-, Excel- und ZIP-Bearbeitung
 
-Der Chat akzeptiert direkt DOCX, XLSX, XLS und ZIP-Dateien. Die Dateien werden
+Der Chat akzeptiert direkt DOC, DOCX, XLSX, XLS und ZIP-Dateien. Die Dateien werden
 über die bestehende Webanwendung lokal in einer begrenzten Worker-Pipeline
 gelesen und der relevante Textausschnitt dem **lokalen** Chatmodell gegeben.
 Es gibt keinen Cloud-Upload und keine Ausführung von Datei-/Archiv-Inhalten.
@@ -9,6 +9,7 @@ Es gibt keinen Cloud-Upload und keine Ausführung von Datei-/Archiv-Inhalten.
 
 | Format | Prüfen / zusammenfassen | Änderungen | Einschränkungen |
 | --- | --- | --- | --- |
+| DOC | Text aus alten Word-97–2003-Binärdokumenten lesen und zusammenfassen | Nein | Read-only; Konvertierung nach DOCX nötig für Änderungen. Eingebettete Bilder und komplexe Layouts werden nicht übernommen |
 | DOCX | Absätze und Tabellen | Exakte Text-Ersetzungen | Über mehrere Format-Runs geteilte Texte werden nicht verändert; keine Layout-Neugestaltung |
 | XLSX | Tabellen, Zelladressen und Werte | Textzellen ersetzen | Zahlen, Formeln und Datentypen bleiben erhalten; komplexe Spalten-/Formeländerungen sind noch nicht möglich |
 | XLS | Vorhandene Tabellenwerte lesen | Nein | Alte Excel-Binärdatei ist schreibgeschützt; für Bearbeitung zuerst in XLSX konvertieren |
@@ -30,6 +31,7 @@ Download-Link angeboten. Das Original bleibt unberührt.
 - ZIP-Traversal, Symlinks, verschlüsselte Archive und auffällige
   Komprimierungsraten werden abgelehnt
 - Office-XML-Container werden vor dem Öffnen ebenfalls auf gefährliche ZIPs geprüft
+- Legacy-DOC wird nur mit gültiger OLE-Signatur an lokal installierte `antiword`- und `catdoc`-Text-Extractor übergeben (`catdoc` als Fallback für kleine DOC-Dateien); keine Makroausführung, je Versuch maximal 12 s und höchstens 512 KiB extrahierter Text
 - Keine Makroausführung, keine Shell-Aufrufe oder Dateipfad-Freigaben
 - Keine unkontrollierte Office-/ZIP-Byte-Einbettung in Chatverlauf oder Git
 - Modell sieht höchstens 11.000 Zeichen aus dem Auszug; bei großen
@@ -67,6 +69,8 @@ Nach dem Update die lokale UI mit echten, nicht vertraulichen Testdateien prüfe
    dass ausschließlich Textdateien angepasst werden.
 4. Eine XLS-Datei lesend prüfen und verifizieren, dass keine Bearbeitung
    angeboten wird.
+5. Eine alte Word-97–2003-DOC-Datei hochladen, Text prüfen und bestätigen,
+   dass ein Bearbeitungswunsch mit `READ_ONLY_FORMAT` abgelehnt wird.
 
 Vor einer Produktfreigabe zusätzlich den kanonischen lokalen Release-Gate
 `./scripts/mlx test-release` ausführen (siehe
