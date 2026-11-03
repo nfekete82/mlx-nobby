@@ -26,6 +26,11 @@ function sessionT(key, fallback = '', variables = {}) {
     let confirmingHistory = false;
     let historyEpoch = 0;
     const pendingPersists = new Set();
+    // Track the server's acknowledged state separately from browser cache.
+    // Saving one chat must not rewrite every other chat in a session list.
+    const acknowledgedSnapshots = new Map();
+    const acknowledgedUpdated = new Map();
+    const activePersists = new Map();
 
     function configure(options) {
         state = options.state;
@@ -197,52 +202,106 @@ function sessionT(key, fallback = '', variables = {}) {
     }
 
 
+    function persistedSnapshot(session) {
+        return JSON.stringify(withoutStreamingFields(session));
+    }
+
     async function persistSession(session) {
-        if (clearingHistory || !serverReady || !validSession(session) || !state.sessions.includes(session)) {
+        if (clearingHistory || !serverReady || !validSession(session) ||
+                !state.sessions.includes(session)) {
             return;
         }
 
+        // One in-flight write per chat. A mutation during the request is
+        // picked up in the next loop iteration, in the original order.
+        const id = session.id;
+        if (activePersists.has(id)) {
+            return activePersists.get(id);
+        }
         const epoch = historyEpoch;
-        let request;
-        try {
-            const sentSession = withoutStreamingFields(session);
-            const sentMessages = JSON.stringify(sentSession.messages);
-            request = MLXCommon.fetchJson(
-                '/api/mlx/chats/' + encodeURIComponent(session.id),
-                MLXCommon.jsonRequest(
-                    'PUT',
-                    sentSession
-                )
-            );
+        const operation = (async () => {
+            while (!clearingHistory && epoch === historyEpoch &&
+                    state.sessions.includes(session)) {
+                const sentSession = withoutStreamingFields(session);
+                const sentSnapshot = JSON.stringify(sentSession);
+                if (acknowledgedSnapshots.get(id) === sentSnapshot) {
+                    return;
+                }
 
-            pendingPersists.add(request);
-            const { response, data } = await request;
+                const sentMessages = JSON.stringify(sentSession.messages);
+                // -1 means this tab has never observed the chat on the
+                // server. Existing chat records must not be overwritten
+                // by a stale browser cache posing as a new session.
+                sentSession.expected_updated = acknowledgedUpdated.has(id)
+                    ? acknowledgedUpdated.get(id) : -1;
 
-            if (clearingHistory || epoch !== historyEpoch || !response.ok || !validSession(data.chat)) {
-                return;
-            }
-
-            if (data.chat.updated > session.updated) {
-                const current = state.sessions.find(
-                    item => item.id === session.id
+                const request = MLXCommon.fetchJson(
+                    '/api/mlx/chats/' + encodeURIComponent(id),
+                    MLXCommon.jsonRequest('PUT', sentSession)
                 );
+                pendingPersists.add(request);
+                let result;
+                try {
+                    result = await request;
+                } catch {
+                    return;
+                } finally {
+                    pendingPersists.delete(request);
+                }
 
-                if (current === session) {
+                if (clearingHistory || epoch !== historyEpoch ||
+                        !state.sessions.includes(session) ||
+                        !result.response.ok || !validSession(result.data?.chat)) {
+                    return;
+                }
+
+                const serverChat = result.data.chat;
+                const changedDuringRequest =
+                    persistedSnapshot(session) !== sentSnapshot;
+                acknowledgedUpdated.set(id, serverChat.updated);
+
+                if (result.data.conflict ||
+                        serverChat.updated > sentSession.updated) {
+                    // A different tab won. Keep its saved data and never
+                    // blindly retry with our stale original timestamp.
+                    acknowledgedSnapshots.set(id, persistedSnapshot(serverChat));
+                    if (!changedDuringRequest && !isGenerating()) {
+                        updateFromServer(session, serverChat, false);
+                        cacheSessions();
+                        renderAll();
+                    } else {
+                        // Preserve live, unsent edits in localStorage.
+                        // A later explicit save can reconcile them.
+                        console.warn('[MLX nobby] Concurrent chat edit detected; preserving local draft.');
+                        cacheSessions();
+                    }
+                    return;
+                }
+
+                acknowledgedSnapshots.set(id, sentSnapshot);
+                if (serverChat.updated > session.updated) {
                     updateFromServer(
                         session,
-                        data.chat,
-                        (isGenerating() && state.activeId === session.id) ||
-                            JSON.stringify(
-                                withoutStreamingFields(session.messages)
-                            ) !== sentMessages
+                        serverChat,
+                        (isGenerating() && state.activeId === id) ||
+                            JSON.stringify(withoutStreamingFields(session.messages)) !== sentMessages
                     );
                     cacheSessions();
                     renderAll();
+                    return;
+                }
+                if (!changedDuringRequest) {
+                    return;
                 }
             }
-
-        } catch {} finally {
-            pendingPersists.delete(request);
+        })();
+        activePersists.set(id, operation);
+        try {
+            await operation;
+        } finally {
+            if (activePersists.get(id) === operation) {
+                activePersists.delete(id);
+            }
         }
     }
 
@@ -260,6 +319,8 @@ function sessionT(key, fallback = '', variables = {}) {
     }
 
     function loadSessions() {
+        acknowledgedSnapshots.clear();
+        acknowledgedUpdated.clear();
         try {
             const cached = JSON.parse(
                 localStorage.getItem(STORAGE_KEY)
@@ -354,6 +415,20 @@ function sessionT(key, fallback = '', variables = {}) {
                 )
             ) {
                 state.activeId = state.sessions[0]?.id || null;
+            }
+
+            // Acknowledged snapshots are based on what the server actually
+            // returned, never the possibly newer local browser copy.
+            const activeIds = new Set(state.sessions.map(session => session.id));
+            for (const id of acknowledgedSnapshots.keys()) {
+                if (!activeIds.has(id)) {
+                    acknowledgedSnapshots.delete(id);
+                    acknowledgedUpdated.delete(id);
+                }
+            }
+            for (const [id, server] of serverById) {
+                acknowledgedSnapshots.set(id, persistedSnapshot(server));
+                acknowledgedUpdated.set(id, server.updated);
             }
 
             serverReady = true;
@@ -471,6 +546,8 @@ function sessionT(key, fallback = '', variables = {}) {
 
             state.sessions = [];
             state.activeId = null;
+            acknowledgedSnapshots.clear();
+            acknowledgedUpdated.clear();
             localStorage.removeItem(STORAGE_KEY);
             window.MLXChatAttachments?.clearAttachments?.();
             try {
@@ -550,6 +627,8 @@ function sessionT(key, fallback = '', variables = {}) {
         state.sessions = state.sessions.filter(
             item => item.id !== id
         );
+        acknowledgedSnapshots.delete(id);
+        acknowledgedUpdated.delete(id);
 
         deleteServerSession(id);
 
