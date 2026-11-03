@@ -114,9 +114,14 @@ def store_sample(db, sample, interval_ms=DEFAULT_INTERVAL_MS, previous_end=None)
     return result.rowcount == 1
 
 
-def snapshot(path=DB_PATH, *, now=None, price_eur_kwh=0.30):
+def snapshot(path=DB_PATH, *, now=None, price_eur_kwh=None):
     """Read-only history, with measured coverage and no fictional extrapolation."""
     now = float(time.time() if now is None else now)
+    if price_eur_kwh is None:
+        try:
+            price_eur_kwh = float(os.environ.get("MLX_ENERGY_EUR_PER_KWH", "0.30"))
+        except (TypeError, ValueError, OverflowError):
+            price_eur_kwh = 0.30
     price = _number(price_eur_kwh)
     if price is None or price > 10:
         price = 0.30
