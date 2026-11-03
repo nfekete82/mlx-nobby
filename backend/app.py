@@ -30,6 +30,8 @@ from backend.image_converter import router as image_converter_router
 app.include_router(image_converter_router)
 from backend.eml_anonymizer import router as eml_anonymizer_router
 app.include_router(eml_anonymizer_router)
+from backend.office_routes import router as office_router
+app.include_router(office_router)
 
 app.add_middleware(LocalRequestGuard)
 app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
