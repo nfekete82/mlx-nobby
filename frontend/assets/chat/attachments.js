@@ -139,6 +139,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         'gif',
         'pdf',
         'eml',
+        'doc',
         'docx',
         'xlsx',
         'xls',
@@ -153,7 +154,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         'gif'
     ]);
 
-    const OFFICE_EXTENSIONS = new Set(['docx', 'xlsx', 'xls', 'zip']);
+    const OFFICE_EXTENSIONS = new Set(['doc', 'docx', 'xlsx', 'xls', 'zip']);
     const MAX_OFFICE_SIZE = 20 * 1024 * 1024;
     const MAX_FILE_SIZE = 250 * 1024 * 1024;
     const MAX_IMAGE_SIZE = 20 * 1024 * 1024;
