@@ -1,0 +1,65 @@
+/* The actual media content is concealed, never the surrounding controls.
+   Default OFF; stored preference applies before the first media paints. */
+html.mlx-media-privacy-on :is(
+    .message-attachment-preview,
+    .image-artifact-preview,
+    .video-artifact-player,
+    .image-variant-preview,
+    .nobby-library-media > img,
+    .nobby-library-preview-body > img,
+    .nobby-library-preview-body > video,
+    .image-preview-dialog img,
+    .image-compare-stage img,
+    .multi-image-video-preview img,
+    .multi-image-video-preview video,
+    .shorts-preview video
+) {
+    filter: blur(30px) brightness(.55) !important;
+    transition: filter 160ms ease;
+}
+
+/* A real pointer hover, keyboard focus and a deliberate touch reveal
+   unblur the content. Other media stay hidden. */
+html.mlx-media-privacy-on :is(
+    .message-attachment-preview,
+    .image-artifact-preview,
+    .video-artifact-player,
+    .image-variant-preview,
+    .nobby-library-media > img,
+    .nobby-library-preview-body > img,
+    .nobby-library-preview-body > video,
+    .image-preview-dialog img,
+    .image-compare-stage img,
+    .multi-image-video-preview img,
+    .multi-image-video-preview video,
+    .shorts-preview video
+):is(:hover, :focus-visible, .mlx-media-tap-revealed),
+html.mlx-media-privacy-on .nobby-library-media:hover > img,
+html.mlx-media-privacy-on .nobby-library-media:focus-within > img,
+html.mlx-media-privacy-on .image-compare-stage:hover img,
+html.mlx-media-privacy-on .image-compare-stage:focus-within img {
+    filter: none !important;
+}
+
+/* Remain discreet when the setting is enabled. */
+#mediaPrivacyQuickToggle.is-active {
+    border-color: var(--blue, #4f8cff);
+    background: rgba(79, 140, 255, .12);
+}
+#mediaPrivacyQuickToggle .top-action-icon {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+@media (prefers-reduced-motion: reduce) {
+    html.mlx-media-privacy-on :is(
+        .message-attachment-preview, .image-artifact-preview,
+        .video-artifact-player, .image-variant-preview,
+        .nobby-library-media > img,
+        .nobby-library-preview-body > img,
+        .nobby-library-preview-body > video,
+        .image-preview-dialog img, .image-compare-stage img
+    ) { transition: none; }
+}
