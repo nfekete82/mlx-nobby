@@ -88,3 +88,10 @@ def test_web_energy_proxy():
         "today_kwh": 0.2
     }
     assert calls == [("GET", "/api/system/energy")]
+
+def test_electricity_tariff_from_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("MLX_ENERGY_EUR_PER_KWH", "0.42")
+    report = power.snapshot(tmp_path / "missing.sqlite3")
+    assert report["price_eur_kwh"] == 0.42
+    monkeypatch.setenv("MLX_ENERGY_EUR_PER_KWH", "not-a-number")
+    assert power.snapshot(tmp_path / "missing.sqlite3")["price_eur_kwh"] == 0.30
