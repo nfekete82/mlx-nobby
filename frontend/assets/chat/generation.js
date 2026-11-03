@@ -2548,17 +2548,17 @@ return;
     const officeFiles = currentAttachments.filter(file => file.kind === 'office');
     if (officeFiles.length) {
         if (officeFiles.length !== currentAttachments.length) {
-            alert('Word, Excel und ZIP bitte getrennt von Bildern/anderen Dateien senden.');
+            alert(gt('office_separate', 'Upload Word, Excel and ZIP separately from other attachments.'));
             return;
         }
         if (!prompt) {
-            alert('Bitte beschreibe, was mit der Datei geprüft oder geändert werden soll.');
+            alert(gt('office_instruction_required', 'Describe what should be checked or edited in this file.'));
             return;
         }
         const userEntry = {role: 'user', content: prompt, display_content: prompt,
             attachments: officeFiles.map(file => ({name: file.name, kind: 'office',
                 extension: file.extension, size: file.size}))};
-        const progress = {role: 'assistant', content: 'Datei wird lokal analysiert …'};
+        const progress = {role: 'assistant', content: gt('office_processing', 'Analyzing file locally …')};
         session.messages.push(userEntry, progress);
         MLXChatSessions.updateTitle(session);
         session.updated = Date.now();
@@ -2583,15 +2583,15 @@ return;
                 }
                 const result = await response.json();
                 let summary = '**' + file.name.replace(/[\\[\\]()*_`]/g, '') + '**\n\n'
-                    + (result.summary || 'Keine Zusammenfassung.');
+                    + (result.summary || gt('office_no_summary', 'No summary available.'));
                 if (result.status === 'modified' && result.download_url) {
-                    summary += '\n\nÄnderungen: ' + result.changes
-                        + '\n\n[Bearbeitete Datei herunterladen](' + result.download_url + ')';
+                    summary += '\n\n' + gt('office_changes', 'Changes:') + ' ' + result.changes
+                        + '\n\n[' + gt('office_download', 'Download edited file') + '](' + result.download_url + ')';
                 } else if (result.status === 'not_modified') {
-                    summary += '\n\nKeine Änderung gespeichert.';
+                    summary += '\n\n' + gt('office_no_changes', 'No changes saved.');
                 }
                 if (result.preview_truncated) {
-                    summary += '\n\nHinweis: Die Modellprüfung nutzte nur einen begrenzten Auszug der Datei.';
+                    summary += '\n\n' + gt('office_truncated', 'Note: the model inspected only a limited excerpt of this file.');
                 }
                 summaries.push(summary);
             }
@@ -2600,8 +2600,8 @@ return;
             input.value = '';
             MLXChatRuntime.autoResize();
         } catch (error) {
-            progress.content = 'Dateiverarbeitung fehlgeschlagen: '
-                + String(error?.message || 'Unbekannter Fehler');
+            progress.content = gt('office_error', 'File processing failed:') + ' '
+                + String(error?.message || gt('office_unknown_error', 'Unknown error'));
             // Preserve attachments for retry after a failed request.
         }
         session.updated = Date.now();
