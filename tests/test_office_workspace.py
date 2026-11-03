@@ -351,3 +351,36 @@ def test_legacy_doc_picker_and_cache_contract():
     assert "new Set(['doc', 'docx', 'xlsx', 'xls', 'zip'])" in attachments
     assert ".pdf,.doc,.docx,.xlsx" in html
     assert "attachments.js?v=20261103-legacy-doc" in html
+
+
+def test_legacy_doc_short_document_uses_catdoc_fallback(monkeypatch):
+    import subprocess
+    data = bytes.fromhex("d0cf11e0a1b11ae1") + b"short-word-content"
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[0] == "/usr/bin/antiword":
+            return subprocess.CompletedProcess(command, 1, b"", b"text stream too small")
+        assert command[:4] == ["/usr/bin/catdoc", "-d", "utf-8", "-w"]
+        assert kwargs["timeout"] == 10
+        assert kwargs["stdin"] == subprocess.DEVNULL
+        return subprocess.CompletedProcess(command, 0, "Kurzer Brief".encode("utf-8"), b"")
+
+    monkeypatch.setattr(office.subprocess, "run", fake_run)
+    info = office.inspect(data, "brief.doc")
+    assert info.kind == "doc"
+    assert info.preview == "Kurzer Brief"
+    assert [cmd[0] for cmd in calls] == ["/usr/bin/antiword", "/usr/bin/catdoc"]
+
+
+def test_legacy_doc_rejects_when_both_readers_fail(monkeypatch):
+    import subprocess
+    data = bytes.fromhex("d0cf11e0a1b11ae1") + b"invalid"
+
+    def fail(command, **kwargs):
+        return subprocess.CompletedProcess(command, 1, b"", b"not a Word document")
+
+    monkeypatch.setattr(office.subprocess, "run", fail)
+    with pytest.raises(office.OfficeError, match="INVALID_OR_UNREADABLE_DOCUMENT"):
+        office.inspect(data, "corrupt.doc")
