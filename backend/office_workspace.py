@@ -121,6 +121,7 @@ def _legacy_doc_text(data: bytes) -> str:
             with open(source, "xb") as handle:
                 handle.write(data)
             os.chmod(source, 0o600)
+            environment = {"PATH": "/usr/bin:/bin", "HOME": "/tmp", "LANG": "C.UTF-8"}
             result = subprocess.run(
                 ["/usr/bin/antiword", "-m", "UTF-8.txt", "-t", "-w", "0", source],
                 stdin=subprocess.DEVNULL,
@@ -128,8 +129,20 @@ def _legacy_doc_text(data: bytes) -> str:
                 stderr=subprocess.PIPE,
                 timeout=10,
                 check=False,
-                env={"PATH": "/usr/bin:/bin", "HOME": "/tmp", "LANG": "C.UTF-8"},
+                env=environment,
             )
+            # Antiword rejects some otherwise readable short Word 97 files.
+            # Catdoc is a lightweight fallback, with the same local limits.
+            if result.returncode != 0 or not result.stdout.strip():
+                result = subprocess.run(
+                    ["/usr/bin/catdoc", "-d", "utf-8", "-w", source],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=10,
+                    check=False,
+                    env=environment,
+                )
     except FileNotFoundError as exc:
         raise OfficeError("LEGACY_DOC_READER_UNAVAILABLE") from exc
     except (OSError, subprocess.TimeoutExpired) as exc:
