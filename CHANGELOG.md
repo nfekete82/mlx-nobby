@@ -2,12 +2,14 @@
 
 ## Unreleased
 
+## v1.20.0
+
 - Add local Word/Excel/ZIP inspection and bounded edited-copy downloads in chat (DOCX/XLSX exact text replacements, XLS read-only, ZIP text-member editing). Preserve originals, reject unsafe archives and keep 24-hour private outputs; real-document acceptance remains a release gate.
 - Add optional privacy blur for image/video previews in chat and Media Library with a saved browser preference. This is visual privacy, not access control; tighten cross-site local-origin handling while retaining strict checks for other hosts and ports.
 - Add the local image converter at /converter for bounded image batches (PNG/JPG/WebP and optional HEIC/HEIF), PNG optimization, quality controls and ZIP export with a JSON report. Does not run AI models.
 
 
-- Add opt-in Apple Silicon energy telemetry using macmon internal system watts, private 30-day SQLite history, measured coverage and a read-only system dashboard. No runtime changes, automatic installation or release bump until qualification.
+- Add opt-in Apple Silicon energy telemetry using macmon internal system watts, private 30-day SQLite history, measured coverage and a read-only system dashboard. No default runtime changes or automatic collector installation.
 
 - Reduce per-media card button clutter in the Library gallery: keep icon-labeled Download visible and group Talking Photo, video animation, region edit, details and permanent deletion under a compact SVG-icon **Aktionen / Actions** disclosure. Support keyboard Escape and click-outside dismissal, allow only one expanded card at a time, preserve native links and deletion confirmation, and cache-bust assets while keeping existing release-version prefixes. Add interactive Node regression tests.
 
@@ -19,7 +21,7 @@
 
 - Person-reference defaults: explicitly requesting the same person/face now outranks soft words such as "möglichst ähnlich", retaining `same_identity` instead of accidentally downgrading to resemblance. New one-image Edit requests suggesting the same person auto-select available Juggernaut XL with denoise 0.75 / 40 steps / CFG 5.0; resemblance-only requests use 0.55 / 36 / 5.5. Leave Seed random, preserve manual selections, and fall back to Auto/Qwen when Juggernaut is not available. Preserve unrelated edits and regular T2I behavior. Pose-aware identity instructions discourage copying the original selfie crop.
 
-- Add local Juggernaut XL Ragnarok image-to-image editing: source-preserving SDXL img2img pipeline with a per-job denoising strength slider (0.15–0.85), bounded private RGB image copy, shared offloaded model components, existing memory and job guards, source comparison, and unchanged Qwen masked editing. CPU/JS regression tests and real Apple Silicon release acceptance instructions accompany the opt-in model selection. Planned for v1.20.0 after release qualification.
+- Add local Juggernaut XL Ragnarok image-to-image editing: source-preserving SDXL img2img pipeline with a per-job denoising strength slider (0.15–0.85), bounded private RGB image copy, shared offloaded model components, existing memory and job guards, source comparison, and unchanged Qwen masked editing. CPU/JS regression tests and real Apple Silicon release acceptance instructions accompany the opt-in model selection. On-device release acceptance is required before publication.
 
 - Fix the one-click System Reboot lifecycle: retain untracked local benchmark evidence while fast-forwarding otherwise clean tracked main; protect conflicting files and never force-update Git.
 - Recreate the Docker frontend at the exact Git commit, install updated LaunchAgent definitions, explicitly reload the host Agent, then restart MLX/model services. Keep the detached control helper active while the Agent reconnects and resumes lifecycle progress.
@@ -40,7 +42,7 @@
 
 - Add opt-in Chat Quality v1: frozen 44 exact-answer and four human-review synthetic Agent chat cases, local-only model-identity/idle preflight, owner-only reports and strict complete-run offline comparison; no changes to active runtime defaults.
 
-- Separate integration of guarded, default-inactive experimental Hybrid code from production/default activation. Keep Hybrid opt-in, Early Checkpoint off, existing budget/guards/fallbacks and rollback. Preserve failed long-run/swap results; record word-limit failures that reproduce without APC/DFlash as a separate model limitation. No version, tag or product release.
+- Separate integration of guarded, default-inactive experimental Hybrid code from production/default activation. Keep Hybrid opt-in, Early Checkpoint off, existing budget/guards/fallbacks and rollback. Preserve failed long-run/swap results; record word-limit failures that reproduce without APC/DFlash as a separate model limitation. No default production activation of the experimental runtime.
 
 - Exclude formatting-only Markdown/math chunks from answer word bounds. Preserve failed prompts and raw evidence; correct the extended-English false length alarm while retaining actual topic and other word-limit failures.
 
