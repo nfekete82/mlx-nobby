@@ -117,10 +117,13 @@ def test_checkout_revision_catches_stale_agent_and_services():
             ],
         },
         checkout_revision=current,
+        diff_checker=lambda old, new: True,
     )
     assert report["stale_services"] == ["video"]
     assert report["checkout_stale_services"] == ["agent", "web"]
     assert report["checkout_stale_count"] == 2
+    assert report["runtime_stale_services"] == ["agent", "web"]
+    assert report["runtime_stale_count"] == 2
     assert report["unknown_count"] == 0
 
     state = {
@@ -130,7 +133,7 @@ def test_checkout_revision_catches_stale_agent_and_services():
         "git": {"tracked_changes": 0, "behind": 0},
     }
     failures, _ = health.findings(state)
-    assert any("behind local Git checkout" in x for x in failures)
+    assert any("changed runtime code" in x for x in failures)
 
 
 def test_service_names_are_allowlisted_and_no_raw_errors_escape():
@@ -153,3 +156,89 @@ def test_non_sha_build_label_does_not_trigger_false_stale():
     assert not health._revision_differs("ci-test", "fe86f34267c1")
     assert not health._revision_differs("fe86f34267c1", "fe86f342")
     assert health._revision_differs("aaaaaaaaaaaa", "bbbbbbbbbbbb")
+
+
+
+def test_metadata_only_revision_drift_is_healthy():
+    data = {
+        "stale_services": ["embeddings"], "unknown_services": [],
+        "services": [
+            {"service": "agent", "revision": "aaaaaaaaaaaa"},
+            {"service": "embeddings", "revision": "cccccccccccc"},
+            {"service": "web", "revision": "aaaaaaaaaaaa"},
+        ],
+    }
+    r = health.revision_summary(
+        data, checkout_revision="bbbbbbbbbbbb", diff_checker=lambda old, new: False,
+    )
+    assert r["checkout_stale_count"] == 3
+    assert r["metadata_only_count"] == 3
+    assert r["runtime_stale_count"] == 0
+    report = {
+        "services": [], "revisions": r,
+        "queue": {"reachable": True, "active": 0, "waiting": 0},
+        "git": {"tracked_changes": 0, "behind": 0},
+    }
+    assert health.findings(report) == ([], [])
+
+
+def test_unverifiable_revision_is_warning_not_success():
+    data = {
+        "stale_services": [], "unknown_services": [],
+        "services": [{"service": "images", "revision": "aaaaaaaaaaaa"}],
+    }
+    r = health.revision_summary(
+        data, checkout_revision="bbbbbbbbbbbb", diff_checker=lambda old, new: None,
+    )
+    assert r["unverified_revision_services"] == ["images"]
+    report = {
+        "services": [], "revisions": r,
+        "queue": {"reachable": True, "active": 0, "waiting": 0},
+        "git": {"tracked_changes": 0, "behind": 0},
+    }
+    failures, warnings = health.findings(report)
+    assert not failures
+    assert warnings and "need review" in warnings[0]
+
+
+def test_actual_git_diff_only_exempts_inert_files(tmp_path, monkeypatch):
+    import subprocess
+
+    def git(*args):
+        return subprocess.check_output(["git", *args], cwd=tmp_path, text=True).strip()
+
+    def write(path, content):
+        item = tmp_path / path
+        item.parent.mkdir(parents=True, exist_ok=True)
+        item.write_text(content, encoding="utf-8")
+
+    git("init", "-q")
+    git("config", "user.name", "Example")
+    git("config", "user.email", "ci@example.invalid")
+    write("agent/app.py", "print('a')\n")
+    git("add", ".")
+    git("commit", "-qm", "base")
+    original = git("rev-parse", "HEAD")
+
+    write("scripts/mlx", "echo updated\n")
+    write("tests/test_launcher.py", "assert True\n")
+    git("add", ".")
+    git("commit", "-qm", "test and CLI only")
+    inert = git("rev-parse", "HEAD")
+
+    monkeypatch.setattr(health, "ROOT", tmp_path)
+    assert health.runtime_code_changed(original, inert) is False
+    assert health.runtime_code_changed(original, original) is False
+
+    write("agent/app.py", "print('runtime changed')\n")
+    git("add", ".")
+    git("commit", "-qm", "runtime change")
+    new = git("rev-parse", "HEAD")
+    assert health.runtime_code_changed(inert, new) is True
+    assert health.runtime_code_changed("not-a-git-hash", new) is None
+    assert health.runtime_code_changed(new, inert) is None
+
+
+def test_runtime_code_check_fail_closed_if_git_history_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(health, "ROOT", tmp_path)
+    assert health.runtime_code_changed("aaaaaaaaaaaa", "bbbbbbbbbbbb") is None
