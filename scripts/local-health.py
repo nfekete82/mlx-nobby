@@ -111,7 +111,63 @@ def _revision_differs(loaded, checkout):
     return not (loaded.startswith(checkout) or checkout.startswith(loaded))
 
 
-def revision_summary(data, checkout_revision=None):
+
+# Deliberately narrow allowlist: these files do not run inside existing
+# service processes. Treat all other files, including operational scripts,
+# frontend assets and prompt documentation, as potentially runtime-relevant.
+NON_RUNTIME_PREFIXES = (".github/", "tests/")
+NON_RUNTIME_FILES = frozenset({
+    ".gitignore", "LICENSE", "scripts/mlx", "scripts/local-health.py",
+    "scripts/check-public-privacy.py", "docs/LOCAL_INTEGRATION_20261102.md",
+})
+
+
+def runtime_code_changed(old_revision, checkout_revision):
+    """True: restart relevant; False: only inert files changed; None: unverified.
+
+    Check the actual Git tree delta, never merely compare build labels.
+    Require the loaded revision to be an ancestor of the checkout.
+    """
+    import re
+
+    pattern = r"[a-f0-9]{7,40}"
+    if not (isinstance(old_revision, str) and isinstance(checkout_revision, str)):
+        return None
+    if not (re.fullmatch(pattern, old_revision) and re.fullmatch(pattern, checkout_revision)):
+        return None
+    try:
+        old = subprocess.check_output(
+            ["git", "rev-parse", "--verify", old_revision + "^{commit}"],
+            cwd=ROOT, stderr=subprocess.DEVNULL, text=True, timeout=5,
+        ).strip()
+        new = subprocess.check_output(
+            ["git", "rev-parse", "--verify", checkout_revision + "^{commit}"],
+            cwd=ROOT, stderr=subprocess.DEVNULL, text=True, timeout=5,
+        ).strip()
+        if old == new:
+            return False
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", old, new],
+            cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            check=True, timeout=5,
+        )
+        paths = subprocess.check_output(
+            ["git", "diff", "--name-only", "-z", old, new, "--"],
+            cwd=ROOT, stderr=subprocess.DEVNULL, timeout=8,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return None
+
+    for raw_path in paths.split(b"\0"):
+        if not raw_path:
+            continue
+        filename = raw_path.decode("utf-8", errors="replace")
+        if filename not in NON_RUNTIME_FILES and not filename.startswith(NON_RUNTIME_PREFIXES):
+            return True
+    return False
+
+
+def revision_summary(data, checkout_revision=None, diff_checker=runtime_code_changed):
     if not isinstance(data, dict):
         return {"reachable": False, "stale_count": None, "unknown_count": None}
     stale = data.get("stale_services")
@@ -123,13 +179,38 @@ def revision_summary(data, checkout_revision=None):
     # That alone can report consistency while the Agent is behind the checkout.
     services = data.get("services") or []
     checkout_stale = []
+    runtime_stale = []
+    metadata_only = []
+    unverified = []
+    checked_services = set()
+    cached_diffs = {}
     if isinstance(services, list):
         for item in services:
             if not isinstance(item, dict):
                 continue
             name = item.get("service")
-            if name in REVISION_SERVICES and _revision_differs(item.get("revision"), checkout_revision):
-                checkout_stale.append(name)
+            if name not in REVISION_SERVICES:
+                continue
+            checked_services.add(name)
+            revision = item.get("revision")
+            if not _revision_differs(revision, checkout_revision):
+                continue
+            checkout_stale.append(name)
+            if revision not in cached_diffs:
+                cached_diffs[revision] = diff_checker(revision, checkout_revision)
+            impact = cached_diffs[revision]
+            if impact is True:
+                runtime_stale.append(name)
+            elif impact is False:
+                metadata_only.append(name)
+            else:
+                unverified.append(name)
+
+    # An Agent-reported mismatch with no verifiable service revision
+    # must not be silently treated as harmless.
+    for name in _safe_service_names(stale):
+        if name not in checked_services:
+            unverified.append(name)
 
     return {
         "reachable": True,
@@ -139,6 +220,12 @@ def revision_summary(data, checkout_revision=None):
         "unknown_services": _safe_service_names(unknown),
         "checkout_stale_services": sorted(set(checkout_stale)),
         "checkout_stale_count": len(set(checkout_stale)),
+        "runtime_stale_services": sorted(set(runtime_stale)),
+        "runtime_stale_count": len(set(runtime_stale)),
+        "metadata_only_services": sorted(set(metadata_only)),
+        "metadata_only_count": len(set(metadata_only)),
+        "unverified_revision_services": sorted(set(unverified)),
+        "unverified_revision_count": len(set(unverified)),
     }
 
 def queue_summary(data):
@@ -182,12 +269,23 @@ def findings(report, strict=False):
     if not r["reachable"]:
         warnings.append("service revisions unavailable")
     else:
-        if r["stale_count"]:
-            names = ", ".join(r.get("stale_services") or [])
-            failures.append(f'{r["stale_count"]} stale service revisions vs Agent' + (f' ({names})' if names else ''))
-        if r.get("checkout_stale_count"):
-            names = ", ".join(r.get("checkout_stale_services") or [])
-            failures.append(f'{r["checkout_stale_count"]} services behind local Git checkout' + (f' ({names})' if names else ''))
+        if "runtime_stale_count" in r:
+            if r["runtime_stale_count"]:
+                names = ", ".join(r.get("runtime_stale_services") or [])
+                failures.append(
+                    f'{r["runtime_stale_count"]} services have changed runtime code'
+                    + (f' ({names})' if names else '')
+                )
+            if r.get("unverified_revision_count"):
+                names = ", ".join(r.get("unverified_revision_services") or [])
+                warnings.append(
+                    f'{r["unverified_revision_count"]} revision differences need review'
+                    + (f' ({names})' if names else '')
+                )
+        else:
+            # Legacy/synthetic reports without a source-diff are conservative.
+            if r["stale_count"] or r.get("checkout_stale_count"):
+                failures.append("unclassified service revision mismatch")
         if r["unknown_count"]:
             names = ", ".join(r.get("unknown_services") or [])
             warnings.append(f'{r["unknown_count"]} services have unknown revision' + (f' ({names})' if names else ''))
@@ -224,8 +322,11 @@ def main(argv=None):
             print(f'  {"OK" if item["reachable"] else "WARN" if not item["required"] and not args.strict else "FAIL"}  {item["name"]}: {item["port"]}')
         r, q = report["revisions"], report["queue"]
         print(
-            f'Revisions: stale vs Agent={r["stale_count"]}, '
-            f'behind Git checkout={r["checkout_stale_count"]}, unknown={r["unknown_count"]}'
+            f'Revision labels: different vs Agent={r["stale_count"]}, '
+            f'older than checkout={r["checkout_stale_count"]}, '
+            f'runtime changes={r.get("runtime_stale_count")}, '
+            f'non-runtime-only={r.get("metadata_only_count")}, '
+            f'unverified={r.get("unverified_revision_count")}, unknown={r["unknown_count"]}'
             if r["reachable"] else 'Revisions: unavailable'
         )
         print(f'Jobs: active={q["active"]}, waiting={q["waiting"]}' if q["reachable"] else 'Jobs: unavailable')
