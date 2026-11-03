@@ -56,6 +56,45 @@ fi
 # Hilfsfunktionen
 # ============================================================
 
+# Resolve ~/bin/mlx symlinks to the checkout (the installer creates one).
+# Do not assume dirname(BASH_SOURCE[0])/.. is the source tree: for a
+# ~/bin/mlx symlink that would incorrectly resolve to the home directory.
+mlx_repository_root() {
+    local script="${BASH_SOURCE[0]}"
+    local parent
+    local target
+    local root
+
+    while [ -L "$script" ]; do
+        parent="$(cd -P "$(dirname "$script")" && pwd)" || return 1
+        target="$(readlink "$script")" || return 1
+        case "$target" in
+            /*) script="$target" ;;
+            *) script="$parent/$target" ;;
+        esac
+    done
+
+    root="$(cd -P "$(dirname "$script")/.." && pwd)" || return 1
+    if [ -f "$root/scripts/mlx" ] && [ -f "$root/tests/acceptance/runner.py" ]; then
+        printf '%s\n' "$root"
+        return 0
+    fi
+
+    # Old installations can contain a copied ~/bin/mlx rather than a symlink.
+    # In that case, support an explicit checkout or the current working tree.
+    if [ -n "${MLX_NOBBY_PROJECT_DIR:-}" ]; then
+        root="$MLX_NOBBY_PROJECT_DIR"
+    else
+        root="$PWD"
+    fi
+    if [ -f "$root/scripts/mlx" ] && [ -f "$root/tests/acceptance/runner.py" ]; then
+        (cd -P "$root" && pwd)
+        return $?
+    fi
+    printf 'MLX source checkout not found; run from ~/mlx-web or use scripts/mlx directly.\n' >&2
+    return 1
+}
+
 die() {
     printf "${RED}Fehler:${RESET} %s\n" "$*" >&2
     exit 1
@@ -1824,7 +1863,7 @@ HELP
 if [[ "${1:-}" = test-quick || "${1:-}" = test-medium || "${1:-}" = test-e2e || "${1:-}" = test-real || "${1:-}" = test-release ]]; then
     test_command="$1"
     shift
-    test_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    test_repo="$(mlx_repository_root)"
     test_python="${MLX_TEST_PYTHON:-$test_repo/test-venv/bin/python}"
     [ -x "$test_python" ] || test_python=python3
     cd "$test_repo" || exit 1
@@ -1843,7 +1882,7 @@ case "$1" in
         shift
         benchmark_name="${1:-}"
         shift
-        benchmark_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+        benchmark_repo="$(mlx_repository_root)"
         case "$benchmark_name" in
             chat-cache) exec python3 "$benchmark_repo/scripts/benchmark-chat-cache.py" "$@" ;;
             chat-cache-ab) exec python3 "$benchmark_repo/scripts/benchmark-chat-cache-ab.py" "$@" ;;
@@ -1853,7 +1892,7 @@ case "$1" in
         ;;
     chat-profile)
         shift
-        profile_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+        profile_repo="$(mlx_repository_root)"
         exec python3 "$profile_repo/scripts/chat-performance-profile.py" "$@"
         ;;
     stop-ai)
