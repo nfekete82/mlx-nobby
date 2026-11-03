@@ -53,6 +53,10 @@ const IMAGE_QUESTION_PATTERN =
 // This explicit German instruction always means a NEW image job, regardless
 // of position in the sentence or whether a previous image is attached.
 const ALWAYS_GENERATE_IMAGE_PATTERN = /(?:^|[^\p{L}\p{N}_])erstelle\s+ein\s+bild(?=$|[^\p{L}\p{N}_])/iu;
+// An image-edit prefix binds all later wording to the edit. A quoted or
+// secondary "erstelle ein Bild" in the edit description is not a new job.
+const LEADING_IMAGE_EDIT_PATTERN =
+    /^\s*(?:bitte\s+)?(?:ändere|aendere|bearbeite|verändere|veraendere)\s+(?:das|dieses)\s+(?:bild|foto)\b/iu;
 
 const IMAGE_CREATION_VERB_PATTERN =
     /(?:^|[^\p{L}\p{N}_])(?:erstelle|erstellen|generiere|generieren|erzeuge|erzeugen|zeichne|zeichnen|mach|mache|create|generate|draw|make)(?=$|[^\p{L}\p{N}_])/iu;
@@ -83,13 +87,21 @@ function normalizeMediaPreviewQuality(quality, previewAvailable) {
 const VIDEO_DURATIONS_BY_QUALITY = Object.freeze({
     preview: Object.freeze([2]),
     fast: Object.freeze([5, 6, 8, 10, 20]),
-    standard: Object.freeze([5, 6, 8, 10]),
+    standard: Object.freeze([5, 6]),
     quality: Object.freeze([5])
 });
 
 const VIDEO_DURATIONS = new Set(
     Object.values(VIDEO_DURATIONS_BY_QUALITY).flat()
 );
+
+// The normal video picker offers only the production-tested quality paths.
+// Legacy preview/540p request modes remain internal for existing integrations.
+const CURATED_VIDEO_QUALITIES = Object.freeze(['standard', 'quality']);
+function normalizeSelectableVideoQuality(quality) {
+    return CURATED_VIDEO_QUALITIES.includes(quality) ? quality : 'standard';
+}
+
 
 const VIDEO_FORMATS = Object.freeze([
     'landscape',
@@ -119,6 +131,7 @@ function normalizeImageCreationPreferences(value) {
         format: IMAGE_FORMATS.includes(data.format)
             ? data.format : 'square',
         model: typeof data.model === 'string' && data.model.trim().length <= 160
+            && data.model.trim() !== 'mflux-flux3-image-klein-q4'
             ? (data.model.trim() || 'auto') : 'auto',
         negative_prompt: typeof data.negative_prompt === 'string'
             ? data.negative_prompt.slice(0, 2000) : ''
@@ -323,10 +336,13 @@ async function updateVideoProfileAvailability(select) {
 
 function storedImageModel() {
     try {
-        return String(
+        const saved = String(
             window.localStorage?.getItem?.(IMAGE_MODEL_STORAGE_KEY) ||
             'auto'
         ).trim() || 'auto';
+        // An intentionally retired test model should not block new image
+        // jobs after its registry entry has been removed.
+        return saved === 'mflux-flux3-image-klein-q4' ? 'auto' : saved;
     } catch (_) {
         return 'auto';
     }
@@ -349,7 +365,9 @@ async function updateImageModelOptions(
     capability = 'text_to_image'
 ) {
     if (!select) return 'auto';
-    const requested = String(preferred || storedImageModel() || 'auto').trim() || 'auto';
+    const originalRequested = String(preferred || storedImageModel() || 'auto').trim() || 'auto';
+    const requested = originalRequested === 'mflux-flux3-image-klein-q4'
+        ? 'auto' : originalRequested;
 
     const automatic = document.createElement('option');
     automatic.value = 'auto';
@@ -2556,7 +2574,8 @@ const imageFiles =
     const activeImageArtifact =
         imageState.active;
 
-    const alwaysGenerateImage = ALWAYS_GENERATE_IMAGE_PATTERN.test(prompt);
+    const alwaysGenerateImage = !LEADING_IMAGE_EDIT_PATTERN.test(prompt) &&
+        ALWAYS_GENERATE_IMAGE_PATTERN.test(prompt);
     const explicitImageEditRequest =
         isImageEditRequest(
             prompt,
@@ -3282,9 +3301,11 @@ const imageFiles =
             const previewAvailable = mediaPreviewAvailable(
                 mediaQualityKind, fileContext, activeArtifactIdForEdit
             );
-            const normalizedMediaQuality = mediaQualityKind
-                ? normalizeMediaPreviewQuality(selectedMediaQuality, previewAvailable)
-                : selectedMediaQuality;
+            const normalizedMediaQuality = mediaQualityKind === 'video'
+                ? normalizeSelectableVideoQuality(selectedMediaQuality)
+                : mediaQualityKind
+                    ? normalizeMediaPreviewQuality(selectedMediaQuality, previewAvailable)
+                    : selectedMediaQuality;
             if (mediaQualityKind === 'video' && normalizedMediaQuality !== selectedMediaQuality) {
                 const legacySelect = document.getElementById('mediaQuality');
                 if (legacySelect) {
@@ -3441,7 +3462,9 @@ const imageFiles =
 
                 {
                     // Default is Standard; subsequent jobs reuse this session's choice.
-                    let choice = selectedMediaQuality;
+                    let choice = mediaQualityKind === 'video'
+                        ? normalizeSelectableVideoQuality(selectedMediaQuality)
+                        : selectedMediaQuality;
                     let samplingCustom = null;
                     // Existing explicit caller options must be visible rather
                     // than silently trumping the selected quality preset.
@@ -3604,9 +3627,25 @@ const imageFiles =
                                 button.dataset.mediaQuality === 'preview';
 
                             button.hidden =
+                                (mediaQualityKind === 'video' &&
+                                 !CURATED_VIDEO_QUALITIES.includes(button.dataset.mediaQuality)) ||
                                 (isPreview && !previewAvailable) ||
                                 (button.dataset.mediaQuality === 'ultra' &&
                                  (mediaQualityKind !== 'image' || hasRagnarokSampling()));
+
+                            // Video labels describe exact native output and validated duration.
+                            // Restore the image labels each time the modal is used for images.
+                            const hint = button.querySelector?.('span');
+                            if (hint && ['standard', 'quality'].includes(button.dataset.mediaQuality)) {
+                                if (!hint.dataset.imageQualityHint) {
+                                    hint.dataset.imageQualityHint = hint.textContent;
+                                }
+                                hint.textContent = mediaQualityKind === 'video'
+                                    ? (button.dataset.mediaQuality === 'standard'
+                                        ? generationText('ui.video_curated_720p', '720p · 5–6 s · ohne Tiling')
+                                        : generationText('ui.video_curated_1080p', '1080p · 5 s · ohne Tiling'))
+                                    : hint.dataset.imageQualityHint;
+                            }
 
                             const active =
                                 !button.hidden &&
@@ -3750,11 +3789,11 @@ const imageFiles =
 
                         const onQuality = event => {
                             captureImageSelections();
-                            choice = normalizeMediaPreviewQuality(
-                                event.currentTarget
-                                    .dataset.mediaQuality ||
-                                'standard', previewAvailable
-                            );
+                            const requestedQuality = event.currentTarget
+                                .dataset.mediaQuality || 'standard';
+                            choice = mediaQualityKind === 'video'
+                                ? normalizeSelectableVideoQuality(requestedQuality)
+                                : normalizeMediaPreviewQuality(requestedQuality, previewAvailable);
                             // Changing the preset resets manual overrides to
                             // the exact values shown for the new preset.
                             samplingCustom = null;
@@ -3985,9 +4024,9 @@ const imageFiles =
                         return;
                     }
 
-                    selectedMediaQuality = normalizeMediaPreviewQuality(
-                        result, previewAvailable
-                    );
+                    selectedMediaQuality = mediaQualityKind === 'video'
+                        ? normalizeSelectableVideoQuality(result)
+                        : normalizeMediaPreviewQuality(result, previewAvailable);
 
                     /*
                      * Keep the old session setting in sync for existing
@@ -5530,6 +5569,7 @@ resetSessionRuntime: resetSessionRuntime,
             isVideoRequest: isVideoRequest,
             mediaPreviewAvailable: mediaPreviewAvailable,
             normalizeMediaPreviewQuality: normalizeMediaPreviewQuality,
+            normalizeSelectableVideoQuality: normalizeSelectableVideoQuality,
             videoOptionsForRequest: videoOptionsForRequest,
             updateVideoProfileAvailability: updateVideoProfileAvailability,
             videoDurationsForQuality: videoDurationsForQuality,

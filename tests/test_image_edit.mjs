@@ -2064,6 +2064,18 @@ assert.equal(routedActionPayloads.at(-1).action, 'image_edit');
 assert.equal(routedActionPayloads.at(-1).resolved_target, 'image_edit');
 selectedImageMode = 'auto';
 
+// With an explicit leading "Ändere das Bild", all following text belongs
+// to the edit description—even a literal creation phrase or "not" wording.
+const opaqueEditPrompt =
+    'Ändere das Bild: natural portrait, not a model; erstelle ein Bild mit weichem Licht.';
+routeTargets.set(opaqueEditPrompt, 'image_edit');
+selectedAttachments = [imageAttachment];
+selectedImageMode = 'auto';
+input.value = opaqueEditPrompt;
+await window.MLXChatGeneration.sendMessage();
+assert.equal(routedActionPayloads.at(-1).resolved_target, 'image_edit');
+assert.equal(routedActionPayloads.at(-1).file_context.kind, 'image');
+
 // A failed preflight cannot authorize jobs through local regexes or options.
 const workingFetch = context.fetch;
 context.fetch = async (url, options) => {
@@ -2128,7 +2140,7 @@ for (const [prompt, target] of [
     assert.equal(routedActionPayloads.at(-1).resolved_target, target, prompt);
 }
 
-// Exercise the actual modal and outgoing payload with a stale preview choice.
+// The curated video picker must normalize stale preview even for T2V.
 const previewButton = qualityButtons.find(button => button.dataset.mediaQuality === 'preview');
 const originalAnimationFrame = context.requestAnimationFrame;
 let sessionQuality = 'preview';
@@ -2152,11 +2164,11 @@ for (const sourceKind of ['t2v', 'upload', 'artifact']) {
         modalElements.set('videoProfile', new ModalTestElement({ id: 'videoProfile' }));
         modalElements.set('videoProfileField', new ModalTestElement({ id: 'videoProfileField' }));
         context.requestAnimationFrame = callback => {
-            assert.equal(previewButton.hidden, isI2v);
-            assert.equal(sessionQuality, isI2v ? 'standard' : 'preview');
+            assert.equal(previewButton.hidden, true);
+            assert.equal(sessionQuality, 'standard');
             // Even a synthetic click cannot select hidden preview for I2V.
             previewButton.click();
-            assert.equal(modalElements.get('videoDuration').value, isI2v ? '5' : '2');
+            assert.equal(modalElements.get('videoDuration').value, '5');
             modalElements.get('videoProfile').value = profile;
             callback();
             modalElements.get('mediaQualityModalConfirm').click();
@@ -2164,9 +2176,9 @@ for (const sourceKind of ['t2v', 'upload', 'artifact']) {
         input.value = prompt;
         await window.MLXChatGeneration.sendMessage();
         const payload = routedActionPayloads.at(-1);
-        assert.equal(payload.quality, isI2v ? 'standard' : 'preview');
+        assert.equal(payload.quality, 'standard');
         assert.equal(payload.video_options.profile, profile);
-        assert.equal(payload.video_options.duration, isI2v ? 5 : 2);
+        assert.equal(payload.video_options.duration, 5);
         if (sourceKind === 'artifact') assert.equal(payload.active_artifact_id, imageArtifact.artifact_id);
         if (sourceKind === 'upload') assert.equal(payload.file_context.kind, 'image');
     }

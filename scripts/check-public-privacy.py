@@ -32,6 +32,7 @@ BINARY_EXTS = {
 EXAMPLE_USERS = {"runner", "example", "user", "username", "yourname", "test", "demo", "nobody", "ubuntu", "oai", "shared", "name", "private"}
 UNIX_HOME = re.compile(r"(?<![A-Za-z0-9:/])/(?:Users|home)/([A-Za-z][A-Za-z0-9._-]{1,60})(?=[/\\\s\"']|$)")
 WIN_HOME = re.compile(r"[A-Za-z]:\\{1,2}Users\\{1,2}([A-Za-z][A-Za-z0-9._-]{1,60})", re.I)
+FILE_URL_HOME = re.compile(r"file:/+(?:Users|home)/([A-Za-z][A-Za-z0-9._-]{1,60})", re.I)
 PRIVATE_EMAIL = re.compile(r"\b[\w.+-]+@(?:gmail|googlemail|icloud|me|outlook|hotmail|yahoo|protonmail|proton|gmx|web|dpolg-service)\.[a-z.]+\b", re.I)
 SECRET = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{25,}|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,})\b")
 PRIVATE_KEY = re.compile("-----BEGIN " + r"(?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----")
@@ -53,7 +54,7 @@ def scan_text(content: str, hashes=IDENTIFIER_HASHES) -> list[str]:
         found.append("credential or private-key pattern")
     if PRIVATE_EMAIL.search(content):
         found.append("personal email")
-    if any(m.group(1).casefold() not in EXAMPLE_USERS for pattern in (UNIX_HOME, WIN_HOME) for m in pattern.finditer(content)):
+    if any(m.group(1).casefold() not in EXAMPLE_USERS for pattern in (UNIX_HOME, WIN_HOME, FILE_URL_HOME) for m in pattern.finditer(content)):
         found.append("machine-specific home path")
     return found
 

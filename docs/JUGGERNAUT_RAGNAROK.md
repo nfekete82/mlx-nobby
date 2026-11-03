@@ -54,11 +54,18 @@ available through `scripts/benchmark-juggernaut.py`.
 
 ## Photorealistic people
 
-When the `juggernaut-xl` entry is selected, MLX Nobby keeps the existing
-photorealism prompt safeguards for skin texture, facial asymmetry, eyes,
-hair, fabric, plausible lighting, tonal variation, and restrained
-post-processing. Explicit user prompts and explicit negative prompts still
-take precedence.
+When the `juggernaut-xl` entry is selected, MLX Nobby may add a *short*
+skin/lighting/photographic-texture hint to concise photorealistic human
+prompts, unless the user explicitly asks for a glossy or retouched look.
+Long prompts are never truncated or expanded. Negative prompts start empty:
+the runtime does **not** append generic anatomy, SFW or realism exclusions.
+All explicit user prompts and negative prompts take precedence.
+
+For expert prompt advice in chat, choose **Juggernaut Ragnarok (Prompting)**
+in the system-prompt preset selector. It covers the detailed RunDiffusion
+prompt components, priorities, angles, lighting, texture, BOORU guidance,
+settings and local limitations. See
+[Juggernaut Ragnarok prompt knowledge](JUGGERNAUT_RAGNAROK_PROMPTING.md).
 
 Automatic Real-ESRGAN post-processing remains disabled in production quality
 mode. Upscaling stays an explicit user action through **Bild verbessern**.

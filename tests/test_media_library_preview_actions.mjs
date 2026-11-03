@@ -10,6 +10,7 @@ const code = original.replace(marker, 'globalThis.__showPreview = showPreview;\n
 
 function createFixture(onFetch, onEdit = () => {}) {
   const nodes = new Map();
+  const documentEvents = new Map();
   let activeElement = null;
   class Element {
     constructor(tag = 'div') {
@@ -47,16 +48,32 @@ function createFixture(onFetch, onEdit = () => {}) {
     getElementById: id => nodes.get(id) || null,
     createElement: tag => new Element(tag),
     createElementNS: (_, tag) => new Element(tag),
-    addEventListener() {}
+    addEventListener(name, handler) {
+      if (!documentEvents.has(name)) documentEvents.set(name, []);
+      documentEvents.get(name).push(handler);
+    }
   };
   const scope = {document, window: {MLXVideoEdit: {open: onEdit}}, fetch: onFetch, console, setTimeout, clearTimeout};
   vm.runInNewContext(code, scope, {filename: 'media-library.js'});
   const preview = body.children.find(child => child.className === 'nobby-library-preview');
   const previewBody = preview.children[1].children[2];
   const show = asset => scope.__showPreview(asset);
+  const pressEscape = () => {
+    const event = {
+      key: 'Escape', defaultPrevented: false, stopped: false,
+      preventDefault() { this.defaultPrevented = true; },
+      stopImmediatePropagation() { this.stopped = true; }
+    };
+    for (const handler of documentEvents.get('keydown') || []) {
+      if (event.stopped) break;
+      handler(event);
+    }
+    return event;
+  };
   const actions = () => previewBody.children.find(x => x.className === 'nobby-library-preview-actions');
   const details = () => previewBody.children.find(x => x.className === 'nobby-library-detail-panel');
-  return {show, actions, details, previewBody, preview, card: asset => scope.__card(asset)};
+  return {show, actions, details, previewBody, preview, panel: nodes.get('nobbyLibrary'),
+    pressEscape, card: asset => scope.__card(asset)};
 }
 
 const asset = {kind: 'image', id: 'fixture123', url: '/image.png', created_at: 1792560000};
@@ -167,3 +184,24 @@ test('video card Actions menu contains Extend and Retake with working editor lin
   assert.deepEqual(opened.map(item => item.mode), ['extend', 'retake']);
   assert.equal(opened[0].asset.id, video.id);
 });
+
+
+for (const kind of ['image', 'video', 'talking_photo']) {
+  test('Escape closes only ' + kind + ' preview, then library on next keypress', () => {
+    const fixture = createFixture(async () => ({ok: true, json: async () => metadata}));
+    fixture.panel.hidden = false;
+    fixture.show({...asset, kind});
+    assert.equal(fixture.preview.hidden, false);
+    assert.equal(fixture.panel.hidden, false);
+
+    const first = fixture.pressEscape();
+    assert.equal(first.defaultPrevented, true);
+    assert.equal(first.stopped, true, 'preview must consume keydown before library handler');
+    assert.equal(fixture.preview.hidden, true, 'first Escape closes only preview');
+    assert.equal(fixture.panel.hidden, false, 'library must stay open on first Escape');
+
+    const second = fixture.pressEscape();
+    assert.equal(second.defaultPrevented, true);
+    assert.equal(fixture.panel.hidden, true, 'second Escape closes the library');
+  });
+}

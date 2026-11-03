@@ -43,7 +43,7 @@ JUGGERNAUT_RAGNAROK_SHA256 = "dd08fa32f98d05a2443ca1419e46df1575a0811f6e3b246d9d
 CYBERREALISTIC_PONY_V18_ID = "cyberrealistic-pony-v18"
 CYBERREALISTIC_PONY_V18_DIRECTORY = Path.home() / "Models" / "CyberRealisticPonyV18"
 # No longer offer the retired experimental SDXL model in persisted registries.
-RETIRED_MODEL_IDS = {"lustify-endgame-sdxl"}
+RETIRED_MODEL_IDS = {"lustify-endgame-sdxl", "mflux-flux3-image-klein-q4"}
 LEGACY_KREA_MODEL_IDS = {"mflux-krea2-turbo"}
 LEGACY_KREA_REPOSITORIES = {"krea/Krea-2-Turbo"}
 BUILTIN_DEFAULTS_REVISION = 9

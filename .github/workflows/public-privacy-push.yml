@@ -1,0 +1,21 @@
+name: Public privacy – every push
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-privacy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pushed revision
+        uses: actions/checkout@v4
+      - name: Reject tracked sensitive data and unreviewed media
+        run: python3 scripts/check-public-privacy.py

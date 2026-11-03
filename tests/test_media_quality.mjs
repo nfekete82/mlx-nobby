@@ -17,11 +17,13 @@ assert.match(runtime, /media_quality: DEFAULT_MEDIA_QUALITY/);
 assert.match(runtime, /settings\.media_quality = normalizeMediaQuality/);
 assert.match(html, /id="mediaQualityModal"/);
 assert.match(html, /id="videoDurationField"/);
+const videoDurationOptions = html.match(/<select id="videoDuration"[\s\S]*?<\/select>/)?.[0] || '';
+assert.deepEqual([...videoDurationOptions.matchAll(/<option value="(\d+)"/g)].map(m => Number(m[1])), [5, 6]);
 assert.match(html, /id="videoDuration"/);
 assert.match(html, /id="imageNegativePromptField"/);
 assert.match(html, /id="imageNegativePrompt"/);
 assert.match(html, /data-negative-prompt-preset=/);
-for (const duration of [5, 6, 8, 10, 20]) {
+for (const duration of [5, 6]) {
     assert.match(html, new RegExp(`option value="${duration}"`));
 }
 assert.match(generation, /quality: selectedMediaQuality/);
@@ -30,6 +32,9 @@ assert.match(generation, /VIDEO_DURATIONS_BY_QUALITY/);
 assert.match(generation, /preview: Object\.freeze\(\[2\]\)/);
 assert.match(generation, /fast: Object\.freeze\(\[5, 6, 8, 10, 20\]\)/);
 assert.match(generation, /quality: Object\.freeze\(\[5\]\)/);
+assert.match(generation, /standard: Object\.freeze\(\[5, 6\]\)/);
+assert.match(generation, /normalizeSelectableVideoQuality/);
+assert.match(generation, /mediaQualityKind === 'video'[\s\S]*CURATED_VIDEO_QUALITIES/);
 assert.match(generation, /const mediaQualityKind/);
 assert.match(generation, /if \(mediaQualityKind\)/);
 assert.match(generation, /\/api\/mlx\/chat\/actions\/route/);

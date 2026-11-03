@@ -389,7 +389,10 @@
   document.addEventListener("keydown", event => {
     if (preview.hidden) return;
     if (event.key === "Escape") {
+      // Escape closes only the topmost preview. Without stopping this key
+      // event, the library-level listener also closes the entire panel.
       event.preventDefault();
+      event.stopImmediatePropagation();
       closePreview();
     } else if (event.key === "Tab") {
       const focusable = [previewClose, previewFull, ...previewBody.querySelectorAll("button, a[href]")];
@@ -907,6 +910,11 @@
     });
   }
   document.addEventListener("keydown", event => {
-    if (event.key === "Escape" && !panel.hidden) setVisible(false);
+    // Hierarchical Escape: preview first, library only on the next keypress.
+    // Respect earlier handlers that have already consumed Escape.
+    if (event.key !== "Escape" || event.defaultPrevented ||
+        panel.hidden || !preview.hidden) return;
+    event.preventDefault();
+    setVisible(false);
   });
 })();

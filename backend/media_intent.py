@@ -89,6 +89,23 @@ CONTENT_CONSTRAINTS = {
     "wasserzeichen", "watermark", "watermarks", "text", "voiceover",
 }
 CONTENT_QUALIFIERS = {"generierter", "generierte", "generierten", "generiertes", "generated"}
+# Object-level exclusions after a positive image edit are not a cancellation.
+# E.g. "Ändere das Bild, aber nicht die Person" preserves the edit request.
+EDIT_EXCLUDED_SUBJECTS = {
+    "person", "personen", "frau", "mann", "gesicht", "gesichter", "haare",
+    "kleidung", "körper", "koerper", "figur", "pose", "hintergrund",
+    "people", "person", "woman", "man", "face", "faces", "hair",
+    "clothing", "clothes", "body", "pose", "background",
+}
+# Negated visual descriptors qualify the output, not execution. Keep this
+# deliberately narrow: a bare "nicht" or "do not edit" must still cancel.
+APPEARANCE_NOUNS = {"model", "modell", "supermodel", "supermodell"}
+APPEARANCE_ADVERBS = {"perfectly", "perfect", "perfekt", "vollkommen", "ganz"}
+BARE_RETRACTION = re.compile(
+    r"^(?:(?:aber|doch|bitte|please)\s+)*(?:nicht|not|nein|no|"
+    r"vergiss\s+es|forget\s+it)\s*$",
+    re.IGNORECASE,
+)
 
 
 # The user's exact German instruction is an unconditional new-image command,
@@ -99,6 +116,55 @@ _ALWAYS_GENERATE_IMAGE = re.compile(r"(?<!\w)erstelle\s+ein\s+bild\b", re.IGNORE
 
 def always_generate_image_requested(prompt):
     return bool(_ALWAYS_GENERATE_IMAGE.search(str(prompt or "")))
+
+
+# A leading edit instruction binds the *rest of this message* to the source
+# image. Do not interpret "not", "nicht", "ohne" or later verbs in its
+# description as a cancellation or as an instruction to create a new image.
+# Only "Ändere das Bild nicht" (immediately after the object) withdraws it.
+_IMAGE_EDIT_PREFIX = re.compile(
+    r"^\s*(?:bitte\s+)?(?:ändere|aendere|bearbeite|verändere|veraendere)\s+"
+    r"(?:das|dieses)\s+(?:bild|foto)\b",
+    re.IGNORECASE,
+)
+_DIRECT_EDIT_NEGATION = re.compile(
+    r"^\s+(?:nicht|niemals)(?:\s+mehr)?\s*[.!?]?\s*$",
+    re.IGNORECASE,
+)
+# Only clear, stand-alone withdrawals cancel a leading image-edit command.
+# A negative visual property such as "nicht die Haare" or "not a model"
+# must never be mistaken for a withdrawal.
+_EDIT_WITHDRAWAL_SUFFIX = re.compile(
+    r"^\s*(?:,\s*)?(?:und|aber|and|but)\s+"
+    r"(?:(?:doch|bitte|please)\s+)?"
+    r"(?:nicht|nein|not|no|vergiss\s+es|forget\s+it)"
+    r"(?:\s+mehr)?\s*[.!?]?\s*$",
+    re.IGNORECASE,
+)
+_REPEATED_EDIT_WITHDRAWAL_SUFFIX = re.compile(
+    r"^\s*(?:,\s*)?(?:und|aber|and|but)\s+"
+    r"(?:ändere|aendere|bearbeite|verändere|veraendere|edit|change|modify)\s+"
+    r"(?:das|dieses|this|the)\s+(?:bild|foto|image|picture|photo)\s+"
+    r"(?:nicht|niemals|not|never)(?:\s+mehr)?\s*[.!?]?\s*$",
+    re.IGNORECASE,
+)
+_EDIT_TEXT_OBJECT_SUFFIX = re.compile(
+    r"^\s*[- ]\s*(?:prompt|prompts|skript|script|beschreibung|description)\b",
+    re.IGNORECASE,
+)
+
+
+def leading_image_edit_requested(prompt):
+    """Leading edit command: later text qualifies an image, never the route."""
+    raw_prompt = str(prompt or "")
+    match = _IMAGE_EDIT_PREFIX.match(raw_prompt)
+    if match is None:
+        return False
+    suffix = raw_prompt[match.end():]
+    return not (_DIRECT_EDIT_NEGATION.fullmatch(suffix)
+                or _EDIT_WITHDRAWAL_SUFFIX.fullmatch(suffix)
+                or _REPEATED_EDIT_WITHDRAWAL_SUFFIX.fullmatch(suffix)
+                or _EDIT_TEXT_OBJECT_SUFFIX.match(suffix))
 
 
 # A leading text-to-image command requests a new image, even if an attachment
@@ -147,10 +213,36 @@ def _negates_execution(words, command):
             if command is None or any(word in OBJECTS for word in words[command + 1:index]):
                 continue
         if command is not None and index > command and word in {"nicht", "not"}:
+            # "Edit the image: candid portrait, not a model, not perfectly
+            # symmetrical" is an appearance description, not a withdrawal.
+            # Only allow this when the command has already bound an explicit
+            # image/video object. "Don't edit" and "edit the image not" stay
+            # negated; do not silently turn unsupported text into a job.
+            referent_bound = any(token in OBJECTS for token in words[command + 1:index])
+            rest = words[index + 1:]
+            if referent_bound and (
+                (len(rest) >= 2 and rest[0] in {"a", "an", "ein", "eine", "einen"}
+                 and rest[1] in APPEARANCE_NOUNS)
+                or (len(rest) >= 3 and rest[0] in {"like", "wie"} and
+                    rest[1] in {"a", "an", "ein", "eine", "einen"} and
+                    rest[2] in APPEARANCE_NOUNS)
+                or (len(rest) >= 2 and rest[0] in APPEARANCE_ADVERBS
+                    and rest[1] in {"symmetrical", "symmetric", "symmetrisch",
+                                    "smooth", "glatt", "perfect", "perfekt"})
+            ):
+                continue
             following = index + 1
             while following < len(words) and words[following] in DEGREE_WORDS:
                 following += 1
             if following < len(words) and words[following] in EDIT_PROPERTIES:
+                continue
+            # Exclude a subject from an otherwise affirmative image edit:
+            # "Ändere das Bild, aber nicht die Person". Require an explicit
+            # preceding image output so "Edit not the background" stays chat.
+            if (following + 1 < len(words)
+                    and words[following] in {"die", "den", "das", "der", "dem", "the"}
+                    and words[following + 1] in EDIT_EXCLUDED_SUBJECTS
+                    and any(token in OBJECTS for token in words[command + 1:index])):
                 continue
         # Negation before the verb, a negative output determiner (kein Bild),
         # or a command without a negated property cancels execution.
@@ -208,6 +300,12 @@ def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, 
     a text request or negation. Quoted examples are not execution instructions.
     Independent clauses allow 'improve the prompt and generate the image'.
     """
+    if has_image and leading_image_edit_requested(prompt):
+        # The source image is already bound here; all following text is an
+        # opaque edit description, including appearances, exclusions and
+        # embedded creation verbs. No free-form negation parsing is allowed.
+        return RoutingDecision("image_edit", "image_edit", True, "image",
+                               1.0, "Leading explicit edit command binds all following text to source image")
     if always_generate_image_requested(prompt):
         return RoutingDecision("image_generate", "image", True,
                                "image" if has_image else None,
@@ -262,6 +360,13 @@ def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, 
         command = next((i for i, word in enumerate(words)
                         if word in CREATE | EDIT | ANIMATE | START | REFERENCE_VERBS), None)
         if _negates_execution(words, command) and (has_image or set(words) & topics):
+            # The clauses are split at "und"/"and". Once a positive media
+            # command is bound, a following constraint without another command
+            # ("und auch nicht die Haare") must not retract the entire job.
+            # An explicit bare withdrawal ("und doch nicht") still cancels.
+            if (execution is not None and command is None
+                    and not BARE_RETRACTION.fullmatch(clause.strip())):
+                continue
             negated = True
             continue
         if (words[0] in QUESTIONS or set(words[:6]) & DISCUSS) and (has_image or set(words) & topics):
