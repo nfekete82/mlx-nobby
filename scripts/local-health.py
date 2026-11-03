@@ -91,15 +91,55 @@ def git_summary():
     }
 
 
-def revision_summary(data):
+REVISION_SERVICES = frozenset({"agent", "web", "embeddings", "images", "speech", "video"})
+
+
+def _safe_service_names(values):
+    if not isinstance(values, list):
+        return []
+    return sorted({name for name in values if isinstance(name, str) and name in REVISION_SERVICES})
+
+
+def _revision_differs(loaded, checkout):
+    """Compare genuine SHA prefixes, not arbitrary environment build labels."""
+    import re
+
+    if not isinstance(loaded, str) or not isinstance(checkout, str):
+        return False
+    if not (re.fullmatch(r"[a-f0-9]{7,40}", loaded) and re.fullmatch(r"[a-f0-9]{7,40}", checkout)):
+        return False
+    return not (loaded.startswith(checkout) or checkout.startswith(loaded))
+
+
+def revision_summary(data, checkout_revision=None):
     if not isinstance(data, dict):
         return {"reachable": False, "stale_count": None, "unknown_count": None}
     stale = data.get("stale_services")
     unknown = data.get("unknown_services")
     if not isinstance(stale, list) or not isinstance(unknown, list):
         return {"reachable": False, "stale_count": None, "unknown_count": None}
-    return {"reachable": True, "stale_count": len(stale), "unknown_count": len(unknown)}
 
+    # The Agent compares child processes with its OWN captured build revision.
+    # That alone can report consistency while the Agent is behind the checkout.
+    services = data.get("services") or []
+    checkout_stale = []
+    if isinstance(services, list):
+        for item in services:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("service")
+            if name in REVISION_SERVICES and _revision_differs(item.get("revision"), checkout_revision):
+                checkout_stale.append(name)
+
+    return {
+        "reachable": True,
+        "stale_count": len(stale),
+        "unknown_count": len(unknown),
+        "stale_services": _safe_service_names(stale),
+        "unknown_services": _safe_service_names(unknown),
+        "checkout_stale_services": sorted(set(checkout_stale)),
+        "checkout_stale_count": len(set(checkout_stale)),
+    }
 
 def queue_summary(data):
     if not isinstance(data, dict):
@@ -121,10 +161,13 @@ def collect(include_runtime=False, request=local_json):
         })
     revisions, rev_error = request(8010, "/api/system/revisions")
     queue, queue_error = request(8010, "/api/system/job-queue")
+    git = git_summary()
     return {
-        "git": git_summary(),
+        "git": git,
         "services": results,
-        "revisions": revision_summary(revisions if rev_error is None else None),
+        "revisions": revision_summary(
+            revisions if rev_error is None else None, checkout_revision=git["commit"]
+        ),
         "queue": queue_summary(queue if queue_error is None else None),
     }
 
@@ -140,9 +183,14 @@ def findings(report, strict=False):
         warnings.append("service revisions unavailable")
     else:
         if r["stale_count"]:
-            failures.append(f'{r["stale_count"]} stale service revisions')
+            names = ", ".join(r.get("stale_services") or [])
+            failures.append(f'{r["stale_count"]} stale service revisions vs Agent' + (f' ({names})' if names else ''))
+        if r.get("checkout_stale_count"):
+            names = ", ".join(r.get("checkout_stale_services") or [])
+            failures.append(f'{r["checkout_stale_count"]} services behind local Git checkout' + (f' ({names})' if names else ''))
         if r["unknown_count"]:
-            warnings.append(f'{r["unknown_count"]} services have unknown revision')
+            names = ", ".join(r.get("unknown_services") or [])
+            warnings.append(f'{r["unknown_count"]} services have unknown revision' + (f' ({names})' if names else ''))
     if not report["queue"]["reachable"]:
         warnings.append("job queue unavailable")
     g = report["git"]
@@ -175,7 +223,11 @@ def main(argv=None):
         for item in report["services"]:
             print(f'  {"OK" if item["reachable"] else "WARN" if not item["required"] and not args.strict else "FAIL"}  {item["name"]}: {item["port"]}')
         r, q = report["revisions"], report["queue"]
-        print(f'Revisions: stale={r["stale_count"]}, unknown={r["unknown_count"]}' if r["reachable"] else 'Revisions: unavailable')
+        print(
+            f'Revisions: stale vs Agent={r["stale_count"]}, '
+            f'behind Git checkout={r["checkout_stale_count"]}, unknown={r["unknown_count"]}'
+            if r["reachable"] else 'Revisions: unavailable'
+        )
         print(f'Jobs: active={q["active"]}, waiting={q["waiting"]}' if q["reachable"] else 'Jobs: unavailable')
         for item in failures:
             print(f'  FAIL: {item}')
