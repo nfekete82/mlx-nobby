@@ -13,6 +13,10 @@ Run LLMs and AI services locally on your Mac with MLX and Metal acceleration whi
 
 Native inference services run directly on macOS for efficient Apple Silicon acceleration. Only the web application runs in Docker, with a loopback-only local agent providing a controlled bridge between the container and host resources.
 
+## Optional energy monitor (Apple Silicon)
+
+The read-only Settings → System Health panel shows internal system W and recorded daily kWh from an optional host-only macmon/SQLite logger. Disabled by default. See [Energy Monitor](docs/ENERGY_MONITOR.md) for setup and measurement limitations.
+
 ## Local EML anonymization
 
 The separate /eml-anonymizer screen imports EML messages into a persistent local processing queue and exports review-required text-only anonymized EML files as ZIP. No FAQ generation or original attachments are included. See [privacy and deployment details](docs/EML_ANONYMIZER.md).
