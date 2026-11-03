@@ -76,3 +76,21 @@ manual Extend, the Library Escape behavior, and retained model configuration.
 Roll back the code by switching to your previous branch; never remove private
 media or venv/model directories. Existing running services may need to be
 restarted after that switch when idle.
+
+## Read-only operating health check
+
+The new command combines Git divergence, service readiness, stale native service
+revisions and active/waiting job counts. It never prints prompts, file paths,
+model paths or individual job IDs, and makes no changes to running services.
+
+```bash
+cd ~/mlx-web
+python3 scripts/local-health.py
+python3 scripts/local-health.py --json     # sanitized output safe to share
+python3 scripts/local-health.py --strict   # optional services become required
+```
+
+The check uses the local tracking refs without fetching; run `git fetch origin`
+first when you need a current upstream comparison. An offline/idle LLM model
+runtime is not a failure unless explicitly requested with `--runtime`.
+This diagnostic does not replace real on-device LTX/Juggernaut acceptance.
