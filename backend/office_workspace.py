@@ -9,8 +9,11 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
 import json
+import os
 import re
 import stat
+import subprocess
+import tempfile
 import zipfile
 
 from docx import Document
@@ -24,7 +27,7 @@ MAX_ARCHIVE_ITEMS = 120
 MAX_PREVIEW_CHARS = 14000
 MAX_REPLACEMENTS = 32
 ZIP_TEXT_EXTS = {".txt", ".md", ".csv", ".json", ".xml", ".html", ".css", ".js", ".py", ".sql", ".yaml", ".yml"}
-SUPPORTED = {".docx", ".xlsx", ".xls", ".zip", ".csv", ".txt", ".md", ".json"}
+SUPPORTED = {".doc", ".docx", ".xlsx", ".xls", ".zip", ".csv", ".txt", ".md", ".json"}
 EDITABLE = {".docx", ".xlsx", ".zip", ".csv", ".txt", ".md", ".json"}
 
 
@@ -104,11 +107,58 @@ def _document_parts(doc):
     return result
 
 
+def _legacy_doc_text(data: bytes) -> str:
+    """Read binary Word documents using the fixed, local antiword executable.
+
+    The upload is only ever written to an isolated, temporary directory with
+    a generated name. The document name is not passed to the extractor.
+    """
+    if not data.startswith(bytes.fromhex("d0cf11e0a1b11ae1")):
+        raise OfficeError("INVALID_OR_UNREADABLE_DOCUMENT")
+    try:
+        with tempfile.TemporaryDirectory(prefix="mlx-word-doc-") as directory:
+            source = os.path.join(directory, "document.doc")
+            with open(source, "xb") as handle:
+                handle.write(data)
+            os.chmod(source, 0o600)
+            environment = {"PATH": "/usr/bin:/bin", "HOME": "/tmp", "LANG": "C.UTF-8"}
+            result = subprocess.run(
+                ["/usr/bin/antiword", "-m", "UTF-8.txt", "-t", "-w", "0", source],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=10,
+                check=False,
+                env=environment,
+            )
+            # Antiword rejects some otherwise readable short Word 97 files.
+            # Catdoc is a lightweight fallback, with the same local limits.
+            if result.returncode != 0 or not result.stdout.strip():
+                result = subprocess.run(
+                    ["/usr/bin/catdoc", "-d", "utf-8", "-w", source],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=10,
+                    check=False,
+                    env=environment,
+                )
+    except FileNotFoundError as exc:
+        raise OfficeError("LEGACY_DOC_READER_UNAVAILABLE") from exc
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise OfficeError("INVALID_OR_UNREADABLE_DOCUMENT") from exc
+    if result.returncode or not result.stdout.strip():
+        raise OfficeError("INVALID_OR_UNREADABLE_DOCUMENT")
+    return result.stdout.decode("utf-8", errors="replace")
+
+
 def inspect(data: bytes, filename: str) -> Inspection:
     suffix = extension(filename)
     if not data or len(data) > MAX_BYTES:
         raise OfficeError("FILE_EMPTY_OR_TOO_LARGE")
     try:
+        if suffix == ".doc":
+            return _preview([_legacy_doc_text(data)], "doc")
         if suffix in {".docx", ".xlsx"}:
             # Office Open XML is a ZIP container; apply the same bounded
             # member and decompression checks before passing it to a parser.
