@@ -452,15 +452,57 @@ def write_chat(chat):
             temporary_path.unlink(missing_ok=True)
 
 
+def archived_memory_chat(chat_id):
+    """Load the latest owner-only archival source without making it a visible chat.
+
+    The archive is a memory source, never a restored active session. Explicit
+    memory tombstones are still enforced by smart/knowledge extraction.
+    """
+    validate_chat_id(chat_id)
+    vault = CHAT_DIRECTORY.parent / "long-term-chat-memory"
+    if vault.is_symlink():
+        raise ValueError("Unsafe long-term memory root")
+    folder = vault / chat_id
+    if folder.is_symlink():
+        raise ValueError("Unsafe archived chat directory")
+    if not folder.is_dir():
+        return None
+    paths = (p for p in folder.glob("*.json") if p.is_file() and not p.is_symlink())
+    for source in sorted(paths, key=lambda p: p.stat().st_mtime_ns, reverse=True):
+        try:
+            chat = normalize_chat(json.loads(source.read_text(encoding="utf-8")), expected_id=chat_id)
+        except (OSError, UnicodeError, ValueError, TypeError):
+            logger.warning("Invalid private memory archive for chat %s", chat_id)
+            continue
+        if chat is not None:
+            return chat
+    return None
+
+
+def memory_chat_reader(chat_id):
+    """Smart-Qwen source lookup: active first, archival fallback after UI delete."""
+    return read_chat(chat_id) or archived_memory_chat(chat_id)
+
+
 def iter_memory_chats():
-    """Historical analysis reads one authoritative chat at a time, oldest file first."""
-    paths = sorted(CHAT_DIRECTORY.glob('*.json'), key=lambda path: path.stat().st_mtime)
+    """Stream all authoritative source chats, including deleted-sidebar vaults."""
+    vault = CHAT_DIRECTORY.parent / "long-term-chat-memory"
+    if vault.is_symlink():
+        raise ValueError("Unsafe long-term memory root")
+    if vault.is_dir():
+        for folder in sorted(vault.iterdir()):
+            if folder.is_symlink() or not folder.is_dir() or not CHAT_ID_PATTERN.fullmatch(folder.name):
+                continue
+            if (archived := archived_memory_chat(folder.name)) is not None:
+                yield archived
+    paths = sorted(CHAT_DIRECTORY.glob("*.json"), key=lambda path: path.stat().st_mtime)
     for path in paths:
-        if not CHAT_ID_PATTERN.fullmatch(path.stem): continue
+        if path.is_symlink() or not CHAT_ID_PATTERN.fullmatch(path.stem):
+            continue
         with CHATS_LOCK:
             chat = read_chat(path.stem)
-        if chat is not None: yield chat
-
+        if chat is not None:
+            yield chat
 
 def list_chats():
     try:
