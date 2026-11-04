@@ -17,7 +17,7 @@ _ALLOWED_SCOPES = {"all", "one", "reset"}
 
 
 def issue(*, scope: str, confirmation: str, chat_id: str | None = None) -> str:
-    if scope not in _ALLOWED_SCOPES:
+    if not isinstance(scope, str) or scope not in _ALLOWED_SCOPES:
         raise ValueError("Invalid chat deletion scope")
     if scope == "all" and chat_id is not None:
         raise ValueError("Bulk deletion cannot target one chat")
