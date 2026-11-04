@@ -1351,7 +1351,7 @@ def reset_chat(chat_id: str, request: dict | None = None):
         scope="reset", token=(request or {}).get("deletion_token"),
         chat_id=chat_id,
     ):
-        raise HTTPException(403, "Explicit Settings approval required")
+        raise HTTPException(403, "Explicit chat deletion approval required")
     """Clear one chat while preserving the chat session itself."""
 
     path = chat_path(chat_id)
@@ -1431,7 +1431,7 @@ def cancel_chat_media_jobs(chat_id, chat):
 
 @app.post("/api/chats/delete-intent")
 def authorize_chat_deletion(request: dict):
-    """One-use deletion permit, requiring typed confirmation in Settings."""
+    """One-use permit after an explicit UI confirmation; no memory deletion."""
     scope = request.get("scope")
     chat_id = request.get("chat_id")
     if scope in ("one", "reset"):
@@ -1451,7 +1451,7 @@ def delete_all_chats(request: dict | None = None):
     if not chat_delete_intent.consume(
         scope="all", token=(request or {}).get("deletion_token"),
     ):
-        raise HTTPException(403, "Explicit Settings approval required")
+        raise HTTPException(403, "Explicit chat deletion approval required")
     requested_ids = (request or {}).get("ids", [])
     if not isinstance(requested_ids, list):
         raise HTTPException(status_code=400, detail="ids must be a list")
@@ -1504,7 +1504,7 @@ def delete_chat(chat_id: str, request: dict | None = None):
         scope="one", token=(request or {}).get("deletion_token"),
         chat_id=chat_id,
     ):
-        raise HTTPException(403, "Explicit Settings approval required")
+        raise HTTPException(403, "Explicit chat deletion approval required")
     path = chat_path(chat_id)
 
     with CHATS_LOCK:
