@@ -33,6 +33,7 @@ from agent.media_queue_performance import install as install_media_queue_perform
 from agent.media_library_routes import install_routes as install_media_library_routes
 from agent.memory_middleware import MemoryChatMiddleware
 from agent.memory_routes import install_routes as install_memory_routes
+from agent.memory_dashboard_routes import install_routes as install_memory_dashboard_routes
 from agent.chat_archive_routes import install_routes as install_chat_archive_routes
 from agent.personal_memory_routes import install_routes as install_personal_memory_routes
 from agent.model_scout_routes import install_routes as install_model_scout_routes
@@ -61,6 +62,7 @@ install_image_pipeline_routes(app)
 install_media_lifecycle_routes(app)
 install_media_library_routes(app)
 install_memory_routes(app)
+install_memory_dashboard_routes(app)
 install_chat_archive_routes(app, gateway_host)
 install_personal_memory_routes(app, gateway_host)
 install_model_scout_routes(

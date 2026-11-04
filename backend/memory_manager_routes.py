@@ -16,6 +16,9 @@ MEMORY_ARCHIVE_SCRIPT = (
 PERSONAL_MEMORY_SCRIPT = (
     b'<script src="/assets/chat/personal-memory.js?v=20261104-private-knowledge-review3"></script>'
 )
+MEMORY_OVERVIEW_SCRIPT = (
+    b'<script src="/assets/chat/memory-overview.js?v=20261104-unified-memory-v1"></script>'
+)
 MEMORY_MANAGER_CONSOLIDATION_SCRIPT = (
     b'<script src="/assets/chat/memory-manager-consolidation.js?v=20260928-memory-manager-v12"></script>'
 )
@@ -40,6 +43,7 @@ def inject_memory_manager_script(body: bytes) -> bytes:
             MEMORY_MANAGER_SCRIPT,
             MEMORY_ARCHIVE_SCRIPT,
             PERSONAL_MEMORY_SCRIPT,
+            MEMORY_OVERVIEW_SCRIPT,
             MEMORY_MANAGER_CONSOLIDATION_SCRIPT,
             MEMORY_CONTEXT_INSPECTOR_SCRIPT,
         )
@@ -374,6 +378,30 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
                 "POST", "/api/personal-memory/conflicts/" +
                 urllib.parse.quote(conflict_id, safe="") + "/resolve",
                 payload=payload, timeout=10,
+            )
+
+
+    if "/api/mlx/memory/dashboard/status" not in paths:
+        @app.get("/api/mlx/memory/dashboard/status")
+        def memory_dashboard_status():
+            return agent_json_request("GET", "/api/memory-dashboard/status", timeout=10)
+
+        @app.post("/api/mlx/memory/dashboard/pause")
+        def memory_dashboard_pause(payload: dict):
+            return agent_json_request(
+                "POST", "/api/memory-dashboard/pause", payload=payload, timeout=10,
+            )
+
+        @app.get("/api/mlx/memory/dashboard/items")
+        def memory_dashboard_items(
+            source: str, query: str = "", offset: int = 0, limit: int = 20
+        ):
+            params = urllib.parse.urlencode({
+                "source": source, "query": query,
+                "offset": max(0, int(offset)), "limit": max(1, min(int(limit), 50)),
+            })
+            return agent_json_request(
+                "GET", "/api/memory-dashboard/items?" + params, timeout=15,
             )
 
 

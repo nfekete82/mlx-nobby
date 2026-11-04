@@ -578,6 +578,9 @@
         window.MLXModelConsole?.close?.();
         history.replaceState(null, '', '/settings/memory');
         load();
+        // The unified overview can mount after the legacy tab listener was
+        // registered. Refresh on every activation, including deep links.
+        window.MLXMemoryOverview?.refresh?.();
     }
 
     function bindEvents() {

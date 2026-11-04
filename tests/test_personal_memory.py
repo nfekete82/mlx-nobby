@@ -293,3 +293,73 @@ def test_pre_review_database_history_migrates_before_rename_and_delete():
     edited = pm.edit_fact(current['fact_id'], field='renamed', value='Corrected value')
     pm.delete_fact(edited['fact_id'])
     assert pm.list_facts(history=True) == []
+
+
+
+def test_correct_birth_date_in_normal_chat_preserves_revision_history():
+    pm.set_enabled(True)
+    pm.index_chat(user_chat("old", "Mein Geburtstag ist am 11. Mai 1982"))
+    before = pm.list_facts()
+    assert len(before) == 1
+    assert before[0]["field"] == "geburtstag"
+    assert before[0]["value"] == "11.05.1982"
+
+    pm.index_chat(user_chat("new",
+        "Ich habe mich bei meinem Geburtsdatum vertan. Richtig ist der 12.05.1982."))
+    current = pm.list_facts()
+    assert len(current) == 1
+    assert current[0]["value"] == "12.05.1982"
+    assert current[0]["source_chat_id"] == "new"
+    assert pm.list_conflicts() == []
+    history = pm.list_facts(history=True)
+    assert len(history) == 2
+    assert {entry["value"] for entry in history} == {"11.05.1982", "12.05.1982"}
+
+
+def test_casual_birthday_correction_with_common_typo_works():
+    pm.set_enabled(True)
+    pm.observe("Mein Geburtsdatum ist der 11.05.1982")
+    pm.observe("Hab mich beim geburstadtum vertan. Richtig ist der 12.05.1982.")
+    assert pm.list_facts()[0]["value"] == "12.05.1982"
+    assert len(pm.list_facts(history=True)) == 2
+
+
+def test_direct_chat_birth_date_correction_and_repeated_save_do_not_duplicate():
+    pm.set_enabled(True)
+    pm.index_chat(user_chat("old", "Mein Geburtsdatum ist der 10.10.1980"))
+    corrected = user_chat("updated",
+        "Bitte korrigiere mein Geburtsdatum auf den 12.05.1982.")
+    pm.index_chat(corrected)
+    pm.index_chat(corrected)
+    assert pm.list_facts()[0]["value"] == "12.05.1982"
+    assert len(pm.list_facts(history=True)) == 2
+    assert pm.list_conflicts() == []
+
+
+def test_invalid_birth_dates_are_not_learned_or_overwrite_old_value():
+    pm.set_enabled(True)
+    pm.observe("Mein Geburtstag ist am 12.05.1982")
+    for invalid in ("31.02.1982", "32.05.1982", "12.13.1982", "12.05.1882"):
+        pm.observe(f"Bitte korrigiere mein Geburtsdatum auf den {invalid}.")
+    assert len(pm.list_facts(history=True)) == 1
+    assert pm.list_facts()[0]["value"] == "12.05.1982"
+
+
+def test_ambiguous_birth_date_stays_pending_until_confirmed_in_same_chat():
+    pm.set_enabled(True)
+    pm.index_chat(user_chat("old", "Mein Geburtstag ist am 11.05.1982"))
+    pm.index_chat(user_chat("different", "Mein Geburtstag ist am 12.05.1982"))
+    assert pm.list_facts()[0]["value"] == "11.05.1982"
+    assert len(pm.list_conflicts()) == 1
+    assert "MEMORY CLARIFICATION REQUIRED" in pm.question_for(
+        "Mein Geburtstag ist am 12.05.1982", source_chat_id="different")
+    pm.question_for("Ja, das neue Datum stimmt", source_chat_id="different")
+    assert pm.list_facts()[0]["value"] == "12.05.1982"
+    assert pm.list_conflicts() == []
+
+
+def test_explicit_birth_date_will_not_learn_when_personal_layer_opted_out():
+    assert pm.enabled() is False
+    assert pm.index_chat(user_chat("nooptin",
+        "Korrigiere mein Geburtsdatum auf den 12.05.1982"))["processed"] == 0
+    assert not pm.DB_PATH.exists()

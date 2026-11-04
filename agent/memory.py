@@ -405,6 +405,38 @@ def observe_user_message(message, *, source_chat_id=None):
     return {"action": "remembered", "memory": item}
 
 
+def attach_system_context(messages, extra):
+    """Keep at most one leading system message for strict chat templates.
+
+    MLX/Qwen templates can reject multiple consecutive system messages with
+    'System message must be at the beginning'. Merge memory context into the
+    existing first system message instead of adding a second system message.
+    Never mutate the original user's message dictionaries.
+    """
+    copied = [dict(message) for message in (messages or [])]
+    if not extra:
+        return copied
+    lead = 0
+    parts = []
+    while lead < len(copied) and copied[lead].get("role") == "system":
+        content = copied[lead].get("content")
+        if not isinstance(content, str):
+            # Do not silently coerce structured system content into text.
+            return copied
+        if content:
+            parts.append(content)
+        lead += 1
+    parts.append(extra)
+    combined = "\n\n".join(parts)
+    if lead:
+        first = dict(copied[0])
+        first["content"] = combined
+        copied[:lead] = [first]
+    else:
+        copied.insert(0, {"role": "system", "content": combined})
+    return copied
+
+
 def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=DEFAULT_LIMIT):
     """Return a copy of a chat message list enriched with relevant memory."""
     copied = [dict(message) for message in (messages or [])]
@@ -433,8 +465,4 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=DEFAUL
     if not merged_context:
         return copied
 
-    insert_at = 0
-    while insert_at < len(copied) and copied[insert_at].get("role") == "system":
-        insert_at += 1
-    copied.insert(insert_at, {"role": "system", "content": merged_context})
-    return copied
+    return attach_system_context(copied, merged_context)
