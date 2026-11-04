@@ -14,6 +14,7 @@ from pathlib import Path
 import shutil
 import sqlite3
 import tempfile
+import time
 
 SQLITE_HEADER = b'SQLite format 3\x00'
 
@@ -80,6 +81,25 @@ def fingerprint(files):
     return values
 
 
+def changed_sources(before, after, *, limit=30):
+    """List unstable source files without opening or disclosing their contents."""
+    changed = sorted(path for path in before.keys() | after.keys()
+                     if before.get(path) != after.get(path))
+    return {
+        'changed_count': len(changed),
+        'changed_paths': changed[:limit],
+        'truncated': len(changed) > limit,
+    }
+
+
+def diagnose_writers(roots, *, seconds=5):
+    """Read-only preflight. Safe even when the Agent is running."""
+    first = fingerprint(inventory(roots))
+    time.sleep(seconds)
+    second = fingerprint(inventory(roots))
+    return {'seconds': seconds, **changed_sources(first, second)}
+
+
 def require_private_destination(destination):
     destination = destination.resolve()
     for parent in [destination, *destination.parents]:
@@ -119,8 +139,11 @@ def create(destination, roots):
         os.chmod(target, 0o600)
         manifest['files'].append({'path': str(target.relative_to(destination)),
                                   'sha256': digest(target), 'sqlite': summary})
-    if before != fingerprint(inventory(roots)):
-        raise RuntimeError('Source changed while backing up; stop all writers and retry')
+    after = fingerprint(inventory(roots))
+    if before != after:
+        changes = changed_sources(before, after)
+        raise RuntimeError('Source changed while backing up; stop all writers and retry. '
+                           + json.dumps(changes, ensure_ascii=False))
     manifest_path = destination / 'manifest.json'
     manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
     os.chmod(manifest_path, 0o600)
@@ -156,14 +179,29 @@ def verify(destination):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--destination', type=Path, required=True)
+    parser.add_argument('--destination', type=Path)
+    parser.add_argument('--diagnose', action='store_true',
+                        help='Read-only, 5-second scan to identify source files still being written')
     parser.add_argument('--source-home', type=Path, default=Path.home())
     parser.add_argument('--extra-root', action='append', default=[], help='label=/local/path')
     parser.add_argument('--verify', action='store_true')
     args = parser.parse_args()
-    if args.verify:
+    if args.diagnose:
+        roots = {'mlx-web': args.source_home / '.config/mlx-web',
+                 'mlx-server': args.source_home / '.config/mlx-server'}
+        for extra in args.extra_root:
+            label, path = extra.split('=', 1)
+            if not label.replace('-', '').isalnum():
+                parser.error('Invalid extra-root label')
+            roots['extra-' + label] = Path(path)
+        result = diagnose_writers(roots)
+    elif args.verify:
+        if args.destination is None:
+            parser.error('--verify requires --destination')
         result = verify(args.destination)
     else:
+        if args.destination is None:
+            parser.error('Backup creation requires --destination')
         roots = {'mlx-web': args.source_home / '.config/mlx-web',
                  'mlx-server': args.source_home / '.config/mlx-server'}
         for extra in args.extra_root:
