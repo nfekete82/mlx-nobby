@@ -94,9 +94,9 @@ def test_model_output_is_untrusted_and_cannot_invent_or_save_credentials():
     assert smart.parse_facts('{"facts":[]}', "Mein API Key ist XYZ") == []
     assert smart.parse_facts(fact(text, subject="admin", value="Psychologin"), text) == []
     assert smart.parse_facts(
-        fact("Ich liebe sie nicht mehr", subject="ich", field="vorliebe",
-             value="sie"),
-        "Ich liebe sie nicht mehr",
+        fact("Ich liebe Kaffee nicht mehr", subject="ich", field="vorliebe",
+             value="Kaffee"),
+        "Ich liebe Kaffee nicht mehr",
     ) == []
 
 
@@ -165,8 +165,8 @@ def test_api_requires_real_boolean_and_returns_only_status():
 
 def test_regex_memory_does_not_promote_negated_relationship_to_preference():
     pm.set_enabled(True)
-    pm.observe("Ich liebe sie nicht mehr, ich habe sie verlassen")
-    assert not any("sie nicht" in entry["value"] for entry in pm.list_facts())
+    pm.observe("Ich mag Kaffee nicht mehr, ich trinke jetzt Tee")
+    assert not any("Kaffee nicht" in entry["value"] for entry in pm.list_facts())
 
 
 
