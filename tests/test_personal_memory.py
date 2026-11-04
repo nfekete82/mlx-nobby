@@ -143,17 +143,19 @@ def test_unambiguous_manual_conflict_resolution():
     assert pm.list_facts()[0]["value"] == "Elena"
 
 
-def test_search_and_disabled_privacy_purge():
+def test_disabling_private_memory_pauses_without_erasing_existing_facts():
     pm.set_enabled(True)
     pm.observe("Meine Freundin heißt Lisa")
     assert pm.list_facts(query="Lisa")
     assert "Lisa" in pm.context("meine Freundin")
     pm.set_enabled(False)
-    assert pm.status()["active_facts"] == 0
-    assert pm.list_facts() == []
-    pm.set_enabled(True)
+    assert pm.status()["enabled"] is False
+    assert pm.status()["active_facts"] == 1  # persisted but inactive
     assert pm.list_facts() == []
     assert not pm.context("Freundin")
+    pm.set_enabled(True)
+    assert pm.list_facts(query="Lisa")
+    assert "Lisa" in pm.context("Freundin")
 
 
 def test_explicit_private_note_and_credential_exclusion():
