@@ -1188,12 +1188,14 @@
   },
   "chat_retention":   {
     "title": "Daten dauerhaft löschen",
-    "warning": "Chats und ihre gespeicherten Versionen bleiben dauerhaft erhalten. Nur hier kannst du sie nach ausdrücklicher Bestätigung endgültig löschen. Abgeleitete Erinnerungen können dabei ebenfalls entfernt werden. Backups bleiben separat bestehen.",
+    "warning": "Chats kannst du direkt in der Seitenleiste löschen, ohne das Langzeitgedächtnis zu verlieren. Erinnerungen und Wissensarchive werden nur über die Memory-Einstellungen verwaltet.",
     "one": "Aktuellen Chat endgültig löschen",
     "all": "Alle Chats endgültig löschen",
     "confirm": "Dieser Vorgang löscht Chats und ihre gespeicherten Versionen unwiderruflich. Zugehörige Erinnerungen können dabei verloren gehen. Backups werden separat aufbewahrt. Gib LÖSCHEN ein, um fortzufahren.",
     "final_confirm": "Endgültig löschen",
     "error_title": "Löschen fehlgeschlagen",
-    "error": "Das Löschen konnte nicht abgeschlossen werden. Prüfe den Agent-Status, bevor du es erneut versuchst."
+    "error": "Das Löschen konnte nicht abgeschlossen werden. Prüfe den Agent-Status, bevor du es erneut versuchst.",
+    "delete_chats_only": "Alle Chats aus der Verlaufsliste entfernen? Die Langzeiterinnerungen und erzeugten Medien bleiben erhalten. Eine private Wissenssicherung der Chats wird angelegt.",
+    "delete_one_only": "Diesen Chat aus der Verlaufsliste entfernen? Die Langzeiterinnerungen und erzeugten Medien bleiben erhalten."
   }
 }
