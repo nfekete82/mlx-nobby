@@ -39,6 +39,10 @@ _CORRECT = re.compile(
     r"\b(?:korrigier|berichtige|falsch|vertan|geändert|"
     r"richtig ist|stimmt nicht|stattdessen)\b", re.I,
 )
+_HYPOTHETICAL = re.compile(
+    r"\b(?:wenn|falls|angenommen|hypothetisch|wäre|hätte|würde|"
+    r"könnte|might|would|could|if)\b", re.I,
+)
 _STATUS = {"queued": 0, "processed": 0, "failed": 0}
 _TASKS: queue.Queue[tuple[str, int, str]] = queue.Queue(maxsize=100)
 _ENQUEUED: set[tuple[str, int, str]] = set()
@@ -175,7 +179,8 @@ def parse_facts(output: str, original: str) -> list[dict]:
             type(confidence) not in (float, int) or confidence < 0.88 or
             evidence.casefold() not in source or
             value.casefold() not in evidence.casefold() or
-            _SECRET.search(value) or _BAD.search(evidence)):
+            _SECRET.search(value) or _BAD.search(evidence) or
+            _HYPOTHETICAL.search(evidence)):
             continue
         # A negated assertion is not proof of the positive fact, even when
         # the extracted value literally occurs in the source phrase.
