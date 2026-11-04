@@ -142,25 +142,19 @@ def test_consolidation_events_are_auditable(isolated_memory):
     assert status["disabled_memories"] == 1
 
 
-def test_explicit_forget_purges_disabled_history_and_audit(isolated_memory):
+def test_conversation_forget_does_not_delete_memory_audit(isolated_memory):
     first = memory_lifecycle.observe_user_message(
         "Merk dir: Für Coding nutze ich Qwen3.8-27B."
     )
     second = memory_lifecycle.observe_user_message(
         "Merk dir: Für Coding nutze ich Devstral."
     )
-
     assert second["consolidation"]["changed"] is True
     assert len(memory.list_memories(include_disabled=True)) == 2
-    assert len(memory_consolidation.list_events(memory.MEMORY_DB)) == 1
+    events = memory_consolidation.list_events(memory.MEMORY_DB)
+    assert len(events) == 1
 
-    forgotten = memory_lifecycle.observe_user_message("Vergiss Devstral Coding")
-
-    assert forgotten["action"] == "forgot"
-    assert forgotten["count"] == 1
-    assert set(forgotten["privacy_cleanup"]["memory_ids"]) == {
-        first["remembered_memory_id"],
-        second["remembered_memory_id"],
-    }
-    assert memory.list_memories(include_disabled=True) == []
-    assert memory_consolidation.list_events(memory.MEMORY_DB) == []
+    attempted = memory_lifecycle.observe_user_message("Vergiss Devstral Coding")
+    assert attempted["action"] == "settings_only"
+    assert len(memory.list_memories(include_disabled=True)) == 2
+    assert memory_consolidation.list_events(memory.MEMORY_DB) == events
