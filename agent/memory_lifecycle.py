@@ -155,10 +155,33 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory
     return enriched
 
 
+def fast_personal_context(messages):
+    """Read-only, local fallback when legacy semantic recall misses its deadline.
+
+    This does not run embeddings, observe user messages, resolve conflicts,
+    or mutate stored memories. It keeps the core personal context available
+    for ordinary chat even during slow legacy-memory indexing.
+    """
+    copied = [dict(message) for message in (messages or [])]
+    if memory_dashboard.paused():
+        return copied
+    query = memory.recall_query(copied)
+    if not query:
+        return copied
+    try:
+        private_context = personal_memory.context(query, limit=6)
+        if private_context:
+            return memory.attach_system_context(copied, private_context)
+    except Exception:
+        return copied
+    return copied
+
+
 __all__ = [
     "create_memory",
     "delete_memory",
     "enrich_messages",
+    "fast_personal_context",
     "observe_user_message",
     "update_memory",
 ]
