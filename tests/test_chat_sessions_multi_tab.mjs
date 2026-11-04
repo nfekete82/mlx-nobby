@@ -24,12 +24,15 @@ function store() {
     const writes = [];
     let beforePut = null;
     let active = 0, maxActive = 0;
+    let reads = 0;
     return {
         chats, writes,
+        get reads() { return reads; },
         get maxActive() { return maxActive; },
         setBeforePut(fn) { beforePut = fn; },
         async fetch(url, body) {
             if (url === '/api/mlx/chats') {
+                reads++;
                 return { response: { ok: true },
                     data: { chats: clone([...chats.values()]), deleted_ids: [] } };
             }
@@ -159,6 +162,26 @@ test('offline settings-only changes survive without modifying authoritative hist
     const fork = copyFor(server.chats.values());
     assert.ok(fork, 'offline prompt must become a separate durable chat');
     assert.equal(fork.settings.system_prompt, 'Offline custom prompt');
+});
+
+test('sync requested while a PUT is pending waits and refreshes afterwards', async () => {
+    const server = store();
+    const client = tab(server);
+    await client.sessions.syncWithServer();
+    assert.equal(server.reads, 1);
+    const a = client.state.sessions.find(s => s.id === 'chat-a');
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    server.setBeforePut((_body, n) => n === 1 ? gate : Promise.resolve());
+    a.updated = 20;
+    a.messages.push({role: 'assistant', content: 'Saved while sync waits'});
+    const write = client.sessions.persistSession(a);
+    const sync = client.sessions.syncWithServer();
+    release();
+    await Promise.all([write, sync]);
+    assert.equal(server.reads, 2, 'a waiting sync must not be silently dropped');
+    assert.equal(client.state.sessions.find(s => s.id === 'chat-a')
+        .messages.at(-1).content, 'Saved while sync waits');
 });
 
 test('two rapid writes for one chat are serialized and persist the latest message', async () => {
