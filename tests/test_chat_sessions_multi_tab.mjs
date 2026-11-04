@@ -23,6 +23,7 @@ function store() {
     ]);
     const writes = [];
     let beforePut = null;
+    let beforeGet = null;
     let active = 0, maxActive = 0;
     let reads = 0;
     return {
@@ -30,9 +31,11 @@ function store() {
         get reads() { return reads; },
         get maxActive() { return maxActive; },
         setBeforePut(fn) { beforePut = fn; },
+        setBeforeGet(fn) { beforeGet = fn; },
         async fetch(url, body) {
             if (url === '/api/mlx/chats') {
                 reads++;
+                if (beforeGet) await beforeGet(reads);
                 return { response: { ok: true },
                     data: { chats: clone([...chats.values()]), deleted_ids: [] } };
             }
@@ -162,6 +165,20 @@ test('offline settings-only changes survive without modifying authoritative hist
     const fork = copyFor(server.chats.values());
     assert.ok(fork, 'offline prompt must become a separate durable chat');
     assert.equal(fork.settings.system_prompt, 'Offline custom prompt');
+});
+
+test('overlapping server sync requests cannot silently drop a requested refresh', async () => {
+    const server = store();
+    const client = tab(server);
+    await client.sessions.syncWithServer();
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    server.setBeforeGet(n => n === 2 ? gate : Promise.resolve());
+    const first = client.sessions.syncWithServer();
+    const second = client.sessions.syncWithServer();
+    release();
+    await Promise.all([first, second]);
+    assert.equal(server.reads, 3, 'both requested refreshes must get server data');
 });
 
 test('sync requested while a PUT is pending waits and refreshes afterwards', async () => {
