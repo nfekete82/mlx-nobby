@@ -71,7 +71,7 @@ def test_normal_append_does_not_create_redudant_revision(local_chats):
     assert not (local_chats / ".revisions" / "a").exists()
 
 
-def test_no_cleanup_of_saved_revisions_except_authorized_delete(local_chats):
+def test_deleting_chat_leaves_long_term_revisions_and_source_archive(local_chats):
     with TestClient(agent.app, base_url="http://localhost") as client:
         assert client.put("/api/chats/a", json=chat("a")).status_code == 200
         old = client.get("/api/chats/a").json()["chat"]
@@ -90,7 +90,10 @@ def test_no_cleanup_of_saved_revisions_except_authorized_delete(local_chats):
         assert client.request("DELETE", "/api/chats/a", json={
             "deletion_token": token
         }).status_code == 200
-        assert not original.exists()
+        assert original.exists()
+    vault = local_chats.parent / "long-term-chat-memory" / "a"
+    assert len(list(vault.glob("*.json"))) == 1
+    assert json.loads(next(vault.glob("*.json")).read_text())["messages"][0]["content"] == "edited"
 
 
 def test_symlink_revision_directory_blocks_replacement(tmp_path):
