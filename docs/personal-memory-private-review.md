@@ -58,13 +58,19 @@ visible after editing. Deletion follows renamed attributes through their full
 revision lineage.
 
 Memory toggles are intentionally independent. Both are OFF by default. To
-activate full local recall, enable both. Switching off either one securely
-purges that layer's **derived** data; it does not erase your original chat JSON,
-separately stored Memory Manager facts, or older external/off-device backups.
-Exclusion and forgetting preferences remain so a later opt-in cannot silently
-re-import explicitly deleted facts.
-To remove the underlying raw information, delete the source chat using
-MLX Nobby's existing chat controls, and handle personal backups separately.
+activate local search and structured learning, enable the appropriate modules.
+Switching either OFF **pauses** use and processing: it does not erase stored
+facts, derived indexes, private source archives or external backups.
+Previously learned knowledge resumes when re-enabled.
+
+Deleting one/all chats from "Letzte Chats" only clears the visible session
+list. Their original JSON is retained under the private
+`long-term-chat-memory` source vault; it is also used by historical Qwen
+learning after its explicit activation. Deleting individual facts in Settings
+is a separate user-approved action with durable resurrection protection.
+**Erasing the entire private raw-chat vault and any external backups is not
+yet provided by this integration** and requires a separate explicit Settings
+flow and review before release.
 
 The private SQLite files are owner-readable only (0600). FileVault and
 encrypted backups are still important, as a local process running under your
