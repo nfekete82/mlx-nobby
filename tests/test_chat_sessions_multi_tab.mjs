@@ -245,3 +245,32 @@ test('offline cache with a future timestamp cannot overwrite another tab on relo
     assert.equal(server.chats.get('new-chat-id').messages[0].content,
         'Offline version from earlier tab');
 });
+
+
+test('browser startup settings defaults do not fork an otherwise unchanged chat', async () => {
+    const server = store();
+    const cached = record('chat-a', 999, 'Original A');
+    cached.settings = {
+        system_prompt: '', preset_id: 'general',
+        adaptive_response_auto: true, adaptive_response_length: false,
+        media_quality: 'standard', negative_prompt: '',
+    };
+    const cache = new Map([
+        ['mlx-web-chats-v1', JSON.stringify([cached])],
+    ]);
+    const client = tab(server, cache);
+    client.sessions.loadSessions();
+    await client.sessions.syncWithServer();
+
+    assert.deepEqual(client.state.sessions.map(s => s.id).sort(), ['chat-a', 'chat-b']);
+    assert.deepEqual(server.writes.map(x => x.id), []);
+    assert.equal(server.chats.get('chat-a').messages[0].content, 'Original A');
+
+    // Later user edits still use the current server CAS token, rather than
+    // treating an initial settings migration as an external rewrite.
+    const session = client.state.sessions.find(s => s.id === 'chat-a');
+    session.updated = 1000;
+    session.messages.push({ role: 'assistant', content: 'New user-owned edit' });
+    await client.sessions.persistSession(session);
+    assert.equal(server.chats.get('chat-a').messages.at(-1).content, 'New user-owned edit');
+});
