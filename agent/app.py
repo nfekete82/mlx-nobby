@@ -1470,28 +1470,28 @@ def delete_all_chats(request: dict | None = None):
             raise HTTPException(status_code=500, detail="A chat could not be read before deletion")
         by_id = {chat["id"]: chat for chat in chats}
         ids = set(by_id) | set(requested_ids)
-        # Atomic logical deletion before cleanup: late PUTs cannot recreate files.
+        # Archive *every* complete source before any logical deletion.
+        # A failed archive aborts the entire operation; memories, searchable
+        # history and generated media remain independently retained.
+        try:
+            for chat in chats:
+                chat_retention.preserve_deleted_chat(CHAT_DIRECTORY, chat["id"])
+        except (OSError, ValueError) as archive_error:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Long-term chat memory backup failed: {type(archive_error).__name__}",
+            ) from archive_error
+        # Tombstones reject late writes from other browser tabs.
         write_deleted_chat_ids(previous | ids)
-        # Purge derived search entries for deleted chats; never let a
-        # previously indexed conversation appear in future memory retrieval.
-        for erased_id in ids:
-            for cleanup in (chat_archive.remove_chat, personal_memory.remove_chat):
-                try:
-                    cleanup(erased_id, exclude=True)
-                except Exception as archive_error:
-                    logger.error("Local memory privacy purge failed for %s: %s",
-                                 erased_id, archive_error)
+        # Do not purge chat_archive, personal_memory, semantic memories or
+        # chat revisions here. Those are long-term memory, not UI history.
         cancellations = {chat_id: cancel_chat_media_jobs(chat_id, by_id.get(chat_id)) for chat_id in ids}
         deleted_images, failed_images, failed_files = [], [], []
         for chat in chats:
             try:
                 chat_path(chat["id"]).unlink(missing_ok=True)
-                chat_retention.remove_revisions(CHAT_DIRECTORY, chat["id"])
-            except (OSError, ValueError):
+            except OSError:
                 failed_files.append(chat["id"])
-            deleted, failed = delete_chat_images(chat)
-            deleted_images.extend(deleted)
-            failed_images.extend(failed)
 
     return {"ok": True, "deleted_count": len(chats),
             "deleted_images": deleted_images, "failed_images": failed_images,
@@ -1523,23 +1523,15 @@ def delete_chat(chat_id: str, request: dict | None = None):
             )
 
         try:
+            chat_retention.preserve_deleted_chat(CHAT_DIRECTORY, chat_id)
             path.unlink()
         except Exception as exc:
             raise HTTPException(
                 status_code=500,
-                detail=f"Chat konnte nicht gelöscht werden: {exc}",
-            )
+                detail=f"Chat konnte nicht archiviert/gelöscht werden: {type(exc).__name__}",
+            ) from exc
+        # Retain all independent memory sources and prior chat revisions.
         revision_error = None
-        try:
-            chat_retention.remove_revisions(CHAT_DIRECTORY, chat_id)
-        except (OSError, ValueError) as error:
-            revision_error = type(error).__name__
-        for cleanup in (chat_archive.remove_chat, personal_memory.remove_chat):
-            try:
-                cleanup(chat_id, exclude=True)
-            except Exception as archive_error:
-                logger.error("Local memory privacy purge failed for %s: %s",
-                             chat_id, archive_error)
 
         # The chat file is gone. Cancel every active image job
         # owned by this chat, regardless of revision.
@@ -1549,7 +1541,8 @@ def delete_chat(chat_id: str, request: dict | None = None):
             )
         )
 
-        deleted_images, failed_images = delete_chat_images(chat)
+        # Generated media belong to the user's library, not to the chat list.
+        deleted_images, failed_images = [], []
 
     return {
         "deleted": chat_id,
