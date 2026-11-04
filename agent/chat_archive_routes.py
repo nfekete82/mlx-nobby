@@ -37,6 +37,15 @@ def install_routes(app, chat_host):
             "results": chat_archive.search(query, limit=limit),
         }
 
+    @app.get("/api/chat-archive/activities")
+    def archive_activities(kind: str = "", limit: int = 25, offset: int = 0):
+        if kind not in ("", "image", "video", "agent", "tool"):
+            raise HTTPException(422, "Invalid activity kind")
+        from agent import archive_activity_context
+        return archive_activity_context.inventory(
+            kind=kind, limit=limit, offset=offset,
+        )
+
     @app.post("/api/chat-archive/exclude/{chat_id}")
     def archive_exclude(chat_id: str):
         chat_host.validate_chat_id(chat_id)

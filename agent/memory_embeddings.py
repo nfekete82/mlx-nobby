@@ -17,6 +17,7 @@ import struct
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 
 
 EMBEDDINGS_URL = os.environ.get(
@@ -69,6 +70,9 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
 
 
 def _request(path: str, payload=None, *, timeout=EMBEDDINGS_TIMEOUT):
+    endpoint = urllib.parse.urlsplit(EMBEDDINGS_URL)
+    if endpoint.scheme != 'http' or endpoint.hostname not in ('127.0.0.1', 'localhost', '::1') or endpoint.username or endpoint.password:
+        raise ValueError('Personal memory embeddings require a loopback endpoint')
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
         EMBEDDINGS_URL + path,
@@ -79,7 +83,11 @@ def _request(path: str, payload=None, *, timeout=EMBEDDINGS_TIMEOUT):
         },
         method="POST" if data is not None else "GET",
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args, **kwargs):
+            raise ValueError('Memory embedding redirects are disabled')
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+    with opener.open(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -148,7 +156,7 @@ def _validate_response(response, expected_count, *, expected_model=None, expecte
     if expected_dimensions and dimensions != expected_dimensions:
         raise RuntimeError("embedding dimensions changed during memory indexing")
     for vector in vectors:
-        if not isinstance(vector, list) or len(vector) != dimensions:
+        if not isinstance(vector, list) or len(vector) != dimensions or any(type(v) not in (int, float) or not math.isfinite(v) for v in vector):
             raise RuntimeError("invalid embedding vector")
     return model, dimensions, vectors
 

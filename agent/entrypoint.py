@@ -52,7 +52,7 @@ from agent.voice_manager_routes import install_routes as install_voice_manager_r
 # Standard browser text chat streams directly through agent.app instead of the
 # ModelProvider. Enrich that path at the ASGI boundary while leaving strict
 # helper/model calls untouched. Explicit media downloads promote temp assets.
-app.add_middleware(MemoryChatMiddleware)
+app.add_middleware(MemoryChatMiddleware, chat_host=gateway_host)
 app.add_middleware(MediaLifecycleDownloadMiddleware)
 
 install_openai_gateway(app, host=gateway_host)
@@ -65,6 +65,8 @@ install_media_lifecycle_routes(app)
 install_media_library_routes(app)
 install_memory_routes(app)
 install_memory_dashboard_routes(app)
+from agent.knowledge_memory_routes import install_routes as install_knowledge_memory_routes
+install_knowledge_memory_routes(app, chat_host=gateway_host)
 install_chat_archive_routes(app, gateway_host)
 install_personal_memory_routes(app, gateway_host)
 install_smart_memory_routes(app, gateway_host)
@@ -95,7 +97,7 @@ def _smart_local_complete(message_json: str) -> str:
             {"role": "system", "content": semantic_personal_memory._SYSTEM},
             {"role": "user", "content": message_json},
         ],
-        role="agent", max_tokens=460, temperature=0,
+        role="chat", max_tokens=1200, temperature=0,
     )
     return gateway_host.agent_model_provider().complete(request).text
 
