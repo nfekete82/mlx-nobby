@@ -132,7 +132,7 @@ def test_gallery_submission_and_bulk_delete_are_serialized(history):
          ThreadPoolExecutor(max_workers=2) as pool:
         pending_job = pool.submit(agent.image_variants_api, request)
         assert entered.wait(2)
-        pending_delete = pool.submit(agent.delete_all_chats)
+        pending_delete = pool.submit(agent.delete_all_chats, {'deletion_token': deletion_token()})
         release.set()
         assert pending_job.result(timeout=3) == {'batch': True}
         assert pending_delete.result(timeout=3)['ok']
