@@ -494,9 +494,11 @@ def search(query, *, limit=4):
 
 
 def context(query, *, limit=3):
+    from agent import archive_activity_context
     matches = search(query, limit=limit)
+    summary = archive_activity_context.context(query, limit=limit)
     if not matches:
-        return ""
+        return summary
     lines = [
         "- Chat " + item["chat_id"] + ", Nachricht "
         + str(item["message_index"]) + " (" + item["role"] + "): "
@@ -512,4 +514,4 @@ def context(query, *, limit=3):
         "that a task succeeded. They may be outdated. Prefer the current "
         "user's request and verify project state before claiming changes "
         "were completed."
-    )
+    ) + ("\n\n" + summary if summary else "")
