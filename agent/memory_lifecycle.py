@@ -5,6 +5,7 @@ from __future__ import annotations
 from agent import memory
 from agent import memory_consolidation
 from agent import memory_privacy
+from agent import memory_dashboard
 from agent import personal_memory
 
 
@@ -25,6 +26,8 @@ def _consolidate(memory_id: str | None) -> dict:
 
 
 def observe_user_message(message, *, source_chat_id=None):
+    if memory_dashboard.paused():
+        return {"action": "paused"}
     event = memory.observe_user_message(message, source_chat_id=source_chat_id)
 
     if event.get("action") == "forgot":
@@ -111,6 +114,8 @@ def delete_memory(memory_id):
 
 def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory.DEFAULT_LIMIT):
     copied = [dict(message) for message in (messages or [])]
+    if memory_dashboard.paused():
+        return copied
     last_user = next(
         (
             message.get("content")
