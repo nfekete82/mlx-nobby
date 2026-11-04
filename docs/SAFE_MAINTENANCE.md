@@ -28,7 +28,7 @@ The only automatically eligible generated artifacts are:
 - `artifacts/acceptance/acceptance-*/`
 
 All must be **at least 14 days old based on their newest nested modification
-time** (minimum configurable age: seven days). A symlink, a mount boundary,
+time** (minimum configurable age: seven days). A symlink, a mount on another device,
 an unexpected filesystem entry or a `.keep` / `.nobby-keep` marker prevents
 the directory being deleted. Other artifact names remain untouched.
 The scan includes sizes but does not read prompt contents.
@@ -60,7 +60,7 @@ retain specific test diagnostics, create `.nobby-keep` inside that directory.
 
 **Never covered:** local model stores, chat history, memory DB, knowledge,
 RAG, media library, generated user media, persistent volumes, backups,
-active files, unknown artifacts and Git repositories.
+recently modified artifacts, unknown artifacts and Git repositories.
 
 ## Optional daily cleanup (macOS launchd)
 
