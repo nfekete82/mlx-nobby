@@ -1779,14 +1779,19 @@ def mlx_put_chat(chat_id: str, request: dict):
     )
 
 
+@app.post("/api/mlx/chats/delete-intent")
+def mlx_chat_deletion_intent(request: dict):
+    return agent_json_request(
+        "POST", "/api/chats/delete-intent", payload=request, timeout=10,
+    )
+
+
 @app.post("/api/mlx/chats/{chat_id}/reset")
-def mlx_reset_chat(chat_id: str):
+def mlx_reset_chat(chat_id: str, request: dict | None = None):
     return agent_json_request(
         "POST",
-        "/api/chats/" +
-        urllib.parse.quote(chat_id, safe="") +
-        "/reset",
-        payload={},
+        "/api/chats/" + urllib.parse.quote(chat_id, safe="") + "/reset",
+        payload=request or {},
         timeout=30,
     )
 
@@ -1799,11 +1804,11 @@ def mlx_delete_all_chats(request: dict | None = None):
 
 
 @app.delete("/api/mlx/chats/{chat_id}")
-def mlx_delete_chat(chat_id: str):
+def mlx_delete_chat(chat_id: str, request: dict | None = None):
     return agent_json_request(
         "DELETE",
         "/api/chats/" + urllib.parse.quote(chat_id, safe=""),
-        timeout=10,
+        payload=request or {}, timeout=10,
     )
 
 
