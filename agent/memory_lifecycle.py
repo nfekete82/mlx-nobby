@@ -141,7 +141,9 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory
     )
     try:
         clarification = personal_memory.question_for(last_user, source_chat_id=source_chat_id)
-        personal_context = personal_memory.context(last_user, limit=6)
+        personal_context = personal_memory.context(
+            memory.recall_query(copied), limit=6,
+        )
         extra = "\n\n".join(part for part in (
             clarification, personal_context,
         ) if part)
