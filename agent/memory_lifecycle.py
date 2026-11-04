@@ -114,6 +114,18 @@ def delete_memory(memory_id):
 
 def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory.DEFAULT_LIMIT):
     copied = [dict(message) for message in (messages or [])]
+    last_turn = next((
+        message.get("content") for message in reversed(copied)
+        if message.get("role") == "user"
+        and isinstance(message.get("content"), str)
+    ), None)
+    if last_turn and memory._EXPLICIT_FORGET.match(last_turn):
+        return memory.attach_system_context(
+            copied,
+            "RETENTION POLICY: This chat request did not delete any memory. "
+            "Do not claim to have forgotten or erased data. Explain that "
+            "permanent deletion requires explicit action in Settings > Memory.",
+        )
     if memory_dashboard.paused():
         return copied
     last_user = next(
