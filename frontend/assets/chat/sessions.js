@@ -268,6 +268,17 @@ function sessionT(key, fallback = '', variables = {}) {
         return JSON.stringify(withoutStreamingFields(session));
     }
 
+    function sameConversationContent(local, server) {
+        // Opening a chat can add browser-only/default settings and advance
+        // its timestamp. That is not a changed conversation, so it must not
+        // create a new conflicting chat during initial synchronization.
+        return local.title === server.title &&
+            JSON.stringify(withoutStreamingFields(local.messages)) ===
+                JSON.stringify(withoutStreamingFields(server.messages)) &&
+            JSON.stringify(local.workspace ?? null) ===
+                JSON.stringify(server.workspace ?? null);
+    }
+
     async function persistSession(session) {
         if (clearingHistory || !serverReady || !validSession(session) ||
                 !state.sessions.includes(session) ||
@@ -490,6 +501,13 @@ function sessionT(key, fallback = '', variables = {}) {
                     // seen the server's current state. This may be an old
                     // offline tab; keep both histories instead of forcing
                     // the local copy over another tab's saved work.
+                    if (sameConversationContent(local, server)) {
+                        // Runtime settings normalization is not an independent
+                        // chat edit; retain local settings, but do not eagerly
+                        // write them back over another tab's server version.
+                        merged.set(id, local);
+                        return;
+                    }
                     if (isGenerating()) {
                         pendingConflicts.set(id, server);
                         saveConflictMarkers();
