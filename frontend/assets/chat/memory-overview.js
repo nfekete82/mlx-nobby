@@ -35,6 +35,7 @@
         original: 'Original chat preserved',
         cancel: 'Cancel',
         save: 'Save',
+        smartTitle: 'Qwen · On-device',
         smartOn: 'Enable local Qwen learning',
         smartOff: 'Disable Qwen learning',
         smartRebuild: 'Analyze earlier chats',
@@ -140,6 +141,7 @@
         $('memoryOverviewSearch').placeholder = t('search');
         $('memoryOverviewWarning').textContent = t('preserved');
         $('memoryOverviewAdvancedLabel').textContent = t('details');
+        $('memorySmartTitle').textContent = t('smartTitle');
         $('memorySmartHelp').textContent = t('smartHelp');
         $('memorySmartRebuild').textContent = t('smartRebuild');
         renderSmart();
@@ -420,7 +422,8 @@
         const note = element('small'); note.id = 'memoryOverviewNote';
         const smartPanel = element('section', '', '');
         smartPanel.id = 'memoryOverviewSmart';
-        const smartTitle = element('strong', 'Qwen · Lokal');
+        const smartTitle = element('strong', t('smartTitle'));
+        smartTitle.id = 'memorySmartTitle';
         const smartHelp = element('small'); smartHelp.id = 'memorySmartHelp';
         const smartMessage = element('p'); smartMessage.id = 'memorySmartMessage';
         const smartActions = element('div', '', 'smart-actions');
