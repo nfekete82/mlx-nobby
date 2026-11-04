@@ -135,3 +135,13 @@ def test_external_mount_or_volume_blocks_preview_removal(monkeypatch, tmp_path):
     }
     monkeypatch.setattr(maintenance, "_docker_previews", lambda: {name: [entry]})
     assert maintenance.remove_preview(name, apply=True, yes=True) == 2
+
+
+def test_lsof_error_refuses_log_deletion(monkeypatch, tmp_path):
+    file = tmp_path / "agent.log.legacy-100000000000"
+    file.write_text("synthetic")
+    monkeypatch.setattr(maintenance.shutil, "which", lambda cmd: "/usr/sbin/lsof")
+    monkeypatch.setattr(maintenance.subprocess, "run",
+                        lambda *args, **kwargs: subprocess.CompletedProcess(
+                            args[0], 1, "", "lsof: unsupported option"))
+    assert maintenance.unused_log(file) is False
