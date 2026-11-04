@@ -6,7 +6,7 @@ construction; the existing middleware integration covers runtime delivery.
 """
 import pytest
 
-from agent import memory, memory_lifecycle, memory_dashboard, personal_memory as pm
+from agent import memory, memory_lifecycle, memory_dashboard, personal_memory as pm, chat_archive
 
 
 @pytest.fixture(autouse=True)
@@ -14,6 +14,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(pm, "DB_PATH", tmp_path / "personal.sqlite3")
     monkeypatch.setattr(memory, "ROOT", tmp_path / "nobby")
     monkeypatch.setattr(memory, "MEMORY_DB", tmp_path / "nobby" / "memory.db")
+    monkeypatch.setattr(chat_archive, "DB_PATH", tmp_path / "local-chat-fts.sqlite3")
     monkeypatch.setattr(memory_dashboard, "STATE_PATH", tmp_path / "pause.json")
 
 
@@ -158,3 +159,38 @@ def test_bounded_overview_and_no_injection_of_removed_fact():
     fact = pm.list_facts()[0]
     pm.delete_fact(fact["id"])
     assert fact["value"] not in pm.context("Was weißt du über mich?")
+
+
+def test_normal_chat_recalls_prior_messages_and_action_status(monkeypatch):
+    chat_archive.set_enabled(True)
+    chat_archive.index_chat({
+        "id": "sandforge-work",
+        "title": "Sandforge: Bastion Wars",
+        "updated": 123,
+        "messages": [
+            {"role": "user", "content": "Bitte Sandforge Wegfindung an Bergen korrigieren"},
+            {"role": "assistant", "content": "Wegfindung erneut geprüft",
+             "tool_result": {"tool": "coding_agent", "status": "completed"}},
+        ],
+    })
+    monkeypatch.setattr(memory, "context", lambda *a, **k: "")
+    messages = [{"role": "user", "content": "Was haben wir bei Sandforge gemacht?"}]
+    enriched = memory_lifecycle.enrich_messages(messages, observe=False)
+    assert enriched[0]["role"] == "system"
+    assert "sandforge-work" in enriched[0]["content"]
+    assert "coding_agent completed" in enriched[0]["content"]
+    assert enriched[-1] == messages[-1]
+
+
+def test_archive_is_not_injected_when_user_disables_it(monkeypatch):
+    chat_archive.set_enabled(True)
+    chat_archive.index_chat({
+        "id": "personal-local",
+        "updated": 123,
+        "messages": [{"role": "user", "content": "Sandforge besprechen"}],
+    })
+    chat_archive.set_enabled(False)
+    monkeypatch.setattr(memory, "context", lambda *a, **k: "")
+    messages = [{"role": "user", "content": "Sandforge Projektstatus?"}]
+    enriched = memory_lifecycle.enrich_messages(messages, observe=False)
+    assert enriched == messages
