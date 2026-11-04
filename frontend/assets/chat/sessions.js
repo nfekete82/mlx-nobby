@@ -22,6 +22,8 @@ function sessionT(key, fallback = '', variables = {}) {
     let onSessionSelected;
     let serverReady = false;
     let serverSyncing = false;
+    let serverSyncCompleted = null;
+    let finishServerSync = null;
     let clearingHistory = false;
     let confirmingHistory = false;
     let historyEpoch = 0;
@@ -589,8 +591,13 @@ function sessionT(key, fallback = '', variables = {}) {
     }
 
     async function syncWithServer() {
-        if (serverSyncing || clearingHistory) {
-            return;
+        if (clearingHistory) return;
+        if (serverSyncing) {
+            // A concurrent caller requested a real refresh, not a no-op.
+            // Retry after the current sync settles, even if its GET became
+            // obsolete because another PUT started in the meantime.
+            if (serverSyncCompleted) await serverSyncCompleted;
+            return clearingHistory ? undefined : syncWithServer();
         }
 
         // Never drop a requested UI refresh just because a chat write is
@@ -603,6 +610,7 @@ function sessionT(key, fallback = '', variables = {}) {
         }
 
         serverSyncing = true;
+        serverSyncCompleted = new Promise(resolve => { finishServerSync = resolve; });
         const epoch = historyEpoch;
         const writesAtStart = persistEpoch;
 
@@ -751,6 +759,10 @@ function sessionT(key, fallback = '', variables = {}) {
             }
         } finally {
             serverSyncing = false;
+            const finish = finishServerSync;
+            finishServerSync = null;
+            serverSyncCompleted = null;
+            if (finish) finish();
         }
     }
 
