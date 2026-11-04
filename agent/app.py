@@ -26,6 +26,7 @@ from agent import knowledge
 from agent import profile
 from agent import chat_archive
 from agent import personal_memory
+from agent import memory_dashboard
 from agent import code_workspaces
 from agent.chat_fast_path import simple_chat_fast_path, safe_followup_chat_fast_path
 from agent.router_turn_cache import turn_classifier_cache
@@ -407,14 +408,15 @@ def write_chat(chat):
         os.replace(temporary_path, path)
         # Derived, opt-in local search index. Chat persistence must still work
         # when SQLite/FTS is unavailable.
-        try:
-            chat_archive.index_chat(chat)
-        except Exception as archive_error:
-            logger.warning("Local chat archive indexing failed: %s", archive_error)
-        try:
-            personal_memory.index_chat(chat)
-        except Exception as memory_error:
-            logger.warning("Private personal memory indexing failed: %s", memory_error)
+        if not memory_dashboard.paused():
+            try:
+                chat_archive.index_chat(chat)
+            except Exception as archive_error:
+                logger.warning("Local chat archive indexing failed: %s", archive_error)
+            try:
+                personal_memory.index_chat(chat)
+            except Exception as memory_error:
+                logger.warning("Private personal memory indexing failed: %s", memory_error)
     except Exception as exc:
         raise HTTPException(
             status_code=500,
