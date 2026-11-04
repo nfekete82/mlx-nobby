@@ -63,7 +63,7 @@ def inventory(roots):
                 continue
             with path.open('rb') as stream:
                 is_sqlite = stream.read(16) == SQLITE_HEADER
-            is_chat = label == 'mlx-web' and relative.parts[0] == 'chats'
+            is_chat = (label == 'mlx-web' and relative.parts[0] in {'chats', 'long-term-chat-memory'})
             # Include all external EML data, not just its SQLite files.
             if is_sqlite or is_chat or label.startswith('extra-'):
                 files.append((label, path, relative, is_sqlite))
