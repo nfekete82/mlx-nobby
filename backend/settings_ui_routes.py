@@ -19,7 +19,7 @@ AUTOMATION_NOTIFICATIONS_SCRIPT = (
     b'<script src="/assets/chat/automation-notifications.js?v=20260929-automations-v11"></script>'
 )
 SETTINGS_SCRIPT = (
-    b'<script src="/assets/chat/settings-layout.js?v=20260929-settings-layout-v2"></script>'
+    b'<script src="/assets/chat/settings-layout.js?v=20261104-memory-nav-v1"></script>'
 )
 
 

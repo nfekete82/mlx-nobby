@@ -155,6 +155,9 @@
         if ($('memoryManagerPane')) {
             tab = $('memoryManagerTab');
             pane = $('memoryManagerPane');
+            // The settings organizer can open Memory before translations
+            // finish loading; refresh its label when initialization resumes.
+            if (tab && pane) updateStaticLabels();
             return;
         }
 
