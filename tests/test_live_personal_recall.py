@@ -73,6 +73,20 @@ def test_explicit_user_overview_includes_facts_across_life_areas():
         assert "EXPLICIT USER REQUEST" in context
 
 
+def test_quoted_question_to_translate_is_not_full_memory_disclosure():
+    pm.set_enabled(True)
+    _put("ich", "beruf", "Informatiker")
+    _put("partner", "gesundheit", "Private Diagnose")
+    for query in (
+        'Übersetze "Was weißt du über mich?" ins Englische.',
+        "Translate 'What do you know about me?' to German.",
+    ):
+        assert not pm.overview_requested(query)
+        context = pm.context(query)
+        assert "EXPLICIT USER REQUEST" not in context
+        assert "Private Diagnose" not in context
+
+
 def test_superseded_value_does_not_appear_as_active_fact():
     pm.set_enabled(True)
     old = _put("partner", "beruf", "Architektin")
