@@ -46,6 +46,7 @@
         smartProcessed: 'Analyzed',
         smartFailed: 'Failed',
         smartStarted: 'Older chat analysis scheduled. Progress appears here.',
+        smartFullProgress: 'Full history',
         smartHelp: 'Learning and history remain local. Check, correct or delete every fact below.',
         groupAbout: 'About me',
         groupPartner: 'Relationship & partner',
@@ -226,6 +227,12 @@
                 + ' · ' + t('smartProcessed') + ': ' + (state.smart.processed || 0)
                 + ' · ' + t('smartFailed') + ': ' + (state.smart.failed || 0)
             : '';
+        const full = state.smart.full_scan || {};
+        if (flag && full.total) {
+            $('memorySmartProgress').textContent += ' · ' + t('smartFullProgress') +
+                ': ' + (full.examined || 0) + '/' + full.total +
+                (full.active ? ' …' : '');
+        }
     }
     async function smartToggle() {
         const next = !state.smart.enabled;
@@ -233,10 +240,34 @@
         state.smart.enabled = next;
         renderSmart();
     }
+    let smartPoll = null;
+    function ensureSmartPolling() {
+        if (smartPoll) return;
+        smartPoll = setInterval(async () => {
+            if (!document.getElementById('memoryOverview')) {
+                clearInterval(smartPoll);
+                smartPoll = null;
+                return;
+            }
+            try {
+                const data = await api('/api/mlx/memory/smart/status');
+                state.smart = {...state.smart, ...data};
+                renderSmart();
+                if (!data.full_scan?.active && !(data.pending > 0)) {
+                    clearInterval(smartPoll);
+                    smartPoll = null;
+                }
+            } catch (_) {
+                clearInterval(smartPoll);
+                smartPoll = null;
+            }
+        }, 3000);
+    }
     async function smartBackfill() {
-        const result = await post('/api/mlx/memory/smart/backfill', {limit:60});
+        const result = await post('/api/mlx/memory/smart/backfill', {full:true});
         state.smart = {...state.smart, ...result};
         renderSmart();
+        ensureSmartPolling();
         notice(t('smartStarted'));
     }
     function renderItems() {
@@ -340,6 +371,8 @@
                 const smarter = await api('/api/mlx/memory/smart/status');
                 if (epoch !== state.epoch) return;
                 state.smart = {...state.smart, ...smarter};
+                if (smarter.full_scan?.active || smarter.pending > 0)
+                    ensureSmartPolling();
             } catch (_) {
                 // Older native Agent installations still retain the legacy dashboard.
             }
