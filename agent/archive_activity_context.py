@@ -37,6 +37,8 @@ def context(query, *, limit=6):
     if not chat_archive.enabled():
         return ""
     query = str(query or "")
+    from agent import media_memory_context
+    library = media_memory_context.context(query, limit=limit)
     overall = personal_memory.overview_requested(query)
     has_video, has_image = bool(_VIDEO.search(query)), bool(_IMAGE.search(query))
     has_activity = bool(_ACTIVITY.search(query))
@@ -59,7 +61,7 @@ def context(query, *, limit=6):
             kinds,
         ).fetchone()[0]
         if not total:
-            return ""
+            return library
         rows = conn.execute(
             "SELECT chat_id,ordinal,kind,operation,status,model,prompt,project "
             "FROM archive_activity WHERE kind IN (" + filters + ") "
@@ -94,4 +96,4 @@ def context(query, *, limit=6):
           "historical records. Briefs describe the saved user request, not "
           "an inspected visual artifact. A saved completed status is "
           "historical, not proof that the resulting file exists today."
-    )
+    ) + ("\n\n" + library if library else "")
