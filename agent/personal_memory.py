@@ -529,9 +529,15 @@ def context(query, *, limit=6):
         words = set(w.casefold() for w in _WORDS.findall(
             fact["subject"] + " " + fact["field"] + " " + fact["value"]))
         score = len(tokens & words)
-        if score or fact["subject"] in ("ich", "partner") and re.search(
-            r"\b(?:ich|mich|mein|partner|freundin|beziehung)\b", query, re.I
-        ):
+        subject_relevant = (
+            fact["subject"] == "ich" and bool(re.search(
+                r"\b(?:ich|mich|mein|meine)\b", query, re.I))
+            or fact["subject"] == "partner" and bool(re.search(
+                r"\b(?:partner|freundin|beziehung)\b", query, re.I))
+            or fact["subject"].startswith("familie.") and bool(re.search(
+                r"\b(?:familie|sohn|tochter|kind)\b", query, re.I))
+        )
+        if score or subject_relevant:
             matches.append((score, fact))
     matches.sort(key=lambda pair: (pair[0], pair[1]["updated_at"]), reverse=True)
     if not matches:
