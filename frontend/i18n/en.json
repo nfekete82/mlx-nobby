@@ -1185,5 +1185,15 @@
     "mode_always": "Prefer asking questions",
     "mode_off": "Off",
     "hint": "MLX-Nobby asks targeted questions when missing details would improve the answer. Your selection is stored locally."
+  },
+  "chat_retention":   {
+    "title": "Permanently delete data",
+    "warning": "Chats and their saved revisions are retained indefinitely. Only here can you explicitly and permanently delete them. Derived memories may also be erased. Backups are separate.",
+    "one": "Permanently delete current chat",
+    "all": "Permanently delete all chats",
+    "confirm": "This irreversibly deletes chats and saved revisions. Associated memories may be lost. Backups are retained separately. Type DELETE to continue.",
+    "final_confirm": "Delete permanently",
+    "error_title": "Deletion failed",
+    "error": "Deletion could not be completed. Check the Agent status before retrying."
   }
 }
