@@ -47,6 +47,21 @@ def _schema(conn):
         );
         CREATE INDEX IF NOT EXISTS idx_archive_chat
             ON archive_messages(chat_id, ordinal);
+        CREATE TABLE IF NOT EXISTS archive_activity (
+            chat_id TEXT NOT NULL,
+            ordinal INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            status TEXT NOT NULL,
+            model TEXT NOT NULL DEFAULT '',
+            prompt TEXT NOT NULL DEFAULT '',
+            project TEXT NOT NULL DEFAULT '',
+            artifact_ref TEXT NOT NULL DEFAULT '',
+            updated REAL NOT NULL,
+            PRIMARY KEY(chat_id, ordinal, kind)
+        );
+        CREATE INDEX IF NOT EXISTS idx_archive_activity_kind
+            ON archive_activity(kind, updated DESC);
         CREATE VIRTUAL TABLE IF NOT EXISTS archive_fts USING fts5(
             content, content='archive_messages', content_rowid='id',
             tokenize='unicode61'
@@ -92,6 +107,7 @@ def set_enabled(value: bool):
         _schema(conn)
         if not value:
             conn.execute("DELETE FROM archive_messages")
+            conn.execute("DELETE FROM archive_activity")
             # FTS5 may retain obsolete posting-list segments even after a
             # row DELETE. Rebuild the index from the now-empty content table.
             conn.execute("INSERT INTO archive_fts(archive_fts) VALUES('rebuild')")
@@ -211,6 +227,7 @@ def remove_chat(chat_id, *, exclude=False):
     with LOCK, _connect() as conn:
         _schema(conn)
         conn.execute("DELETE FROM archive_messages WHERE chat_id=?", (chat_id,))
+        conn.execute("DELETE FROM archive_activity WHERE chat_id=?", (chat_id,))
         # FTS5 posting lists can retain deleted words even with secure_delete.
         # Rebuild then compact so exclusion/chat deletion purges derived bytes.
         conn.execute("INSERT INTO archive_fts(archive_fts) VALUES('rebuild')")
@@ -249,6 +266,7 @@ def rebuild(chats):
         )}
         for chat_id in stored - current_ids:
             conn.execute("DELETE FROM archive_messages WHERE chat_id=?", (chat_id,))
+            conn.execute("DELETE FROM archive_activity WHERE chat_id=?", (chat_id,))
         indexed = conn.execute("SELECT count(*) FROM archive_messages").fetchone()[0]
     return {"chats_checked": processed, "indexed_messages": indexed}
 
