@@ -1227,14 +1227,11 @@ def put_chat(chat_id: str, request: ChatSessionRequest):
 
         if existing is not None:
             incoming["revision"] = existing.get("revision", 0)
-            if request.expected_updated is not None:
-                # Date.now() has millisecond precision; two tabs can submit
-                # different content with the same updated timestamp. Advance
-                # the server's version on every accepted guarded mutation so
-                # the other tab's CAS token becomes stale.
-                incoming["updated"] = max(
-                    incoming["updated"], existing["updated"] + 1
-                )
+            # Accepted legacy writes must invalidate modern tabs' CAS tokens
+            # too, including edits made within the same millisecond.
+            incoming["updated"] = max(
+                incoming["updated"], existing["updated"] + 1
+            )
 
         write_chat(incoming)
 
