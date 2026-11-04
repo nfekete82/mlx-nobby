@@ -148,7 +148,7 @@ def test_slow_semantic_recall_still_supplies_safe_private_identity(client, monke
         response = client.post("/api/runtime/chat/stream", json={
             "messages": [{"role": "user", "content": "Erkläre CSS."}]
         })
-        assert started.is_set()
+        assert started.wait(timeout=0.2)
         assert response.status_code == 200
         assert response.json()["messages"][0]["role"] == "system"
         system = response.json()["messages"][0]["content"]
