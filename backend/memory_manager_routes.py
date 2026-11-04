@@ -16,6 +16,9 @@ MEMORY_ARCHIVE_SCRIPT = (
 PERSONAL_MEMORY_SCRIPT = (
     b'<script src="/assets/chat/personal-memory.js?v=20261104-private-knowledge-review3"></script>'
 )
+MEMORY_OVERVIEW_SCRIPT = (
+    b'<script src="/assets/chat/memory-overview.js?v=20261104-unified-memory-v1"></script>'
+)
 MEMORY_MANAGER_CONSOLIDATION_SCRIPT = (
     b'<script src="/assets/chat/memory-manager-consolidation.js?v=20260928-memory-manager-v12"></script>'
 )
@@ -40,6 +43,7 @@ def inject_memory_manager_script(body: bytes) -> bytes:
             MEMORY_MANAGER_SCRIPT,
             MEMORY_ARCHIVE_SCRIPT,
             PERSONAL_MEMORY_SCRIPT,
+            MEMORY_OVERVIEW_SCRIPT,
             MEMORY_MANAGER_CONSOLIDATION_SCRIPT,
             MEMORY_CONTEXT_INSPECTOR_SCRIPT,
         )
