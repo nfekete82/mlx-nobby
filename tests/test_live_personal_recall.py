@@ -43,6 +43,20 @@ def test_regular_chat_gets_small_stable_identity_but_no_unrelated_private_data()
     assert "Erfundene Partnerdiagnose" not in regular
 
 
+def test_name_and_profession_survive_recent_identity_updates():
+    pm.set_enabled(True)
+    _put("ich", "name", "Testname")
+    _put("ich", "beruf", "Informatiker")
+    _put("ich", "ausbildung", "Informatik")
+    _put("ich", "rolle", "Softwareentwicklung")
+    _put("ich", "technologie", "PHP")
+    content = pm.context("Erkläre eine HTTP-Antwort.")
+    assert "Testname" in content
+    assert "Informatiker" in content
+    assert "PHP" in content
+    assert "Softwareentwicklung" not in content
+
+
 def test_project_and_family_recall_is_topic_aware():
     pm.set_enabled(True)
     _put("ich", "beruf", "Informatiker")
