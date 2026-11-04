@@ -804,23 +804,32 @@ def context(query, *, limit=6):
     bounded = max(1, min(int(limit), 12))
 
     if overview:
-        # Newest first within domains; cap both count and prompt characters.
-        group_order = {"ich": 0, "partner": 1, "familie": 2,
-                       "familie.sohn": 2, "familie.tochter": 2}
-        arranged = sorted(
-            facts,
-            key=lambda f: (group_order.get(
-                f["subject"], 3 if f["subject"].startswith("projekte.") else 4
-            ), -float(f["updated_at"])),
-        )
+        # Round-robin across domains so a large collection of self-notes
+        # cannot push family and project details out of an explicit overview.
+        buckets = [[] for _ in range(5)]
+        for fact in facts:
+            subject = fact["subject"]
+            group = (0 if subject == "ich" else
+                     1 if subject == "partner" else
+                     2 if subject == "familie" or subject.startswith("familie.") else
+                     3 if subject.startswith("projekte.") else 4)
+            buckets[group].append(fact)
+        for bucket in buckets:
+            bucket.sort(key=lambda f: -float(f["updated_at"]))
         selected = []
         total = 0
-        for fact in arranged:
-            line = _fact_line(fact)
-            if len(selected) >= 60 or total + len(line) > 7200:
-                break
-            selected.append(line)
-            total += len(line) + 1
+        while len(selected) < 60 and any(buckets):
+            for bucket in buckets:
+                if not bucket:
+                    continue
+                line = _fact_line(bucket.pop(0))
+                if total + len(line) > 7200:
+                    break
+                selected.append(line)
+                total += len(line) + 1
+            else:
+                continue
+            break
         if not selected:
             return ""
         remainder = len(facts) - len(selected)
