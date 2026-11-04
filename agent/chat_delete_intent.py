@@ -1,6 +1,6 @@
 """Short-lived, single-use authorization for destructive chat operations.
 
-Only an explicit settings confirmation may issue a permit. The permit never
+A deliberate chat-list confirmation or explicit Settings control issues a permit. The permit never
 persists across a restart and cannot be reused for another scope/chat.
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ def issue(*, scope: str, confirmation: str, chat_id: str | None = None) -> str:
         raise ValueError("A chat ID is required")
     # This is a deliberate typed consent, not a reusable configuration switch.
     if confirmation != "LÖSCHEN" and confirmation != "DELETE":
-        raise ValueError("Type LÖSCHEN or DELETE in Settings to authorize deletion")
+        raise ValueError("An explicit UI deletion confirmation is required")
     with _LOCK:
         now = time.monotonic()
         for key, record in list(_PENDING.items()):
