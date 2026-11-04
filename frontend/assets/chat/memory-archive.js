@@ -157,7 +157,13 @@
         $('localArchiveQuery').addEventListener('keydown', event => {
             if (event.key === 'Enter') search();
         });
-        refresh().catch(error => status(t('error') + ': ' + error.message));
+        // A normal chat load must not hit archive API endpoints. The archive
+        // UI initializes lazily when Memory settings are actually opened.
+        const activateRefresh = () => {
+            refresh().catch(error => status(t('error') + ': ' + error.message));
+        };
+        $('memoryManagerTab')?.addEventListener('click', activateRefresh);
+        if (location.pathname === '/settings/memory') activateRefresh();
     }
     const observer = new MutationObserver(() => { if (mounted) observer.disconnect(); else mount(); });
     observer.observe(document.documentElement, {childList:true, subtree:true});
