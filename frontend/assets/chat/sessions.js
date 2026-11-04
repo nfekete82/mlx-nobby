@@ -282,7 +282,8 @@ function sessionT(key, fallback = '', variables = {}) {
     async function persistSession(session) {
         if (clearingHistory || !serverReady || !validSession(session) ||
                 !state.sessions.includes(session) ||
-                pendingConflicts.has(session.id)) {
+                pendingConflicts.has(session.id) ||
+                !session.messages.some(message => message?.role === 'user')) {
             return;
         }
 
