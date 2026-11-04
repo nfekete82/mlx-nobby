@@ -308,8 +308,8 @@ def _extract(text):
             if value.casefold() in {"nicht", "kein", "keine", "vielleicht",
                                     "vermutlich", "eventuell", "unbekannt"}:
                 continue
-            # "Ich liebe sie nicht mehr" describes a changed relationship,
-            # not a positive preference. Reject broad, negated regex spans.
+            # "Ich mag Kaffee nicht mehr" is not a positive preference.
+            # Reject broad, negated regex spans.
             if field in {"vorliebe", "präferenz"} and re.search(
                 r"\b(?:nicht|kein|keine|nie|niemals)\b", value, re.I
             ):
