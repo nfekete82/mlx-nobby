@@ -177,8 +177,10 @@ def parse_facts(output: str, original: str) -> list[dict]:
             value.casefold() not in evidence.casefold() or
             _SECRET.search(value) or _BAD.search(evidence)):
             continue
-        if field.startswith(("vorliebe", "hobby")) and re.search(
-            r"\b(?:nicht|kein|keine|nie|weniger)\b", evidence, re.I,
+        # A negated assertion is not proof of the positive fact, even when
+        # the extracted value literally occurs in the source phrase.
+        if re.search(r"\b(?:nicht|kein|keine|nie|niemals)\b", evidence, re.I) and not (
+            item.get("correction") is True and _CORRECT.search(original)
         ):
             continue
         correction = item.get("correction") is True and bool(_CORRECT.search(original))
@@ -308,7 +310,7 @@ def configure(*, chat_reader, chat_lock, model_complete):
             _WORKER_STARTED = True
 
 
-def enqueue(chat: dict, *, latest_only: bool = True) -> int:
+def enqueue(chat: dict, *, latest_only: bool = True, max_messages: int = 20) -> int:
     """Queue user turns only; no model work on the chat-save thread."""
     if not enabled() or _READER is None:
         return 0
@@ -329,6 +331,8 @@ def enqueue(chat: dict, *, latest_only: bool = True) -> int:
         candidates = candidates[-1:]
     queued = 0
     for ordinal, text in candidates:
+        if queued >= max_messages:
+            break
         if _SECRET.search(text):
             continue
         digest = _digest(text)
@@ -357,14 +361,15 @@ def enqueue(chat: dict, *, latest_only: bool = True) -> int:
     return queued
 
 
-def backfill(chats: list[dict], *, limit: int = 60) -> dict:
+def backfill(chats: list[dict], *, limit: int = 12) -> dict:
     """Bounded opt-in reanalysis of older chat messages (user turns only)."""
     if not enabled():
         raise ValueError("Enable smart learning first")
     candidates = sorted(chats, key=lambda chat: chat.get("updated", 0))[-30:]
     total = 0
+    cap = max(1, min(int(limit), 20))
     for chat in candidates:
-        if total >= max(1, min(int(limit), 100)):
+        if total >= cap:
             break
-        total += enqueue(chat, latest_only=False)
+        total += enqueue(chat, latest_only=False, max_messages=cap - total)
     return {"queued": total, **status()}
