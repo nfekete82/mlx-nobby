@@ -38,6 +38,11 @@ class MemoryChatMiddleware:
             thread_name_prefix="mlx-private-recall",
         )
         self._private_future = None
+        # User-requested complete memory inventories should not compete with
+        # slow legacy embedding lookups or the 200ms general fallback budget.
+        self._overview_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="mlx-explicit-memory-overview",
+        )
         self._request_guard = LocalRequestGuard(self._enrich_request)
 
     async def __call__(self, scope, receive, send):
@@ -129,6 +134,15 @@ class MemoryChatMiddleware:
         while it warms in the background, later chat requests simply proceed
         without memory context for that turn.
         """
+        # "What do you remember about me?" explicitly requests stored facts.
+        # Use the local SQLite inventory directly. The normal async embedding
+        # route can time out and silently drop exactly this user's data.
+        try:
+            from agent import memory, personal_memory
+            if personal_memory.overview_requested(memory.recall_query(raw_messages)):
+                return await self._explicit_overview(raw_messages)
+        except Exception:
+            pass
         current = self._memory_future
         if current is not None and not current.done():
             return await self._fast_personal(raw_messages)
@@ -150,6 +164,23 @@ class MemoryChatMiddleware:
             return await self._fast_personal(raw_messages)
         except Exception:
             return await self._fast_personal(raw_messages)
+
+    async def _explicit_overview(self, raw_messages):
+        """Bounded local inventory fetch prioritized for direct memory questions.
+
+        This is read-only and never invokes Qwen, embeddings or external APIs;
+        the normal chat model still composes its reply using the grounded facts.
+        """
+        future = self._overview_executor.submit(
+            memory_lifecycle.fast_personal_context, raw_messages,
+        )
+        try:
+            return await asyncio.wait_for(
+                asyncio.shield(asyncio.wrap_future(future)),
+                timeout=3.0,
+            )
+        except Exception:
+            return raw_messages
 
     async def _fast_personal(self, raw_messages):
         """Preserve private opt-in recall even when legacy embeddings time out.
