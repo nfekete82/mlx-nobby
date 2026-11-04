@@ -316,6 +316,14 @@ def test_correct_birth_date_in_normal_chat_preserves_revision_history():
     assert {entry["value"] for entry in history} == {"11.05.1982", "12.05.1982"}
 
 
+def test_casual_birthday_correction_with_common_typo_works():
+    pm.set_enabled(True)
+    pm.observe("Mein Geburtsdatum ist der 11.05.1982")
+    pm.observe("Hab mich beim geburstadtum vertan. Richtig ist der 12.05.1982.")
+    assert pm.list_facts()[0]["value"] == "12.05.1982"
+    assert len(pm.list_facts(history=True)) == 2
+
+
 def test_direct_chat_birth_date_correction_and_repeated_save_do_not_duplicate():
     pm.set_enabled(True)
     pm.index_chat(user_chat("old", "Mein Geburtsdatum ist der 10.10.1980"))
