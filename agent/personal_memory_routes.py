@@ -14,7 +14,7 @@ def install_routes(app, chat_host):
         result = pm.set_enabled(payload["enabled"])
         if payload["enabled"]:
             with chat_host.CHATS_LOCK:
-                result = pm.rebuild(chat_host.list_chats())
+                result = pm.rebuild(list(chat_host.iter_memory_chats()) if hasattr(chat_host, "iter_memory_chats") else chat_host.list_chats())
         return result
 
     @app.post("/api/personal-memory/rebuild")
@@ -22,7 +22,7 @@ def install_routes(app, chat_host):
         if not pm.enabled():
             raise HTTPException(409, "Personal memory is disabled")
         with chat_host.CHATS_LOCK:
-            return pm.rebuild(chat_host.list_chats())
+            return pm.rebuild(list(chat_host.iter_memory_chats()) if hasattr(chat_host, "iter_memory_chats") else chat_host.list_chats())
 
     @app.get("/api/personal-memory/facts")
     def personal_facts(query: str = "", history: bool = False, limit: int = 200):
