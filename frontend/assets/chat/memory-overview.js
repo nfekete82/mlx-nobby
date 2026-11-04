@@ -35,13 +35,74 @@
         original: 'Original chat preserved',
         cancel: 'Cancel',
         save: 'Save',
+        smartTitle: 'Qwen · On-device',
+        smartOn: 'Enable local Qwen learning',
+        smartOff: 'Disable Qwen learning',
+        smartRebuild: 'Analyze earlier chats',
+        smartEnabled: 'Qwen analyzes new user messages in the background. Only verified facts are saved locally.',
+        smartDisabled: 'Optional: let your local Qwen recognize facts from normal conversations. No cloud service.',
+        smartRequiresPersonal: 'First enable Personal memory under Advanced settings.',
+        smartQueue: 'In queue',
+        smartProcessed: 'Analyzed',
+        smartFailed: 'Failed',
+        smartStarted: 'Older chat analysis scheduled. Progress appears here.',
+        smartHelp: 'Learning and history remain local. Check, correct or delete every fact below.',
+        groupAbout: 'About me',
+        groupPartner: 'Relationship & partner',
+        groupFamily: 'Family',
+        groupWork: 'Work & projects',
+        groupOther: 'Other information',
+        archiveDetails: 'Chat archive — raw messages',
+        archivedNote: 'These are searchable chat messages, not verified facts.',
+        malformed: 'Uncategorized fact',
+        sourceMessage: 'Chat source',
+        birthday: 'Birthday',
+        preference: 'Preference',
+        name: 'Name',
+        profession: 'Profession',
+        residence: 'Residence',
+        age: 'Age',
+        health: 'Health',
+        role: 'Role',
+        goal: 'Goal',
+        project: 'Project',
+        relationship: 'Relationship',
+        hobby: 'Hobby',
+        technology: 'Technology',
+        statusLabel: 'Status',
+        desc: 'Description',
+        date: 'Date',
+        education: 'Education',
+        decision: 'Decision',
     };
     let translations = {en: defaults, de: {}};
     const t = key => translations[window.MLXI18n?.getLanguage?.() === 'de' ? 'de' : 'en'][key]
         || defaults[key] || key;
     const sources = ['personal', 'legacy', 'archive'];
+    const fieldLabels = {
+        geburtstag:'birthday', vorliebe:'preference', 'präferenz':'preference',
+        name:'name', beruf:'profession', wohnort:'residence', alter:'age',
+        gesundheit:'health', rolle:'role', ziel:'goal', projekt:'project',
+        beziehung:'relationship', hobby:'hobby', technologie:'technology',
+        status:'statusLabel', beschreibung:'desc', termin:'date',
+        ausbildung:'education', entscheidung:'decision',
+    };
+    const categoryNames = ['groupAbout','groupPartner','groupFamily','groupWork','groupOther'];
+    function categoryFor(item) {
+        const subject = String(item.subject || '');
+        if (subject === 'ich') return 'groupAbout';
+        if (subject === 'partner') return 'groupPartner';
+        if (subject.startsWith('familie')) return 'groupFamily';
+        if (subject.startsWith('projekte') || subject === 'arbeit') return 'groupWork';
+        return 'groupOther';
+    }
+    function readableField(field) {
+        const raw = String(field || '').split('.')[0];
+        return t(fieldLabels[raw] || (raw === 'notiz' ? 'desc' : 'malformed'));
+    }
     const state = {paused:false, layers:{}, counts:{}, query:'', filter:'all',
-        pages:{personal:[],legacy:[],archive:[]}, total:{}, busy:false, epoch:0};
+        pages:{personal:[],legacy:[],archive:[]}, total:{}, busy:false, epoch:0,
+        smart:{enabled:false,pending:0,processed:0,failed:0}};
     const api = async (path, options = {}) => {
         const response = await fetch(path, options);
         const result = await response.json().catch(() => ({}));
@@ -80,6 +141,10 @@
         $('memoryOverviewSearch').placeholder = t('search');
         $('memoryOverviewWarning').textContent = t('preserved');
         $('memoryOverviewAdvancedLabel').textContent = t('details');
+        $('memorySmartTitle').textContent = t('smartTitle');
+        $('memorySmartHelp').textContent = t('smartHelp');
+        $('memorySmartRebuild').textContent = t('smartRebuild');
+        renderSmart();
         const filter = $('memoryOverviewFilter');
         for (const option of filter.options) option.textContent = t(option.value);
         renderStatus();
@@ -105,7 +170,7 @@
         return item.content;
     }
     function itemTitle(item, source) {
-        if (source === 'personal') return item.subject + ' · ' + item.field;
+        if (source === 'personal') return readableField(item.field);
         if (source === 'legacy') return item.category || t('legacy');
         return 'Chat ' + item.chat_id + ' · #' + item.ordinal + ' (' + item.role + ')';
     }
@@ -146,6 +211,34 @@
         }
         await refresh();
     }
+    function renderSmart() {
+        if (!$('memorySmartToggle')) return;
+        const flag = Boolean(state.smart.enabled);
+        $('memorySmartToggle').textContent = t(flag ? 'smartOff' : 'smartOn');
+        $('memorySmartRebuild').disabled = !flag || state.paused;
+        $('memorySmartToggle').disabled = !state.layers.personal;
+        $('memorySmartMessage').textContent = (
+            !state.layers.personal ? t('smartRequiresPersonal')
+            : t(flag ? 'smartEnabled' : 'smartDisabled')
+        );
+        $('memorySmartProgress').textContent = flag
+            ? t('smartQueue') + ': ' + (state.smart.pending || 0)
+                + ' · ' + t('smartProcessed') + ': ' + (state.smart.processed || 0)
+                + ' · ' + t('smartFailed') + ': ' + (state.smart.failed || 0)
+            : '';
+    }
+    async function smartToggle() {
+        const next = !state.smart.enabled;
+        await post('/api/mlx/memory/smart/config', {enabled:next});
+        state.smart.enabled = next;
+        renderSmart();
+    }
+    async function smartBackfill() {
+        const result = await post('/api/mlx/memory/smart/backfill', {limit:60});
+        state.smart = {...state.smart, ...result};
+        renderSmart();
+        notice(t('smartStarted'));
+    }
     function renderItems() {
         if (!$('memoryOverview')) return;
         const container = $('memoryOverviewItems');
@@ -155,10 +248,29 @@
             const group = element('div', '', 'memory-overview-group');
             const heading = element('h4', t(source) + ' (' +
                 (state.total[source] ?? state.counts[source] ?? 0) + ')');
-            group.append(heading);
+            const archiveFolder = source === 'archive' ? element('details') : null;
+            if (archiveFolder) {
+                const label = element('summary', t('archiveDetails') + ' (' +
+                    (state.total[source] ?? state.counts[source] ?? 0) + ')');
+                archiveFolder.append(label, element('p', t('archivedNote')));
+                group.append(archiveFolder);
+            } else group.append(heading);
+            const output = archiveFolder || group;
             const values = state.pages[source] || [];
-            if (!values.length) group.append(element('p', t('noItems'), 'memory-overview-empty'));
-            for (const item of values) {
+            if (!values.length && source !== 'personal') {
+                output.append(element('p', t('noItems'), 'memory-overview-empty'));
+            }
+            // Group meaningful personal facts by subject instead of showing
+            // opaque subject.hash identifiers from the storage schema.
+            const buckets = new Map();
+            if (source === 'personal') {
+                for (const item of values) {
+                    const name = categoryFor(item);
+                    if (!buckets.has(name)) buckets.set(name, []);
+                    buckets.get(name).push(item);
+                }
+            }
+            const addCard = (item, parent = output) => {
                 const card = element('div', '', 'memory-overview-item');
                 const label = element('strong', itemTitle(item, source));
                 const raw = String(itemBody(item, source) || '');
@@ -176,10 +288,26 @@
                     () => modify(item, source, 'delete'),
                     'settings-button memory-overview-danger'));
                 card.append(label, detail, meta, actions);
-                group.append(card);
+                parent.append(card);
+            };
+            if (source === 'personal') {
+                for (const name of categoryNames) {
+                    const facts = buckets.get(name) || [];
+                    const bucket = element('details', '', 'memory-subject-category');
+                    bucket.open = facts.length > 0;
+                    bucket.append(element('summary', t(name) + ' (' + facts.length + ')'));
+                    if (!facts.length) {
+                        bucket.append(element('p', t('noItems'), 'memory-overview-empty'));
+                    } else {
+                        for (const item of facts) addCard(item, bucket);
+                    }
+                    output.append(bucket);
+                }
+            } else {
+                for (const item of values) addCard(item);
             }
             if (values.length < (state.total[source] || 0)) {
-                group.append(action(t('showMore'), () => loadPage(source, true)));
+                output.append(action(t('showMore'), () => loadPage(source, true)));
             }
             container.append(group);
         }
@@ -208,9 +336,17 @@
             state.paused = Boolean(info.paused);
             state.counts = info.counts || {};
             state.layers = info.layers || {};
+            try {
+                const smarter = await api('/api/mlx/memory/smart/status');
+                if (epoch !== state.epoch) return;
+                state.smart = {...state.smart, ...smarter};
+            } catch (_) {
+                // Older native Agent installations still retain the legacy dashboard.
+            }
             state.pages = {personal:[],legacy:[],archive:[]};
             state.total = {};
             renderStatus();
+            renderSmart();
             await Promise.all(selected.map(source => loadPage(source)));
         } catch (error) {
             if (epoch === state.epoch) notice(t('error') + ' ' + error.message);
@@ -224,6 +360,7 @@
             const result = await post('/api/mlx/memory/dashboard/pause', {paused:next});
             state.paused = result.paused;
             renderStatus();
+            renderSmart();
             notice(t(state.paused ? 'paused' : 'active'));
         } catch (error) {
             notice(t('error') + ' ' + error.message);
@@ -250,6 +387,9 @@
             #memoryOverviewSearch{flex:1;min-width:160px}
             #memoryOverview .memory-overview-group{display:grid;gap:9px;padding-top:8px}
             #memoryOverview .memory-overview-group h4{font-size:.95rem;margin:8px 0 2px}
+            #memoryOverview .memory-subject-category{border:1px solid rgba(127,127,127,.22);border-radius:10px;padding:12px;display:grid;gap:8px;margin:6px 0}
+            #memoryOverview .memory-subject-category>summary{cursor:pointer;font-weight:600}
+            #memoryOverview .memory-subject-category>.memory-overview-item{margin-top:8px}
             #memoryOverview .memory-overview-item{border:1px solid rgba(127,127,127,.2);border-radius:10px;padding:12px;display:grid;gap:6px}
             #memoryOverview .memory-overview-item details{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85rem}
             #memoryOverview .memory-overview-item summary{cursor:pointer}
@@ -257,6 +397,9 @@
             #memoryOverview .memory-overview-actions{display:flex;justify-content:flex-end;gap:6px}
             #memoryOverview .memory-overview-danger{opacity:.75}
             #memoryOverview .memory-overview-empty{font-size:.82rem;color:var(--muted,#94a3b8)}
+            #memoryOverviewSmart{display:grid;gap:9px;padding:12px;border:1px solid rgba(127,127,127,.2);border-radius:10px}
+            #memoryOverviewSmart .smart-actions{display:flex;gap:8px;flex-wrap:wrap}
+            #memoryOverviewSmart small{color:var(--muted,#94a3b8)}
             #memoryOverviewAdvanced{margin-top:14px}
             #memoryOverviewAdvanced>summary{cursor:pointer;padding:12px;border:1px solid rgba(127,127,127,.25);border-radius:9px}
             #memoryOverviewAdvanced>.settings-card{margin-top:10px}
@@ -277,6 +420,20 @@
         const warning = element('small'); warning.id = 'memoryOverviewWarning';
         const layers = element('small'); layers.id = 'memoryOverviewLayers';
         const note = element('small'); note.id = 'memoryOverviewNote';
+        const smartPanel = element('section', '', '');
+        smartPanel.id = 'memoryOverviewSmart';
+        const smartTitle = element('strong', t('smartTitle'));
+        smartTitle.id = 'memorySmartTitle';
+        const smartHelp = element('small'); smartHelp.id = 'memorySmartHelp';
+        const smartMessage = element('p'); smartMessage.id = 'memorySmartMessage';
+        const smartActions = element('div', '', 'smart-actions');
+        const smartButton = action('', smartToggle);
+        smartButton.id = 'memorySmartToggle';
+        const smartRebuild = action('', smartBackfill);
+        smartRebuild.id = 'memorySmartRebuild';
+        smartActions.append(smartButton, smartRebuild);
+        const smartProgress = element('small'); smartProgress.id = 'memorySmartProgress';
+        smartPanel.append(smartTitle, smartHelp, smartMessage, smartActions, smartProgress);
         const search = element('div', '', 'memory-overview-search');
         const input = element('input'); input.id = 'memoryOverviewSearch'; input.type = 'search';
         const filter = document.createElement('select'); filter.id = 'memoryOverviewFilter';
@@ -288,7 +445,7 @@
         const items = element('div'); items.id = 'memoryOverviewItems';
         const status = element('p'); status.id = 'memoryOverviewNotice';
         status.setAttribute('role', 'status');
-        panel.append(top, mode, counts, layers, search, items, warning, note, status);
+        panel.append(top, mode, counts, layers, smartPanel, search, items, warning, note, status);
         const advanced = element('details'); advanced.id = 'memoryOverviewAdvanced';
         const advancedLabel = element('summary'); advancedLabel.id = 'memoryOverviewAdvancedLabel';
         advanced.append(advancedLabel);

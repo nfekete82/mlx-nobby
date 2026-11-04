@@ -130,3 +130,24 @@ test('UI never invokes destructive legacy config when pausing', async () => {
     await registry.get('memoryOverviewToggle').listeners.get('click')();
     assert.equal(requests.filter(x => /\/archive\/config|\/personal\/config/.test(x.url)).length,0);
 });
+
+test('semantic dashboard groups facts and hides archive behind disclosure', async () => {
+    const {registry,requests} = fixture();
+    registry.get('memoryManagerTab').listeners.get('click')();
+    await tick();
+    await tick();
+    assert.ok(registry.has('memorySmartToggle'));
+    assert.ok(registry.has('memorySmartRebuild'));
+    const rendered = registry.get('memoryOverviewItems').textContent;
+    assert.match(rendered, /About me/);
+    assert.match(rendered, /Preference/);
+    assert.doesNotMatch(rendered, /vorliebe\.[0-9a-f]+/);
+    assert.match(rendered, /Chat archive/);
+    assert.match(rendered, /archived synthetic turn/);
+    const enable = registry.get('memorySmartToggle');
+    await enable.listeners.get('click')();
+    assert.ok(requests.some(r => r.url.endsWith('/smart/config')
+        && r.options.method === 'POST'
+        && JSON.parse(r.options.body).enabled === true));
+    assert.equal(enable.textContent, 'Disable Qwen learning');
+});

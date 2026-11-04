@@ -36,6 +36,8 @@ from agent.memory_routes import install_routes as install_memory_routes
 from agent.memory_dashboard_routes import install_routes as install_memory_dashboard_routes
 from agent.chat_archive_routes import install_routes as install_chat_archive_routes
 from agent.personal_memory_routes import install_routes as install_personal_memory_routes
+from agent.smart_memory_routes import install_routes as install_smart_memory_routes
+from agent import semantic_personal_memory
 from agent.model_scout_routes import install_routes as install_model_scout_routes
 from agent.performance_observatory_routes import install_routes as install_performance_observatory_routes
 from agent.runtime_reliability_routes import install_routes as install_runtime_reliability_routes
@@ -65,6 +67,7 @@ install_memory_routes(app)
 install_memory_dashboard_routes(app)
 install_chat_archive_routes(app, gateway_host)
 install_personal_memory_routes(app, gateway_host)
+install_smart_memory_routes(app, gateway_host)
 install_model_scout_routes(
     app,
     model_provider=load_models,
@@ -82,5 +85,25 @@ install_performance_observatory_routes(app, status_provider=runtime_status)
 install_system_health_performance()
 install_system_health_routes(app)
 install_automation_routes(app)
+
+# Local Qwen extraction runs only on the native host and only after explicit
+# opt-in. Save requests enqueue work; the daemon does not block chat latency.
+def _smart_local_complete(message_json: str) -> str:
+    from agent.model_provider import ModelRequest
+    request = ModelRequest(
+        messages=[
+            {"role": "system", "content": semantic_personal_memory._SYSTEM},
+            {"role": "user", "content": message_json},
+        ],
+        role="agent", max_tokens=460, temperature=0,
+    )
+    return gateway_host.agent_model_provider().complete(request).text
+
+
+semantic_personal_memory.configure(
+    chat_reader=gateway_host.read_chat,
+    chat_lock=gateway_host.CHATS_LOCK,
+    model_complete=_smart_local_complete,
+)
 
 __all__ = ["app"]

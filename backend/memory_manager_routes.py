@@ -17,7 +17,7 @@ PERSONAL_MEMORY_SCRIPT = (
     b'<script src="/assets/chat/personal-memory.js?v=20261104-private-knowledge-review3"></script>'
 )
 MEMORY_OVERVIEW_SCRIPT = (
-    b'<script src="/assets/chat/memory-overview.js?v=20261104-unified-memory-v1"></script>'
+    b'<script src="/assets/chat/memory-overview.js?v=20261104-smart-local-qwen-v1"></script>'
 )
 MEMORY_MANAGER_CONSOLIDATION_SCRIPT = (
     b'<script src="/assets/chat/memory-manager-consolidation.js?v=20260928-memory-manager-v12"></script>'
@@ -380,6 +380,26 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
                 payload=payload, timeout=10,
             )
 
+
+    if "/api/mlx/memory/smart/status" not in paths:
+        @app.get("/api/mlx/memory/smart/status")
+        def smart_memory_status():
+            return agent_json_request(
+                "GET", "/api/smart-memory/status", timeout=10,
+            )
+
+        @app.post("/api/mlx/memory/smart/config")
+        def smart_memory_config(payload: dict):
+            return agent_json_request(
+                "POST", "/api/smart-memory/config", payload=payload, timeout=10,
+            )
+
+        @app.post("/api/mlx/memory/smart/backfill")
+        def smart_memory_backfill(payload: dict | None = None):
+            return agent_json_request(
+                "POST", "/api/smart-memory/backfill",
+                payload=payload or {}, timeout=20,
+            )
 
     if "/api/mlx/memory/dashboard/status" not in paths:
         @app.get("/api/mlx/memory/dashboard/status")

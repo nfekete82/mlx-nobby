@@ -21,6 +21,8 @@ SCAN_FILES = [
 
 # Intentional German content rather than untranslated UI.
 ALLOWLIST = {
+    # Structured memory schema field, not a user-facing German label.
+    "notiz",
     "modelList",
     "imageModelList",
     "Deutsch knapp",

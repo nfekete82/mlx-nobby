@@ -26,6 +26,7 @@ from agent import knowledge
 from agent import profile
 from agent import chat_archive
 from agent import personal_memory
+from agent import semantic_personal_memory
 from agent import memory_dashboard
 from agent import code_workspaces
 from agent.chat_fast_path import simple_chat_fast_path, safe_followup_chat_fast_path
@@ -417,6 +418,12 @@ def write_chat(chat):
                 personal_memory.index_chat(chat)
             except Exception as memory_error:
                 logger.warning("Private personal memory indexing failed: %s", memory_error)
+            try:
+                # Fire-and-forget: the local Qwen worker must never delay a
+                # chat save or write model output into the authoritative chat.
+                semantic_personal_memory.enqueue(chat)
+            except Exception:
+                logger.warning("Local semantic memory scheduling failed")
     except Exception as exc:
         raise HTTPException(
             status_code=500,

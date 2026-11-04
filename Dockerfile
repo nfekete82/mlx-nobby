@@ -19,6 +19,12 @@ COPY frontend /app/frontend
 COPY local_security.py /app/local_security.py
 COPY service_identity.py /app/service_identity.py
 
+# macOS checkout permissions can be 0600 after Git updates. The container
+# runs as UID 10001, so make only immutable packaged app assets readable.
+# This does not touch owner-only chat, profile or SQLite runtime volumes.
+RUN chmod -R a+rX /app/backend /app/frontend \
+    && chmod a+r /app/local_security.py /app/service_identity.py /app/VERSION
+
 # Version the shared frontend bootstrap with the exact image revision so a
 # rebuilt UI cannot keep using an older cached common.js in the browser.
 RUN find /app/frontend -maxdepth 1 -name '*.html' -type f \
