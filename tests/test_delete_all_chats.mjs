@@ -90,6 +90,9 @@ test('waits for old PUT and blocks concurrent creation/persistence before deleti
         return Promise.resolve(ok({ chat: options.body }));
     };
     const old = f.state.sessions[0];
+    // The new no-op guard correctly suppresses unchanged writes. Change the
+    // session to create the in-flight PUT that deletion must await.
+    old.updated = 3;
     const pendingPut = f.api.persistSession(old);
     const pendingDelete = f.api.deleteAllSessions();
     await new Promise(resolve => setImmediate(resolve));
@@ -98,7 +101,7 @@ test('waits for old PUT and blocks concurrent creation/persistence before deleti
     assert.equal(f.state.sessions.length, 2);
     put.resolve(ok({ chat: { ...old, updated: 9999 } }));
     await pendingPut; await entered;
-    assert.equal(old.updated, 2, 'stale PUT response is ignored');
+    assert.equal(old.updated, 3, 'stale PUT response is ignored');
     deleting.resolve(ok({ ok: true })); await pendingDelete;
     await f.api.persistSession(old);
     assert.deepEqual(Array.from(f.state.sessions, chat => chat.id), ['new-empty']);
