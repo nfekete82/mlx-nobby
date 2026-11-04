@@ -46,9 +46,10 @@ _RULES = [
         r"anwältin|entwicklerin|therapeutin|ingenieurin|krankenpflegerin|"
         r"studentin|psychologist|engineer|developer|teacher|doctor)\b", re.I), False),
     ("partner", "gesundheit", re.compile(
-        r"\bmeine\s+(?:freundin|partnerin)\s+(?:hat|leidet an)\s+"
-        r"(?P<value>lichen\s+sclerosus|(?:eine\s+)?(?:diagnose|erkrankung)\s+"
-        r"[\wÄÖÜäöüß -]{3,80})\b", re.I), True),
+        r"\bmeine\s+(?:freundin|partnerin)\s+"
+        r"(?:hat\s+(?:die\s+diagnose|eine\s+diagnostizierte\s+erkrankung)|"
+        r"leidet\s+an|ist\s+erkrankt\s+an)\s+"
+        r"(?P<value>[\wÄÖÜäöüß -]{3,100})(?=[,.;!?]|$)", re.I), True),
     ("familie.sohn", "name", re.compile(
         r"\bmein\s+sohn\s+(?:heißt|heisst)\s+(?P<value>[\wÄÖÜäöüß-]{2,80})\b", re.I), True),
     ("familie.tochter", "name", re.compile(
