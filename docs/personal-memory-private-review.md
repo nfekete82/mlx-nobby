@@ -1,5 +1,7 @@
 # MLX Nobby — Private personal memory and correction workflow
 
+For the current PR #421 extension, see [Persistent local intelligence memory](persistent-intelligence-memory.md). This document describes the earlier conservative layer.
+
 **This is local, opt-in, and reviewable; it is not model training.** Private
 conversations remain in the local authoritative chat store and never belong in
 the Git repository. GitHub contains code and synthetic tests only.
