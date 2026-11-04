@@ -389,8 +389,9 @@ def observe_user_message(message, *, source_chat_id=None):
         return {"action": "ignored"}
     forget = _EXPLICIT_FORGET.match(text)
     if forget:
-        removed = forget_matching(forget.group(1))
-        return {"action": "forgot", "count": len(removed), "memories": removed}
+        # Retention-first policy: chat text cannot erase long-term memories.
+        # Explicit deletion is managed through Settings -> Memory.
+        return {"action": "settings_only", "reason": "Delete memories explicitly in Settings."}
     candidate = _durable_candidate(text)
     if candidate is None:
         return {"action": "ignored"}
