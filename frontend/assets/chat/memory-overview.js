@@ -47,6 +47,15 @@
         smartFailed: 'Failed',
         smartStarted: 'Older chat analysis scheduled. Progress appears here.',
         smartFullProgress: 'Full history',
+        activityTitle: 'Media and work history',
+        activityLoad: 'Load activity',
+        activityMore: 'More activity',
+        activityNone: 'No indexed activity yet. Enable and rebuild the local chat archive.',
+        activityAll: 'All activities',
+        activityImage: 'Images',
+        activityVideo: 'Videos',
+        activityAgent: 'Agent work',
+        activityTool: 'Other tools',
         smartHelp: 'Learning and history remain local. Check, correct or delete every fact below.',
         groupAbout: 'About me',
         groupPartner: 'Relationship & partner',
@@ -103,7 +112,8 @@
     }
     const state = {paused:false, layers:{}, counts:{}, query:'', filter:'all',
         pages:{personal:[],legacy:[],archive:[]}, total:{}, busy:false, epoch:0,
-        smart:{enabled:false,pending:0,processed:0,failed:0}};
+        smart:{enabled:false,pending:0,processed:0,failed:0},
+        activity:{items:[],total:0,kind:''}};
     const api = async (path, options = {}) => {
         const response = await fetch(path, options);
         const result = await response.json().catch(() => ({}));
@@ -145,6 +155,12 @@
         $('memorySmartTitle').textContent = t('smartTitle');
         $('memorySmartHelp').textContent = t('smartHelp');
         $('memorySmartRebuild').textContent = t('smartRebuild');
+        $('memoryActivityTitle').textContent = t('activityTitle');
+        $('memoryActivityLoad').textContent = t('activityLoad');
+        $('memoryActivityMore').textContent = t('activityMore');
+        for (const item of $('memoryActivityFilter').options) {
+            item.textContent = t(item.dataset.label);
+        }
         renderSmart();
         const filter = $('memoryOverviewFilter');
         for (const option of filter.options) option.textContent = t(option.value);
@@ -270,6 +286,42 @@
         ensureSmartPolling();
         notice(t('smartStarted'));
     }
+    async function loadActivities(append = false) {
+        const kind = $('memoryActivityFilter').value;
+        const offset = append && kind === state.activity.kind
+            ? state.activity.items.length : 0;
+        const data = await api('/api/mlx/memory/archive/activities?kind=' +
+            encodeURIComponent(kind) + '&limit=25&offset=' + offset);
+        state.activity = {
+            kind, total: Number(data.total) || 0,
+            items: offset ? [...state.activity.items, ...(data.activities || [])]
+                : (data.activities || []),
+        };
+        const output = $('memoryActivityList');
+        output.replaceChildren();
+        if (!state.activity.items.length) {
+            output.append(element('p', t('activityNone'), 'memory-overview-empty'));
+        }
+        for (const item of state.activity.items) {
+            const card = element('div', '', 'memory-overview-item');
+            const label = element('strong',
+                item.kind + ' · ' + item.operation + ' · ' + item.status);
+            const summary = [
+                item.model ? 'Model: ' + item.model : '',
+                item.project ? 'Projekt: ' + item.project : '',
+                item.prompt || '',
+            ].filter(Boolean).join(' | ');
+            const detail = element('p', summary);
+            const source = element('small',
+                'Chat ' + item.chat_id + ' · #' + item.ordinal +
+                (item.artifact_ref ? ' · ' + item.artifact_ref : ''),
+                'memory-overview-meta');
+            card.append(label, detail, source);
+            output.append(card);
+        }
+        $('memoryActivityMore').hidden = state.activity.items.length >= state.activity.total;
+    }
+
     function renderItems() {
         if (!$('memoryOverview')) return;
         const container = $('memoryOverviewItems');
@@ -467,6 +519,34 @@
         smartActions.append(smartButton, smartRebuild);
         const smartProgress = element('small'); smartProgress.id = 'memorySmartProgress';
         smartPanel.append(smartTitle, smartHelp, smartMessage, smartActions, smartProgress);
+        const activityPanel = element('details', '', 'memory-subject-category');
+        activityPanel.id = 'memoryOverviewActivities';
+        const activityTitle = element('summary', t('activityTitle'));
+        activityTitle.id = 'memoryActivityTitle';
+        const activityFilter = element('select'); activityFilter.id = 'memoryActivityFilter';
+        for (const [kind, label] of [
+            ['', 'activityAll'], ['image', 'activityImage'],
+            ['video', 'activityVideo'], ['agent', 'activityAgent'],
+            ['tool', 'activityTool'],
+        ]) {
+            const option = element('option');
+            option.value = kind;
+            option.dataset.label = label;
+            activityFilter.append(option);
+        }
+        const activityLoad = action('', () => loadActivities(false));
+        activityLoad.id = 'memoryActivityLoad';
+        const activityMore = action('', () => loadActivities(true));
+        activityMore.id = 'memoryActivityMore';
+        activityMore.hidden = true;
+        const activityList = element('div'); activityList.id = 'memoryActivityList';
+        activityPanel.append(
+            activityTitle, activityFilter, activityLoad,
+            activityList, activityMore,
+        );
+        activityFilter.addEventListener('change', () => {
+            if (activityPanel.open) void loadActivities(false);
+        });
         const search = element('div', '', 'memory-overview-search');
         const input = element('input'); input.id = 'memoryOverviewSearch'; input.type = 'search';
         const filter = document.createElement('select'); filter.id = 'memoryOverviewFilter';
@@ -478,7 +558,8 @@
         const items = element('div'); items.id = 'memoryOverviewItems';
         const status = element('p'); status.id = 'memoryOverviewNotice';
         status.setAttribute('role', 'status');
-        panel.append(top, mode, counts, layers, smartPanel, search, items, warning, note, status);
+        panel.append(top, mode, counts, layers, smartPanel, activityPanel,
+            search, items, warning, note, status);
         const advanced = element('details'); advanced.id = 'memoryOverviewAdvanced';
         const advancedLabel = element('summary'); advancedLabel.id = 'memoryOverviewAdvancedLabel';
         advanced.append(advancedLabel);
