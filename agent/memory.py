@@ -349,14 +349,26 @@ def context(query, *, limit=DEFAULT_LIMIT):
     # Show the bounded, stored long-term inventory when explicitly asked.
     from agent import personal_memory
     if personal_memory.overview_requested(query):
-        stored = list_memories(limit=24)
+        stored = list_memories(limit=25)
         if not stored:
             return ""
+        compact = []
+        chars = 0
+        for entry in stored:
+            text = str(entry["text"])[:300]
+            if compact and chars + len(text) > 4500:
+                break
+            compact.append({**entry, "text": text})
+            chars += len(text)
+        omitted = len(stored) - len(compact)
         return (
             "THE USER REQUESTED AN OVERVIEW OF STORED LONG-TERM MEMORY.\n"
-            "Summarize the following stored items alongside relevant private "
-            "facts and profile data, distinguishing older or uncertain claims.\n\n"
-            + context_from_memories(stored)
+            "Summarize stored items alongside relevant private facts and "
+            "profile data, distinguishing older or uncertain claims. "
+            "This inventory is bounded, not a complete transcript.\n\n"
+            + context_from_memories(compact)
+            + (f"\n{omitted} additional long-term memory items omitted "
+               "because of context limits." if omitted else "")
         )
     return context_from_memories(retrieve(query, limit=limit))
 
