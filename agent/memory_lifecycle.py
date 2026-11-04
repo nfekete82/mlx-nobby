@@ -5,6 +5,7 @@ from __future__ import annotations
 from agent import memory
 from agent import memory_consolidation
 from agent import memory_privacy
+from agent import personal_memory
 
 
 def _consolidate(memory_id: str | None) -> dict:
@@ -127,12 +128,27 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory
 
     # Retrieval happens only after consolidation so an absorbed older memory
     # cannot be injected alongside its newer replacement in the same request.
-    return memory.enrich_messages(
+    enriched = memory.enrich_messages(
         copied,
         source_chat_id=source_chat_id,
         observe=False,
         limit=limit,
     )
+    try:
+        clarification = personal_memory.question_for(last_user)
+        personal_context = personal_memory.context(last_user, limit=6)
+        extra = "\n\n".join(part for part in (
+            clarification, personal_context,
+        ) if part)
+        if extra:
+            index = 0
+            while index < len(enriched) and enriched[index].get("role") == "system":
+                index += 1
+            enriched.insert(index, {"role": "system", "content": extra})
+    except Exception:
+        # Memory must never block normal chat completion.
+        pass
+    return enriched
 
 
 __all__ = [
