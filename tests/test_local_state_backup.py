@@ -56,7 +56,7 @@ def test_private_backup_rejects_git_destinations_and_changing_sources(tmp_path, 
         return result
 
     monkeypatch.setattr(backup.shutil, 'copy2', changing)
-    with pytest.raises(RuntimeError, match='Source changed'):
+    with pytest.raises(RuntimeError, match='Raw chat files changed'):
         backup.create(tmp_path / 'backup', {'mlx-web': root})
     assert not (tmp_path / 'backup/manifest.json').exists()
 
