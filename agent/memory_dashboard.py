@@ -103,7 +103,8 @@ def list_items(source: str, *, query: str = "", offset: int = 0, limit: int = 20
         cols = ("id,subject,field,value,sensitive,source_chat_id,source_ordinal,"
                 "status,updated_at")
         table = "facts"
-        clause = "subject LIKE ? ESCAPE '\\' OR field LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\'"
+        clause = ("status='active' AND (subject LIKE ? ESCAPE '\\' OR "
+                  "field LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\')")
         args = (_escape_like(query),) * 3
         order = "updated_at DESC,id DESC"
     elif source == "legacy":
