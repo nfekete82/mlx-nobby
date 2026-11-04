@@ -29,7 +29,7 @@ def test_partner_and_family_details_are_local_and_source_linked():
     assert pm.index_chat(user_chat("conversation-1",
         "Meine Freundin heißt Alex",
         "Meine Freundin ist Psychologin",
-        "Meine Freundin hat Lichen sclerosus",
+        "Meine Freundin hat die Diagnose Beispielerkrankung",
         "Mein Sohn heißt Finn",
         "Meine Tochter heißt Mia",
     ))["processed"] == 5
