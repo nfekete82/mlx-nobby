@@ -70,7 +70,18 @@
     "education": "Education",
     "decision": "Decision",
     "smartTitle": "Qwen · On-device",
-    "smartFullProgress": "Historical messages scanned"
+    "smartFullProgress": "Historical messages scanned",
+    "activityTitle": "Created media and work history",
+    "activityLoad": "Load activities",
+    "activityMore": "Show more activities",
+    "activityNone": "No activity indexed yet. Enable and rebuild the local chat archive.",
+    "activityAll": "All activities",
+    "activityImage": "Images",
+    "activityVideo": "Videos",
+    "activityAgent": "Agent work",
+    "activityTool": "Other tools",
+    "activityModel": "Model",
+    "activityProject": "Project"
   },
   "de": {
     "title": "Dein Gedächtnis",
@@ -143,6 +154,17 @@
     "education": "Ausbildung",
     "decision": "Entscheidung",
     "smartTitle": "Qwen · Lokal",
-    "smartFullProgress": "Historische Nachrichten geprüft"
+    "smartFullProgress": "Historische Nachrichten geprüft",
+    "activityTitle": "Erstellte Medien & Arbeitschronik",
+    "activityLoad": "Aktivitäten laden",
+    "activityMore": "Weitere Aktivitäten",
+    "activityNone": "Noch keine Aktivitäten indiziert. Aktiviere das lokale Chatarchiv und erstelle den Suchindex neu.",
+    "activityAll": "Alle Aktivitäten",
+    "activityImage": "Bilder",
+    "activityVideo": "Videos",
+    "activityAgent": "Agent-Aufgaben",
+    "activityTool": "Weitere Werkzeuge",
+    "activityModel": "Modell",
+    "activityProject": "Projekt"
   }
 }
