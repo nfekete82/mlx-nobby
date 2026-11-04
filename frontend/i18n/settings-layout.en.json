@@ -9,6 +9,8 @@
   "downloads": "Downloads",
   "knowledge": "Knowledge",
   "knowledge_description": "Local documents and semantic search.",
+  "memory": "Memory",
+  "memory_description": "Private chat history, personal memories, corrections and deletion.",
   "personal": "Personal",
   "personal_description": "Profile, response style and appearance.",
   "tools": "Tools",
