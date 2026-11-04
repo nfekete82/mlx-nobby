@@ -377,6 +377,30 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
             )
 
 
+    if "/api/mlx/memory/dashboard/status" not in paths:
+        @app.get("/api/mlx/memory/dashboard/status")
+        def memory_dashboard_status():
+            return agent_json_request("GET", "/api/memory-dashboard/status", timeout=10)
+
+        @app.post("/api/mlx/memory/dashboard/pause")
+        def memory_dashboard_pause(payload: dict):
+            return agent_json_request(
+                "POST", "/api/memory-dashboard/pause", payload=payload, timeout=10,
+            )
+
+        @app.get("/api/mlx/memory/dashboard/items")
+        def memory_dashboard_items(
+            source: str, query: str = "", offset: int = 0, limit: int = 20
+        ):
+            params = urllib.parse.urlencode({
+                "source": source, "query": query,
+                "offset": max(0, int(offset)), "limit": max(1, min(int(limit), 50)),
+            })
+            return agent_json_request(
+                "GET", "/api/memory-dashboard/items?" + params, timeout=15,
+            )
+
+
 __all__ = [
     "MemoryManagerUiMiddleware",
     "inject_memory_manager_script",
