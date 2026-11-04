@@ -306,6 +306,73 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
             )
 
 
+    if "/api/mlx/memory/personal/status" not in paths:
+        @app.get("/api/mlx/memory/personal/status")
+        def personal_status():
+            return agent_json_request(
+                "GET", "/api/personal-memory/status", timeout=10,
+            )
+
+        @app.post("/api/mlx/memory/personal/config")
+        def personal_config(payload: dict):
+            return agent_json_request(
+                "POST", "/api/personal-memory/config",
+                payload=payload, timeout=120,
+            )
+
+        @app.post("/api/mlx/memory/personal/rebuild")
+        def personal_rebuild():
+            return agent_json_request(
+                "POST", "/api/personal-memory/rebuild", payload={}, timeout=120,
+            )
+
+        @app.get("/api/mlx/memory/personal/facts")
+        def personal_facts(query: str = "", history: bool = False, limit: int = 200):
+            params = urllib.parse.urlencode({
+                "query": query,
+                "history": "true" if history else "false",
+                "limit": max(1, min(int(limit), 250)),
+            })
+            return agent_json_request(
+                "GET", "/api/personal-memory/facts?" + params, timeout=15,
+            )
+
+        @app.post("/api/mlx/memory/personal/facts")
+        def personal_add(payload: dict):
+            return agent_json_request(
+                "POST", "/api/personal-memory/facts", payload=payload, timeout=10,
+            )
+
+        @app.patch("/api/mlx/memory/personal/facts/{fact_id}")
+        def personal_edit(fact_id: str, payload: dict):
+            return agent_json_request(
+                "PATCH", "/api/personal-memory/facts/" +
+                urllib.parse.quote(fact_id, safe=""),
+                payload=payload, timeout=10,
+            )
+
+        @app.delete("/api/mlx/memory/personal/facts/{fact_id}")
+        def personal_delete(fact_id: str):
+            return agent_json_request(
+                "DELETE", "/api/personal-memory/facts/" +
+                urllib.parse.quote(fact_id, safe=""), timeout=10,
+            )
+
+        @app.get("/api/mlx/memory/personal/conflicts")
+        def personal_conflicts():
+            return agent_json_request(
+                "GET", "/api/personal-memory/conflicts", timeout=10,
+            )
+
+        @app.post("/api/mlx/memory/personal/conflicts/{conflict_id}/resolve")
+        def personal_resolve(conflict_id: str, payload: dict):
+            return agent_json_request(
+                "POST", "/api/personal-memory/conflicts/" +
+                urllib.parse.quote(conflict_id, safe="") + "/resolve",
+                payload=payload, timeout=10,
+            )
+
+
 __all__ = [
     "MemoryManagerUiMiddleware",
     "inject_memory_manager_script",
