@@ -9,6 +9,8 @@
   "downloads": "Downloads",
   "knowledge": "Wissen",
   "knowledge_description": "Lokale Dokumente und semantische Suche.",
+  "memory": "Gedächtnis",
+  "memory_description": "Private Chatverläufe, persönliche Erinnerungen, Korrekturen und Löschung.",
   "personal": "Persönlich",
   "personal_description": "Profil, Antwortstil und Darstellung.",
   "tools": "Tools",
