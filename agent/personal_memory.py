@@ -53,8 +53,8 @@ _BIRTH_CORRECTIONS = (
         r"(?:der|den|am)?\s*" + _BIRTH_DATE, re.I,
     ),
     re.compile(
-        r"\b(?:bei\s+)?mein(?:em|en)?\s+"
-        r"(?:geburtsdatum|geburtstag)\s+vertan\b"
+        r"\b(?:bei\s+meinem|beim|mein(?:em|en)?)\s+"
+        r"(?:geburtsdatum|geburtstag|geburstadtum)\s+vertan\b"
         r"[^\n]{0,100}?\b(?:richtig\s+ist|es\s+ist|lautet)\s+"
         r"(?:der|den|am)?\s*" + _BIRTH_DATE, re.I,
     ),
