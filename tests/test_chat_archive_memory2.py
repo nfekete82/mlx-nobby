@@ -73,15 +73,16 @@ def test_rebuild_retains_deleted_chats_as_long_term_memory():
     assert archive.search("beta")
 
 
-def test_opt_out_purges_derived_content():
+def test_opt_out_pauses_search_but_keeps_derived_history():
     archive.set_enabled(True)
     archive.index_chat(chat("a", "Highly private planning note"))
     assert archive.search("planning")
     result = archive.set_enabled(False)
-    assert result["indexed_messages"] == 0
+    assert result["enabled"] is False
+    assert result["indexed_messages"] == 1  # preserved until explicit memory delete
     assert archive.search("planning") == []
     archive.set_enabled(True)
-    assert archive.search("planning") == []
+    assert archive.search("planning")
 
 
 def test_no_tool_messages_or_files_indexed():
