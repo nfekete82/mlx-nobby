@@ -1188,12 +1188,14 @@
   },
   "chat_retention":   {
     "title": "Permanently delete data",
-    "warning": "Chats and their saved revisions are retained indefinitely. Only here can you explicitly and permanently delete them. Derived memories may also be erased. Backups are separate.",
+    "warning": "Delete chats directly in the sidebar without erasing long-term memory. Memories and knowledge archives are managed separately in Memory settings.",
     "one": "Permanently delete current chat",
     "all": "Permanently delete all chats",
     "confirm": "This irreversibly deletes chats and saved revisions. Associated memories may be lost. Backups are retained separately. Type DELETE to continue.",
     "final_confirm": "Delete permanently",
     "error_title": "Deletion failed",
-    "error": "Deletion could not be completed. Check the Agent status before retrying."
+    "error": "Deletion could not be completed. Check the Agent status before retrying.",
+    "delete_chats_only": "Remove all chats from the chat history? Long-term memories and generated media will be retained. A private knowledge archive of the chats will be saved.",
+    "delete_one_only": "Remove this chat from the history? Long-term memories and generated media will be retained."
   }
 }
