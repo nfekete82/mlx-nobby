@@ -120,6 +120,47 @@ test('saving one chat never resubmits unrelated unchanged chats from other tabs'
     assert.equal(copyFor(server.chats.values())?.messages.at(-1).content, 'Stale data');
 });
 
+test('settings-only concurrent edits preserve both custom prompts under distinct IDs', async () => {
+    const server = store();
+    const first = tab(server), second = tab(server);
+    await first.sessions.syncWithServer();
+    await second.sessions.syncWithServer();
+
+    const a = first.state.sessions.find(s => s.id === 'chat-a');
+    a.settings.system_prompt = 'Prompt from tab A';
+    a.settings.preset_id = 'custom';
+    a.updated = 20;
+    await first.sessions.persistSession(a);
+
+    const b = second.state.sessions.find(s => s.id === 'chat-a');
+    b.settings.system_prompt = 'Prompt from tab B';
+    b.settings.preset_id = 'custom';
+    b.updated = 30;
+    await second.sessions.persistSession(b);
+
+    assert.equal(server.chats.get('chat-a').settings.system_prompt, 'Prompt from tab A');
+    const fork = copyFor(server.chats.values());
+    assert.ok(fork, 'settings-only changes must not be discarded');
+    assert.equal(fork.settings.system_prompt, 'Prompt from tab B');
+    assert.deepEqual(fork.messages, server.chats.get('chat-a').messages);
+});
+
+test('offline settings-only changes survive without modifying authoritative history', async () => {
+    const server = store();
+    const cached = record('chat-a', 99, 'Original A');
+    cached.settings.system_prompt = 'Offline custom prompt';
+    cached.settings.preset_id = 'custom';
+    const cache = new Map([['mlx-web-chats-v1', JSON.stringify([cached])]]);
+    const client = tab(server, cache);
+    client.sessions.loadSessions();
+    await client.sessions.syncWithServer();
+
+    assert.equal(server.chats.get('chat-a').settings.system_prompt, '');
+    const fork = copyFor(server.chats.values());
+    assert.ok(fork, 'offline prompt must become a separate durable chat');
+    assert.equal(fork.settings.system_prompt, 'Offline custom prompt');
+});
+
 test('two rapid writes for one chat are serialized and persist the latest message', async () => {
     const server = store();
     const client = tab(server);
