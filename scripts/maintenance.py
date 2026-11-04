@@ -40,7 +40,11 @@ def inspect_tree(path: Path) -> tuple[int, float] | None:
             return None
         size, newest = 0, root_stat.st_mtime
         device = root_stat.st_dev
-        for current, dirs, files in os.walk(path, topdown=True, followlinks=False):
+        def refuse_walk_error(error: OSError) -> None:
+            raise error
+
+        for current, dirs, files in os.walk(path, topdown=True, followlinks=False,
+                                            onerror=refuse_walk_error):
             here = Path(current)
             for name in dirs + files:
                 item = here / name
@@ -100,7 +104,8 @@ def unused_log(path: Path) -> bool:
         return False
     result = subprocess.run(["lsof", "-nP", "--", str(path)],
                             capture_output=True, text=True, check=False)
-    return result.returncode == 1 and not result.stdout.strip()
+    return (result.returncode == 1 and not result.stdout.strip()
+            and not result.stderr.strip())
 
 
 def _run(args: list[str]) -> subprocess.CompletedProcess[str]:
