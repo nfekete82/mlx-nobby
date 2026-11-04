@@ -195,6 +195,11 @@ def _extract(text):
             prefix = text[max(0, match.start() - 16):match.start()].lower()
             if re.search(r"\b(?:nicht|wenn|falls|vielleicht)\s*$", prefix):
                 continue
+            # Preferences are sets, not single-valued attributes. Liking
+            # running and coffee is not a contradiction.
+            if field in {"vorliebe", "präferenz"}:
+                field = field + "." + hashlib.sha256(
+                    value.casefold().encode()).hexdigest()[:12]
             entries.append((subject, field, value, sensitive))
     # Specific memories for named events e.g. "Mein Zahnarzttermin ist am ..."
     event = re.search(
