@@ -33,7 +33,7 @@ const ok = data => ({ response: { ok: true }, data });
 const deferred = () => { let resolve; const promise = new Promise(done => resolve = done); return { promise, resolve }; };
 
 test('cancel preserves history, cache, settings and running jobs', async () => {
-    const f = fixture(); f.confirm = false;
+    const f = fixture(); await f.api.syncWithServer(); f.confirm = false;
     const before = JSON.stringify(f.state);
     assert.equal(await f.api.deleteAllSessions(), false);
     assert.equal(JSON.stringify(f.state), before);
@@ -42,7 +42,7 @@ test('cancel preserves history, cache, settings and running jobs', async () => {
 });
 
 test('bulk deletion stops every session, clears only chat data and creates one empty chat', async () => {
-    const f = fixture(); const old = [...f.state.sessions];
+    const f = fixture(); await f.api.syncWithServer(); const old = [...f.state.sessions];
     assert.equal(await f.api.deleteAllSessions(), true);
     assert.equal(f.resets.length, 2);
     assert.ok(old.every(session => f.api.runtimeRevision(session) === 1));
@@ -64,7 +64,7 @@ test('bulk deletion stops every session, clears only chat data and creates one e
 });
 
 test('unreachable server retains local history and shows a failure dialog', async () => {
-    const f = fixture(); f.respond = async () => { throw new Error('offline'); };
+    const f = fixture(); await f.api.syncWithServer(); f.respond = async () => { throw new Error('offline'); };
     assert.equal(await f.api.deleteAllSessions(), false);
     assert.deepEqual(Array.from(f.state.sessions, chat => chat.id), ['one', 'two']);
     assert.equal(f.attachments, 0); assert.equal(f.detach, 0);
@@ -74,7 +74,7 @@ test('unreachable server retains local history and shows a failure dialog', asyn
 });
 
 test('late sync response cannot restore chats after deletion', async () => {
-    const f = fixture(); const sync = deferred();
+    const f = fixture(); await f.api.syncWithServer(); const sync = deferred();
     f.respond = (url, options) => options?.method === 'DELETE' ? Promise.resolve(ok({ ok: true })) : sync.promise;
     const pending = f.api.syncWithServer();
     await f.api.deleteAllSessions();
