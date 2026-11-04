@@ -247,29 +247,22 @@ def enabled():
 
 
 def set_enabled(value: bool):
+    """Pause or resume private memory processing without deleting any data.
+
+    Erasure is intentionally a separate explicit Settings action.
+    """
     if type(value) is not bool:
         raise ValueError("enabled must be boolean")
     if not value and not DB_PATH.exists():
         return {"enabled": False}
     with LOCK, _connect() as conn:
         _schema(conn)
-        if not value:
-            conn.execute("DELETE FROM conflicts")
-            conn.execute("DELETE FROM facts")
-            conn.execute("DELETE FROM observed")
-            conn.execute("DELETE FROM smart_observed")
-            # Keep only exclusion/forgetting preferences, never private values.
-            # A later opt-in must not silently resurrect explicitly deleted facts.
         conn.execute(
             "INSERT INTO settings(key,value) VALUES('enabled',?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             ("1" if value else "0",),
         )
-        if not value:
-            conn.commit()
-            conn.execute("VACUUM")
     return {"enabled": value}
-
 
 def _row(row):
     return dict(row) if row is not None else None
