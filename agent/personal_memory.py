@@ -188,6 +188,9 @@ def _extract(text):
                 value = _value(match.group("value"))
             except ValueError:
                 continue
+            if value.casefold() in {"nicht", "kein", "keine", "vielleicht",
+                                    "vermutlich", "eventuell", "unbekannt"}:
+                continue
             # Negated/counterfactual user statements must not become facts.
             prefix = text[max(0, match.start() - 16):match.start()].lower()
             if re.search(r"\b(?:nicht|wenn|falls|vielleicht)\s*$", prefix):
