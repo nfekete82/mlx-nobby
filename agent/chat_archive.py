@@ -154,6 +154,119 @@ def _activity(message: dict) -> list[str]:
     return found[:5]
 
 
+_PRIVATE_METADATA = re.compile(
+    r"\b(?:password|passwort|api[_ -]?key|secret|access[_ -]?token|"
+    r"bearer|private[_ -]?key|pin)\b", re.I,
+)
+_MEDIA_QUERY = re.compile(
+    r"\b(?:video\w*|film\w*|clips?|bild\w*|foto\w*|image\w*|"
+    r"generier\w*|erstell\w*|gemacht|produzier\w*|"
+    r"modell\w*|models?|medien|media)\b", re.I,
+)
+_VIDEO_QUERY = re.compile(r"\b(?:video\w*|film\w*|clips?)\b", re.I)
+_IMAGE_QUERY = re.compile(r"\b(?:bild\w*|foto\w*|image\w*)\b", re.I)
+
+
+def _safe_metadata(value, limit=1000):
+    if not isinstance(value, (str, int, float)):
+        return ""
+    text = re.sub(r"\s+", " ", str(value)).strip()
+    if not text or _PRIVATE_METADATA.search(text):
+        return ""
+    if len(text) > limit:
+        text = text[:limit] + "…"
+    return text
+
+
+def _activity_record(message, *, user_prompt="", project=""):
+    if not isinstance(message, dict) or message.get("role") != "assistant":
+        return None
+    tool = message.get("tool_result")
+    tool = tool if isinstance(tool, dict) else {}
+    operation = tool.get("tool")
+    job = tool.get("data")
+    job = job.get("job") if isinstance(job, dict) else {}
+    if not isinstance(job, dict):
+        job = {}
+    kind = "tool"
+    for key in ("image_job", "video_job", "shorts_job", "agent_run"):
+        entry = message.get(key)
+        if not isinstance(entry, dict):
+            continue
+        if key == "image_job":
+            kind = "image"
+        elif key in ("video_job", "shorts_job"):
+            kind = "video"
+        elif key == "agent_run":
+            kind = "agent"
+        if not job:
+            job = entry
+        if not operation:
+            operation = key
+        break
+    op = _safe_metadata(operation, 80)
+    if op.startswith("image_"):
+        kind = "image"
+    elif op.startswith(("video_", "shorts_")):
+        kind = "video"
+    elif op in ("coding_agent", "research_agent", "diagnostic_agent", "orchestrator"):
+        kind = "agent"
+    if not op or not _SAFE_ACTIVITY_FIELD.fullmatch(op):
+        return None
+    status = str(tool.get("status") or job.get("status") or "").strip().lower()
+    if status not in _SAFE_STATUS:
+        return None
+    payload = job.get("payload")
+    payload = payload if isinstance(payload, dict) else {}
+    output = job.get("result")
+    output = output if isinstance(output, dict) else {}
+    request = job.get("request")
+    request = request if isinstance(request, dict) else {}
+    model = (job.get("model") or payload.get("model")
+             or output.get("model") or request.get("model")
+             or payload.get("image_model_id") or "")
+    if isinstance(model, str) and "/" in model:
+        model = model.rstrip("/").split("/")[-1]
+    model = _safe_metadata(model, 120)
+    prompt = ""
+    if kind in ("video", "image"):
+        # Store creative briefs; the last user instruction is a fallback if
+        # the job payload does not contain an explicit generated prompt.
+        for candidate in (
+            payload.get("prompt"), job.get("prompt"),
+            output.get("prompt"), request.get("prompt"), user_prompt,
+        ):
+            prompt = _safe_metadata(candidate, 1400)
+            if prompt:
+                break
+    artifact = ""
+    for location in (
+        tool.get("artifacts"), tool.get("data", {}).get("image")
+        if isinstance(tool.get("data"), dict) else None,
+        tool.get("data", {}).get("video")
+        if isinstance(tool.get("data"), dict) else None,
+        output,
+    ):
+        entries = location if isinstance(location, list) else [location]
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            candidate = (
+                entry.get("artifact_id") or entry.get("image_id")
+                or entry.get("video_id")
+            )
+            if isinstance(candidate, str) and _SAFE_ACTIVITY_FIELD.fullmatch(candidate):
+                artifact = candidate[:80]
+                break
+        if artifact:
+            break
+    return {
+        "kind": kind, "operation": op, "status": status, "model": model,
+        "prompt": prompt, "project": _safe_metadata(project, 120),
+        "artifact_ref": artifact,
+    }
+
+
 def _entries(chat):
     messages = chat.get("messages", [])
     # A saved chat title helps recover actions from a project even when
@@ -185,6 +298,22 @@ def index_chat(chat):
     chat_id = str(chat["id"])
     updated = float(chat["updated"])
     entries = {ordinal: (role, content) for ordinal, role, content in _entries(chat)}
+    # Reconstruct typed activity deterministically from persisted chat turns.
+    # A repeated save updates the same source key, never duplicates a record.
+    records = {}
+    last_user = ""
+    for ordinal, message in enumerate(chat.get("messages", [])):
+        if not isinstance(message, dict):
+            continue
+        if message.get("role") == "user" and isinstance(message.get("content"), str):
+            last_user = message["content"]
+            continue
+        record = _activity_record(
+            message, user_prompt=last_user,
+            project=str(chat.get("title") or ""),
+        )
+        if record:
+            records[(ordinal, record["kind"])] = record
     with LOCK, _connect() as conn:
         _schema(conn)
         active = conn.execute(
@@ -217,6 +346,38 @@ def index_chat(chat):
                 "SET role=excluded.role,content=excluded.content,"
                 "updated=excluded.updated",
                 (chat_id, ordinal, role, content, updated),
+            )
+        stored = {
+            (row["ordinal"], row["kind"]): row
+            for row in conn.execute(
+                "SELECT * FROM archive_activity WHERE chat_id=?", (chat_id,),
+            )
+        }
+        for ordinal, kind in stored.keys() - records.keys():
+            conn.execute(
+                "DELETE FROM archive_activity "
+                "WHERE chat_id=? AND ordinal=? AND kind=?",
+                (chat_id, ordinal, kind),
+            )
+        for (ordinal, kind), record in records.items():
+            previous = stored.get((ordinal, kind))
+            fields = ("operation", "status", "model", "prompt", "project", "artifact_ref")
+            if previous is not None and all(
+                previous[field] == record[field] for field in fields
+            ):
+                continue
+            conn.execute(
+                "INSERT INTO archive_activity "
+                "(chat_id,ordinal,kind,operation,status,model,prompt,project,"
+                "artifact_ref,updated) VALUES(?,?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(chat_id,ordinal,kind) DO UPDATE SET "
+                "operation=excluded.operation,status=excluded.status,"
+                "model=excluded.model,prompt=excluded.prompt,"
+                "project=excluded.project,artifact_ref=excluded.artifact_ref,"
+                "updated=excluded.updated",
+                (chat_id, ordinal, kind, record["operation"], record["status"],
+                 record["model"], record["prompt"], record["project"],
+                 record["artifact_ref"], updated),
             )
     return True
 
