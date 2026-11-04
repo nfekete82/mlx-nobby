@@ -4,10 +4,9 @@ const html=fs.readFileSync(new URL("../frontend/chat.html",import.meta.url),"utf
 const js=fs.readFileSync(new URL("../frontend/assets/chat/sidebar-navigation.js",import.meta.url),"utf8");
 const css=fs.readFileSync(new URL("../frontend/assets/chat/media-library.css",import.meta.url),"utf8");
 for(const id of ["newChat","sidebarLibraryButton","recentToggle","recentFilterToggle","recentSearch","recentNewChat","chatList"])assert.match(html,new RegExp('id="'+id+'"'));
-assert.equal((html.match(/id="chatHistoryMenu"/g)||[]).length,0);
-assert.equal((html.match(/id="deleteAllChats"/g)||[]).length,0);
-assert.match(html, /id="settingsDeleteAllChats"/);
-assert.match(html, /id="settingsDeleteCurrentChat"/);
+assert.equal((html.match(/id="chatHistoryMenu"/g)||[]).length,1);
+assert.equal((html.match(/id="deleteAllChats"/g)||[]).length,1);
+assert.doesNotMatch(html, /id="settingsDeleteAllChats"/);
 assert.ok(html.indexOf('library.projects')<html.indexOf('library.recent'));
 assert.match(html,/sidebar-navigation\.js\?v=1-10-1/);
 assert.match(js,/new MutationObserver\(applyFilter\)/);
