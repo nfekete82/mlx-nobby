@@ -196,6 +196,12 @@ def _schema(conn):
           digest TEXT NOT NULL,
           PRIMARY KEY(chat_id,ordinal)
         );
+        CREATE TABLE IF NOT EXISTS smart_observed (
+          chat_id TEXT NOT NULL,
+          ordinal INTEGER NOT NULL,
+          digest TEXT NOT NULL,
+          PRIMARY KEY(chat_id,ordinal)
+        );
         CREATE TABLE IF NOT EXISTS excluded (
           chat_id TEXT PRIMARY KEY
         );
@@ -251,6 +257,7 @@ def set_enabled(value: bool):
             conn.execute("DELETE FROM conflicts")
             conn.execute("DELETE FROM facts")
             conn.execute("DELETE FROM observed")
+            conn.execute("DELETE FROM smart_observed")
             # Keep only exclusion/forgetting preferences, never private values.
             # A later opt-in must not silently resurrect explicitly deleted facts.
         conn.execute(
@@ -300,6 +307,12 @@ def _extract(text):
                 continue
             if value.casefold() in {"nicht", "kein", "keine", "vielleicht",
                                     "vermutlich", "eventuell", "unbekannt"}:
+                continue
+            # "Ich liebe sie nicht mehr" describes a changed relationship,
+            # not a positive preference. Reject broad, negated regex spans.
+            if field in {"vorliebe", "präferenz"} and re.search(
+                r"\b(?:nicht|kein|keine|nie|niemals)\b", value, re.I
+            ):
                 continue
             # Negated/counterfactual user statements must not become facts.
             prefix = text[max(0, match.start() - 16):match.start()].lower()
@@ -507,6 +520,8 @@ def index_chat(chat):
                          (chat_id, ordinal))
             conn.execute("DELETE FROM observed WHERE chat_id=? AND ordinal=?",
                          (chat_id, ordinal))
+            conn.execute("DELETE FROM smart_observed WHERE chat_id=? AND ordinal=?",
+                         (chat_id, ordinal))
         for ordinal in sorted(incoming):
             if ordinal not in changed:
                 continue
@@ -528,6 +543,7 @@ def remove_chat(chat_id, *, exclude=False):
         conn.execute("DELETE FROM conflicts WHERE source_chat_id=?", (chat_id,))
         conn.execute("DELETE FROM facts WHERE source_chat_id=?", (chat_id,))
         conn.execute("DELETE FROM observed WHERE chat_id=?", (chat_id,))
+        conn.execute("DELETE FROM smart_observed WHERE chat_id=?", (chat_id,))
         if exclude:
             conn.execute("INSERT OR IGNORE INTO excluded VALUES (?)", (chat_id,))
 
@@ -557,6 +573,7 @@ def rebuild(chats):
         for r in conn.execute("SELECT DISTINCT chat_id FROM observed").fetchall():
             if r["chat_id"] not in ids:
                 conn.execute("DELETE FROM observed WHERE chat_id=?", (r["chat_id"],))
+                conn.execute("DELETE FROM smart_observed WHERE chat_id=?", (r["chat_id"],))
                 conn.execute("DELETE FROM facts WHERE source_chat_id=?", (r["chat_id"],))
                 conn.execute("DELETE FROM conflicts WHERE source_chat_id=?", (r["chat_id"],))
     return {**status(), "processed_messages": count}
