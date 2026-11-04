@@ -33,15 +33,15 @@
     "save": "Save",
     "smartOn": "Enable local Qwen learning",
     "smartOff": "Disable Qwen learning",
-    "smartRebuild": "Analyze earlier chats",
+    "smartRebuild": "Analyze all saved chats with Qwen",
     "smartEnabled": "Qwen analyzes new user messages in the background. Only verified facts are saved locally.",
     "smartDisabled": "Optional: let your local Qwen recognize facts from normal conversations. No cloud service.",
     "smartRequiresPersonal": "First enable Personal memory under Advanced settings.",
     "smartQueue": "In queue",
     "smartProcessed": "Analyzed",
     "smartFailed": "Failed",
-    "smartStarted": "Earlier chats scheduled for local analysis.",
-    "smartHelp": "Local, opt-in analysis. Review, correct or delete each fact below.",
+    "smartStarted": "The local full-history analysis has started. Source chats are not modified.",
+    "smartHelp": "All saved chat text remains in the local searchable archive when enabled. Qwen extracts selected verifiable facts; the original history is retained separately.",
     "groupAbout": "About me",
     "groupPartner": "Relationship & partner",
     "groupFamily": "Family",
@@ -69,7 +69,8 @@
     "date": "Date",
     "education": "Education",
     "decision": "Decision",
-    "smartTitle": "Qwen · On-device"
+    "smartTitle": "Qwen · On-device",
+    "smartFullProgress": "Historical messages scanned"
   },
   "de": {
     "title": "Dein Gedächtnis",
@@ -105,15 +106,15 @@
     "save": "Speichern",
     "smartOn": "Lokales Qwen-Lernen einschalten",
     "smartOff": "Qwen-Lernen ausschalten",
-    "smartRebuild": "Vorhandene Chats analysieren",
+    "smartRebuild": "Alle gespeicherten Chats mit Qwen analysieren",
     "smartEnabled": "Qwen analysiert neue eigene Nachrichten im Hintergrund. Nur geprüfte Fakten werden lokal gespeichert.",
     "smartDisabled": "Optional: Das lokale Qwen-Modell erkennt Fakten aus deinen Gesprächen. Keine Cloud.",
     "smartRequiresPersonal": "Aktiviere zuerst das persönliche Gedächtnis unter „Erweiterte Einstellungen“.",
     "smartQueue": "In Warteschlange",
     "smartProcessed": "Analysiert",
     "smartFailed": "Fehlgeschlagen",
-    "smartStarted": "Frühere Chats für die lokale Analyse vorgemerkt.",
-    "smartHelp": "Lokale Analyse nach Aktivierung. Jeden Fakt kannst du unten prüfen, korrigieren oder löschen.",
+    "smartStarted": "Die vollständige lokale Nachanalyse wurde gestartet. Original-Chats bleiben unverändert.",
+    "smartHelp": "Gesamte Chattexte bleiben im aktivierten lokalen Sucharchiv. Qwen gewinnt daraus belegte Fakten; Original-Chats bleiben separat erhalten.",
     "groupAbout": "Über mich",
     "groupPartner": "Beziehung & Partnerin",
     "groupFamily": "Familie",
@@ -141,6 +142,7 @@
     "date": "Termin",
     "education": "Ausbildung",
     "decision": "Entscheidung",
-    "smartTitle": "Qwen · Lokal"
+    "smartTitle": "Qwen · Lokal",
+    "smartFullProgress": "Historische Nachrichten geprüft"
   }
 }
