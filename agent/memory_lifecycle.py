@@ -146,10 +146,7 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory
             clarification, personal_context,
         ) if part)
         if extra:
-            index = 0
-            while index < len(enriched) and enriched[index].get("role") == "system":
-                index += 1
-            enriched.insert(index, {"role": "system", "content": extra})
+            enriched = memory.attach_system_context(enriched, extra)
     except Exception:
         # Memory must never block normal chat completion.
         pass
