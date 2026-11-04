@@ -29,7 +29,7 @@ def history(tmp_path, monkeypatch):
         yield TestClient(agent.app, base_url='http://localhost'), images, videos, shorts
 
 
-def test_bulk_delete_cleans_history_and_chat_images_and_rejects_late_put(history):
+def test_bulk_delete_clears_sidebar_but_preserves_generated_media_and_rejects_late_put(history):
     client, images, videos, shorts = history
     managed = '1790949737-c96699a4776b'
     owned = agent.IMAGE_DIRECTORY / f'{managed}.png'
@@ -43,7 +43,7 @@ def test_bulk_delete_cleans_history_and_chat_images_and_rejects_late_put(history
     assert response.status_code == 200
     assert response.json()['ok'] is True
     assert response.json()['deleted_count'] == 2
-    assert not owned.exists() and unrelated.exists()
+    assert owned.exists() and unrelated.exists()
     assert client.get('/api/chats').json()['chats'] == []
     assert sorted(client.get('/api/chats').json()['deleted_ids']) == ['local-draft', 'one', 'two']
     assert not list(agent.CHAT_DIRECTORY.glob('[a-z]*.json'))
@@ -83,12 +83,12 @@ def test_invalid_ids_do_not_delete_anything(history):
     images.assert_not_called()
 
 
-def test_tombstone_commit_keeps_history_deleted_even_if_cleanup_fails(history):
+def test_chat_list_deletion_does_not_call_media_cleanup(history):
     client, _, _, _ = history
-    with patch.object(agent, 'delete_chat_images', return_value=([], ['cleanup-failed'])):
+    with patch.object(agent, 'delete_chat_images', side_effect=AssertionError('media must be kept')):
         response = client.request('DELETE', '/api/chats', json={'deletion_token': deletion_token()})
     assert response.status_code == 200
-    assert response.json()['failed_images']
+    assert response.json()['deleted_images'] == []
     assert client.get('/api/chats').json()['chats'] == []
 
 
@@ -157,7 +157,7 @@ def test_shorts_planning_cannot_submit_a_job_after_bulk_delete(history):
     create.assert_not_called()
 
 
-def test_all_chat_delete_requires_explicit_settings_token(history):
+def test_all_chat_delete_requires_approved_sidebar_action(history):
     client, images, _, _ = history
     assert client.delete('/api/chats').status_code == 403
     assert client.request('DELETE', '/api/chats', json={'deletion_token': 'invalid'}).status_code == 403
