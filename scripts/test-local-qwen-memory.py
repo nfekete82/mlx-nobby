@@ -12,6 +12,12 @@ import sys
 import urllib.request
 from pathlib import Path
 
+# Direct execution (python3 scripts/test-local-qwen-memory.py) sets sys.path[0]
+# to scripts/, not the repository root. Resolve only this checkout locally.
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from agent import semantic_personal_memory as smart
 
 
