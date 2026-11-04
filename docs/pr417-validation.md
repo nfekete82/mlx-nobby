@@ -48,7 +48,9 @@ now covered by a dedicated regression.
   and isolated Docker image builds are required before pushing the candidate.
 - Final-head GitHub Tests (macOS/Python/Node, Docker, privacy) and Browser
   acceptance must both pass before merge. The merged main revision is checked
-  again before deployment.
+  again before deployment. Both complete workflows also run on a push to this
+  dedicated release branch, so a stalled GitHub PR merge-ref calculation cannot
+  prevent final-head CI from running. No checks or assertions are skipped.
 
 Commands:
 

@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+      # Validate this release candidate even if PR mergeability is pending.
+      - feat/local-chat-archive-memory2-20261104
   pull_request:
 
 concurrency:
