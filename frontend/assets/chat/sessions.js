@@ -343,13 +343,35 @@ function sessionT(key, fallback = '', variables = {}) {
         });
     }
 
+    function comparableSessionSettings(settings) {
+        // Normalize only defaults introduced when an old chat is opened by a
+        // newer frontend. Real per-chat settings edits (e.g. system prompts)
+        // must not disappear merely because the messages are unchanged.
+        const normalized = { ...(settings || {}) };
+        const defaults = {
+            system_prompt: '',
+            preset_id: 'general',
+            adaptive_response_auto: true,
+            adaptive_response_length: false,
+            media_quality: 'standard',
+            negative_prompt: '',
+        };
+        for (const [key, value] of Object.entries(defaults)) {
+            if (normalized[key] === undefined || normalized[key] === null) {
+                normalized[key] = value;
+            }
+        }
+        return normalized;
+    }
+
     function sameConversationContent(local, server) {
-        // Opening a chat can add browser-only/default settings and advance
-        // its timestamp. That is not a changed conversation, so it must not
-        // create a new conflicting chat during initial synchronization.
+        // Timestamps and known startup settings defaults do not change chat
+        // content; deliberate changes to a prompt, preset or other settings do.
         return local.title === server.title &&
             contentSnapshot(local.messages) === contentSnapshot(server.messages) &&
-            contentSnapshot(local.workspace ?? null) === contentSnapshot(server.workspace ?? null);
+            contentSnapshot(local.workspace ?? null) === contentSnapshot(server.workspace ?? null) &&
+            contentSnapshot(comparableSessionSettings(local.settings)) ===
+                contentSnapshot(comparableSessionSettings(server.settings));
     }
 
     async function persistSession(session) {
