@@ -103,7 +103,7 @@ def _smart_local_complete(message_json: str) -> str:
 
 
 semantic_personal_memory.configure(
-    chat_reader=gateway_host.read_chat,
+    chat_reader=gateway_host.memory_chat_reader,
     chat_lock=gateway_host.CHATS_LOCK,
     model_complete=_smart_local_complete,
 )
