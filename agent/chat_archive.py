@@ -98,6 +98,9 @@ def set_enabled(value: bool):
         _schema(conn)
         if not value:
             conn.execute("DELETE FROM archive_messages")
+            # FTS5 may retain obsolete posting-list segments even after a
+            # row DELETE. Rebuild the index from the now-empty content table.
+            conn.execute("INSERT INTO archive_fts(archive_fts) VALUES('rebuild')")
         conn.execute(
             "INSERT INTO archive_meta(key,value) VALUES('enabled',?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
