@@ -34,7 +34,7 @@ def api():
 
 
 def test_optin_backfills_real_saved_chats_and_exposes_source():
-    with TestClient(chat_host.app) as writer, api() as client:
+    with TestClient(chat_host.app, base_url="http://localhost") as writer, api() as client:
         saved = writer.put("/api/chats/memory-test", json=chat(
             "memory-test", "Meine Freundin heißt Nora"))
         assert saved.status_code == 200
@@ -48,7 +48,7 @@ def test_optin_backfills_real_saved_chats_and_exposes_source():
 
 
 def test_live_chat_change_adds_pending_and_user_can_resolve():
-    with TestClient(chat_host.app) as writer, api() as client:
+    with TestClient(chat_host.app, base_url="http://localhost") as writer, api() as client:
         client.post("/api/personal-memory/config", json={"enabled": True})
         r1 = writer.put("/api/chats/a", json=chat("a", "Mein Termin ist am 16. November"))
         r2 = writer.put("/api/chats/b", json=chat("b", "Mein Termin ist am 18. November"))
@@ -64,7 +64,7 @@ def test_live_chat_change_adds_pending_and_user_can_resolve():
 
 
 def test_delete_chat_purges_derived_fact_and_keeps_other_chats():
-    with TestClient(chat_host.app) as writer, api() as client:
+    with TestClient(chat_host.app, base_url="http://localhost") as writer, api() as client:
         client.post("/api/personal-memory/config", json={"enabled": True})
         writer.put("/api/chats/a", json=chat("a", "Meine Freundin heißt Kim"))
         assert client.get("/api/personal-memory/facts").json()["facts"]
