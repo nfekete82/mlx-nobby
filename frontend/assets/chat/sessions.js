@@ -589,8 +589,17 @@ function sessionT(key, fallback = '', variables = {}) {
     }
 
     async function syncWithServer() {
-        if (serverSyncing || clearingHistory || activePersists.size) {
+        if (serverSyncing || clearingHistory) {
             return;
+        }
+
+        // Never drop a requested UI refresh just because a chat write is
+        // running. Wait until the write has acknowledged, then fetch the
+        // authoritative history. The existing persistEpoch guard below still
+        // discards GET responses overtaken by subsequent writes.
+        if (activePersists.size) {
+            await Promise.allSettled([...activePersists.values()]);
+            if (serverSyncing || clearingHistory) return;
         }
 
         serverSyncing = true;
