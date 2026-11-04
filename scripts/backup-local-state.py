@@ -134,6 +134,11 @@ def create(destination, roots):
                 # SQLite online backup preserves a consistent source snapshot.
                 # Take counts and schema from that snapshot, not a moving source.
                 reader.backup(writer, pages=256, sleep=0.05)
+                # The backup inherits WAL journal_mode from the source; switch
+                # this PRIVATE COPY to a single-file, clean rollback journal.
+                # Never copy or modify the source WAL sidecars.
+                if writer.execute('PRAGMA journal_mode=DELETE').fetchone()[0].lower() != 'delete':
+                    raise RuntimeError('Backup database could not finalize cleanly')
             finally:
                 writer.close()
                 reader.close()
