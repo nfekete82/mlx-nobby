@@ -100,6 +100,21 @@ def test_model_output_is_untrusted_and_cannot_invent_or_save_credentials():
     ) == []
 
 
+def test_hypotheticals_cannot_be_promoted_even_by_hallucinating_model():
+    conditional = "Wenn ich Architekt wäre, würde ich Häuser bauen."
+    output = fact(
+        conditional, subject="ich", field="beruf",
+        value="Architekt", evidence="Wenn ich Architekt wäre",
+    )
+    assert smart.parse_facts(output, conditional) == []
+
+    possible = "Vielleicht bin ich bald Architekt."
+    assert smart.parse_facts(
+        fact(possible, subject="ich", field="beruf",
+             value="Architekt", evidence=possible), possible,
+    ) == []
+
+
 def test_deleted_facts_do_not_reappear_on_new_model_output():
     pm.set_enabled(True)
     smart.set_enabled(True)
