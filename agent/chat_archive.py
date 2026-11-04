@@ -81,31 +81,20 @@ def enabled():
 
 
 def set_enabled(value: bool):
-    """Opt in explicitly. Disabling erases the derived index immediately."""
+    """Pause or resume indexing/search; preserve content until explicit deletion."""
     if type(value) is not bool:
         raise ValueError("enabled must be a boolean")
     if not value and not DB_PATH.exists():
         return {"enabled": False, "indexed_messages": 0}
     with LOCK, _connect() as conn:
         _schema(conn)
-        if not value:
-            conn.execute("DELETE FROM archive_messages")
-            # FTS5 may retain obsolete posting-list segments even after a
-            # row DELETE. Rebuild the index from the now-empty content table.
-            conn.execute("INSERT INTO archive_fts(archive_fts) VALUES('rebuild')")
         conn.execute(
             "INSERT INTO archive_meta(key,value) VALUES('enabled',?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             ("1" if value else "0",),
         )
         count = conn.execute("SELECT count(*) FROM archive_messages").fetchone()[0]
-        if not value:
-            # A simple DELETE leaves bytes in SQLite free pages. Secure-delete
-            # plus VACUUM removes those pages from the derived local index.
-            conn.commit()
-            conn.execute("VACUUM")
     return {"enabled": value, "indexed_messages": count}
-
 
 def _entries(chat):
     messages = chat.get("messages", [])
