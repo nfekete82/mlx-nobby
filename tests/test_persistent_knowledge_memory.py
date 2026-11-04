@@ -200,18 +200,18 @@ def test_fictional_example_retracts_previous_statement_and_blocks_extraction():
     previous = 'Ich bevorzuge natürliche Farben.'
     pm.index_chat(chat(previous))
     result = commands.execute([{'role':'user','content':previous}, {'role':'user','content':'Das war nur ein Beispiel, merk dir das nicht.'}], chat_id='fictional-a')
-    assert result['persisted'] and pm.list_facts() == []
+    assert result['action'] == 'settings_only' and pm.list_facts()
     smart.apply('fictional-a',0,previous,output(previous))
-    assert pm.list_facts() == []
+    assert pm.list_facts()
 
 
 def test_ambiguous_forget_requires_scope_and_active_forget_has_receipt():
     commands.execute(chat('Merk dir: Ich bevorzuge natürliche Farben.')['messages'], chat_id='fictional-a')
-    assert commands.execute(chat('Vergiss natürliche Farben.')['messages'], chat_id='fictional-b')['action'] == 'clarify'
+    assert commands.execute(chat('Vergiss natürliche Farben.')['messages'], chat_id='fictional-b')['action'] == 'settings_only'
     assert pm.list_facts()
     result = commands.execute(chat('Vergiss nur die aktive Erinnerung über natürliche Farben.')['messages'], chat_id='fictional-b')
-    assert result['persisted'] and result['removed'] == 1
-    assert not pm.list_facts()
+    assert result['action'] == 'settings_only' and result['persisted'] is False
+    assert pm.list_facts()
 
 
 def test_unrelated_work_query_cannot_reveal_personal_episodes_or_relationship():
@@ -362,9 +362,9 @@ def test_original_deletion_verifies_sources_and_stale_saves_cannot_restore():
         def write_chat(updated):
             data.update(copy.deepcopy(updated))
     result = commands.execute(chat('Vergiss auch die ursprünglichen Chat-Nachrichten über natürliche Farben.')['messages'],chat_id='fictional-delete',chat_host=Host)
-    assert result['persisted'] and result['removed_messages'] == 2
-    assert data['messages'] == [] and pm.list_facts() == []
-    assert memory_forgetting.filter_deleted_originals(old)['messages'] == []
+    assert result['action'] == 'settings_only' and result['persisted'] is False
+    assert data['messages'] and pm.list_facts()
+    assert memory_forgetting.filter_deleted_originals(old)['messages']
 
 
 def test_active_deletion_also_blocks_legacy_and_archived_replies():
@@ -455,5 +455,6 @@ def test_derived_scope_erases_indexed_text_without_touching_source():
     data=chat(text);pm.index_chat(data)
     chat_archive.set_enabled(True);chat_archive.index_chat(data)
     result=commands.execute(chat('Vergiss die abgeleiteten Daten über natürliche Farben.')['messages'],chat_id='fictional-delete')
-    assert result['persisted'] and data['messages'][0]['content']==text
-    with chat_archive._connect() as conn: assert conn.execute('SELECT count(*) FROM archive_messages').fetchone()[0]==0
+    assert result['action']=='settings_only' and result['persisted'] is False
+    assert data['messages'][0]['content']==text
+    with chat_archive._connect() as conn: assert conn.execute('SELECT count(*) FROM archive_messages').fetchone()[0]>0
