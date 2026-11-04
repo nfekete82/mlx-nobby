@@ -13,7 +13,7 @@ def isolated_private_db(tmp_path, monkeypatch):
 
 def user_chat(chat_id, *turns):
     return {"id": chat_id, "updated": 100, "messages": [
-        {"role": "user", "content": turn} for turn in turns,
+        {"role": "user", "content": turn} for turn in turns
     ]}
 
 
