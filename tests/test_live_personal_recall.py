@@ -118,6 +118,29 @@ def test_long_term_stored_memories_are_included_in_explicit_overview():
     assert "OVERVIEW OF STORED LONG-TERM MEMORY" in text
 
 
+
+def test_fast_explicit_overview_includes_durable_legacy_inventory():
+    """The fast explicit route must not silently omit the older memory DB."""
+    pm.set_enabled(True)
+    _put("ich", "beruf", "Informatiker")
+    memory.add("Mein Langzeitprojekt heißt Kometenarchiv", pinned=True)
+    messages = [{"role": "user", "content": "Was weißt du alles über mich?"}]
+    enriched = memory_lifecycle.fast_personal_context(messages)
+    injected = "\n".join(m.get("content", "") for m in enriched if m.get("role") == "system")
+    assert "Informatiker" in injected
+    assert "Kometenarchiv" in injected
+    assert enriched[-1] == messages[-1]
+
+
+def test_fast_regular_chat_does_not_dump_unrelated_legacy_inventory():
+    pm.set_enabled(True)
+    memory.add("Mein Langzeitprojekt heißt Kometenarchiv", pinned=True)
+    messages = [{"role": "user", "content": "Erkläre mir CSS Grid."}]
+    enriched = memory_lifecycle.fast_personal_context(messages)
+    injected = "\n".join(m.get("content", "") for m in enriched if m.get("role") == "system")
+    assert "Kometenarchiv" not in injected
+
+
 def test_short_followup_reuses_previous_user_topic_only_for_retrieval():
     history = [
         {"role": "system", "content": "Be helpful."},
