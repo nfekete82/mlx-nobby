@@ -24,6 +24,7 @@ import urllib.request
 import zlib
 from agent import knowledge
 from agent import profile
+from agent import chat_archive
 from agent import code_workspaces
 from agent.chat_fast_path import simple_chat_fast_path, safe_followup_chat_fast_path
 from agent.router_turn_cache import turn_classifier_cache
@@ -403,6 +404,12 @@ def write_chat(chat):
             encoding="utf-8",
         )
         os.replace(temporary_path, path)
+        # Derived, opt-in local search index. Chat persistence must still work
+        # when SQLite/FTS is unavailable.
+        try:
+            chat_archive.index_chat(chat)
+        except Exception as archive_error:
+            logger.warning("Local chat archive indexing failed: %s", archive_error)
     except Exception as exc:
         raise HTTPException(
             status_code=500,
@@ -1418,6 +1425,13 @@ def delete_all_chats(request: dict | None = None):
         ids = set(by_id) | set(requested_ids)
         # Atomic logical deletion before cleanup: late PUTs cannot recreate files.
         write_deleted_chat_ids(previous | ids)
+        # Purge derived search entries for deleted chats; never let a
+        # previously indexed conversation appear in future memory retrieval.
+        for erased_id in ids:
+            try:
+                chat_archive.remove_chat(erased_id, exclude=True)
+            except Exception as archive_error:
+                logger.error("Chat archive privacy purge failed for %s: %s", erased_id, archive_error)
         cancellations = {chat_id: cancel_chat_media_jobs(chat_id, by_id.get(chat_id)) for chat_id in ids}
         deleted_images, failed_images, failed_files = [], [], []
         for chat in chats:
@@ -1460,6 +1474,10 @@ def delete_chat(chat_id: str):
                 status_code=500,
                 detail=f"Chat konnte nicht gelöscht werden: {exc}",
             )
+        try:
+            chat_archive.remove_chat(chat_id, exclude=True)
+        except Exception as archive_error:
+            logger.error("Chat archive privacy purge failed for %s: %s", chat_id, archive_error)
 
         # The chat file is gone. Cancel every active image job
         # owned by this chat, regardless of revision.
