@@ -754,8 +754,20 @@ _CONTEXT_STOPWORDS = frozenset({
 
 
 def overview_requested(query: str) -> bool:
-    """True only for explicit requests to summarize stored personal knowledge."""
-    return bool(_MEMORY_OVERVIEW.search(str(query or "")[:500]))
+    """Detect an actual user request, not a quoted phrase to translate."""
+    text = str(query or "")[:500].strip()
+    if re.match(
+        r"^(?:bitte\s+)?(?:übersetz\w*|translate|zitiere|quote|"
+        r"rewrite|formuliere|korrigiere)\b", text, re.I,
+    ):
+        return False
+    # Quoted examples are untrusted task data rather than requests to expose
+    # all user facts. Single-/double-/German-quoted examples are common.
+    without_quotes = re.sub(
+        r"(?:\"[^\"]{1,240}\"|'[^']{1,240}'|„[^“]{1,240}“|"
+        r"“[^”]{1,240}”)", " ", text,
+    )
+    return bool(_MEMORY_OVERVIEW.search(without_quotes))
 
 
 def _fact_tokens(fact) -> set[str]:
