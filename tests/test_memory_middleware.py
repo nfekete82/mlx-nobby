@@ -222,3 +222,41 @@ def test_rejected_origin_cannot_observe_or_resolve_memory_before_local_guard(mon
         ]})
     assert response.status_code == 403
     assert observed == [], 'Rejected requests must not reach memory enrichment'
+
+
+def test_explicit_overview_uses_real_facts_and_skips_slow_legacy_recall(client, monkeypatch):
+    """A user asking what the model knows gets stored facts, not generic text."""
+    pm.set_enabled(True)
+    pm.create_fact("ich", "beruf", "Informatiker", sensitive=True)
+    pm.create_fact("familie.sohn", "name", "Beispielkind", sensitive=True)
+    pm.create_fact("projekte.sandforge", "ziel", "Verbesserte Spiel-KI", sensitive=True)
+
+    def expensive_legacy(*_args, **_kwargs):
+        raise AssertionError("Explicit overview must not enter legacy embedding path")
+
+    monkeypatch.setattr(memory_lifecycle, "enrich_messages", expensive_legacy)
+    response = client.post("/api/runtime/chat/stream", json={
+        "chat_id": "fictional-overview",
+        "messages": [{"role": "user", "content": "Was weißt du alles über mich?"}],
+    })
+    assert response.status_code == 200
+    messages = response.json()["messages"]
+    context = "\\n".join(m.get("content", "") for m in messages if m.get("role") == "system")
+    assert "Informatiker" in context
+    assert "Beispielkind" in context
+    assert "Verbesserte Spiel-KI" in context
+    assert messages[-1]["content"] == "Was weißt du alles über mich?"
+
+
+def test_non_overview_uses_normal_enrichment_route(client, monkeypatch):
+    calls = []
+    def regular(messages, **kwargs):
+        calls.append(kwargs)
+        return [{"role": "system", "content": "REGULAR_CONTEXT"}, *messages]
+    monkeypatch.setattr(memory_lifecycle, "enrich_messages", regular)
+    response = client.post("/api/runtime/chat/stream", json={
+        "messages": [{"role": "user", "content": "Wie schreibe ich einen CSS-Selektor?"}],
+    })
+    assert response.status_code == 200
+    assert calls
+    assert response.json()["messages"][0]["content"] == "REGULAR_CONTEXT"
