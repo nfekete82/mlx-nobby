@@ -25,6 +25,7 @@ import zlib
 from agent import knowledge
 from agent import profile
 from agent import chat_archive
+from agent import chat_delete_intent, chat_retention
 from agent import personal_memory
 from agent import semantic_personal_memory
 from agent import memory_dashboard
@@ -402,10 +403,13 @@ def write_chat(chat):
         temporary_path = CHAT_DIRECTORY / (
             f".{chat['id']}.{uuid.uuid4().hex}.tmp"
         )
-        temporary_path.write_text(
-            json.dumps(chat, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        # Preserve old source text before an edit/truncation; never purge these
+        # revisions automatically. An archive-write failure blocks the edit.
+        chat_retention.preserve_before_overwrite(path, chat)
+        with temporary_path.open("w", encoding="utf-8") as stream:
+            json.dump(chat, stream, ensure_ascii=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
         os.replace(temporary_path, path)
         # Derived, opt-in local search index. Chat persistence must still work
         # when SQLite/FTS is unavailable.
@@ -1339,7 +1343,12 @@ def _best_effort_cancel_chat_image_jobs(
 
 
 @app.post("/api/chats/{chat_id}/reset")
-def reset_chat(chat_id: str):
+def reset_chat(chat_id: str, request: dict | None = None):
+    if not chat_delete_intent.consume(
+        scope="reset", token=(request or {}).get("deletion_token"),
+        chat_id=chat_id,
+    ):
+        raise HTTPException(403, "Explicit Settings approval required")
     """Clear one chat while preserving the chat session itself."""
 
     path = chat_path(chat_id)
@@ -1417,8 +1426,29 @@ def cancel_chat_media_jobs(chat_id, chat):
     return results
 
 
+@app.post("/api/chats/delete-intent")
+def authorize_chat_deletion(request: dict):
+    """One-use deletion permit, requiring typed confirmation in Settings."""
+    scope = request.get("scope")
+    chat_id = request.get("chat_id")
+    if scope in ("one", "reset"):
+        validate_chat_id(chat_id)
+    try:
+        token = chat_delete_intent.issue(
+            scope=scope, confirmation=request.get("confirmation"),
+            chat_id=chat_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"deletion_token": token, "expires_in": 90}
+
+
 @app.delete("/api/chats")
 def delete_all_chats(request: dict | None = None):
+    if not chat_delete_intent.consume(
+        scope="all", token=(request or {}).get("deletion_token"),
+    ):
+        raise HTTPException(403, "Explicit Settings approval required")
     requested_ids = (request or {}).get("ids", [])
     if not isinstance(requested_ids, list):
         raise HTTPException(status_code=400, detail="ids must be a list")
@@ -1453,7 +1483,8 @@ def delete_all_chats(request: dict | None = None):
         for chat in chats:
             try:
                 chat_path(chat["id"]).unlink(missing_ok=True)
-            except OSError:
+                chat_retention.remove_revisions(CHAT_DIRECTORY, chat["id"])
+            except (OSError, ValueError):
                 failed_files.append(chat["id"])
             deleted, failed = delete_chat_images(chat)
             deleted_images.extend(deleted)
@@ -1465,7 +1496,12 @@ def delete_all_chats(request: dict | None = None):
 
 
 @app.delete("/api/chats/{chat_id}")
-def delete_chat(chat_id: str):
+def delete_chat(chat_id: str, request: dict | None = None):
+    if not chat_delete_intent.consume(
+        scope="one", token=(request or {}).get("deletion_token"),
+        chat_id=chat_id,
+    ):
+        raise HTTPException(403, "Explicit Settings approval required")
     path = chat_path(chat_id)
 
     with CHATS_LOCK:
@@ -1490,6 +1526,11 @@ def delete_chat(chat_id: str):
                 status_code=500,
                 detail=f"Chat konnte nicht gelöscht werden: {exc}",
             )
+        revision_error = None
+        try:
+            chat_retention.remove_revisions(CHAT_DIRECTORY, chat_id)
+        except (OSError, ValueError) as error:
+            revision_error = type(error).__name__
         for cleanup in (chat_archive.remove_chat, personal_memory.remove_chat):
             try:
                 cleanup(chat_id, exclude=True)
@@ -1511,6 +1552,7 @@ def delete_chat(chat_id: str):
         "deleted": chat_id,
         "deleted_images": deleted_images,
         "failed_images": failed_images,
+        "failed_revisions": revision_error,
         "image_job_cancellation": image_job_cancellation,
     }
 
