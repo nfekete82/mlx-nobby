@@ -550,16 +550,61 @@ function openDesktopSidebar() {
 }
 
 
-document.getElementById('deleteAllChats')?.addEventListener('click', async event => {
-    document.getElementById('chatHistoryMenu')?.removeAttribute('open');
-    const button = event.currentTarget;
+// Destructive actions live exclusively in Settings -> Chat -> Data deletion.
+async function deleteChatFromSettings(scope, button) {
+    if (button.disabled) return;
+    const session = scope === 'one' ? MLXChatSessions.currentSession() : null;
+    if (scope === 'one' && !session) return;
+    const title = chatT('chat_retention.title', 'Permanently delete data');
+    const warning = chatT(
+        'chat_retention.confirm',
+        'This permanently deletes the selected chats and associated revisions. Some derived memories will also disappear. Backups are separate. Type LÖSCHEN to proceed.'
+    );
+    const typed = window.prompt(warning, '');
+    if (typed !== 'LÖSCHEN' && typed !== 'DELETE') return;
+
+    const approved = await window.MLXConfirm?.({
+        title,
+        message: warning,
+        confirmLabel: chatT('chat_retention.final_confirm', 'Delete permanently'),
+        cancelLabel: chatT('ui.cancel', 'Cancel'),
+    });
+    if (!approved) return;
     button.disabled = true;
     try {
-        await MLXChatSessions.deleteAllSessions();
+        const request = { scope, confirmation: typed };
+        if (session) request.chat_id = session.id;
+        const result = await MLXCommon.fetchJson(
+            '/api/mlx/chats/delete-intent',
+            MLXCommon.jsonRequest('POST', request)
+        );
+        if (!result.response.ok || !result.data?.deletion_token) {
+            throw new Error('Deletion approval failed');
+        }
+        const token = result.data.deletion_token;
+        const ok = scope === 'one'
+            ? await MLXChatSessions.deleteSession(session.id, token)
+            : await MLXChatSessions.deleteAllSessions(token);
+        if (!ok) throw new Error('Deletion failed; your remaining data was not silently cleared');
+    } catch (error) {
+        console.error('[MLX nobby] Explicit settings deletion failed', error);
+        await window.MLXConfirm?.({
+            title: chatT('chat_retention.error_title', 'Deletion failed'),
+            message: chatT('chat_retention.error', 'Could not complete deletion. Inspect the Agent response before retrying.'),
+            confirmLabel: chatT('common.close', 'Close'),
+            cancelLabel: chatT('common.close', 'Close'),
+        });
     } finally {
         button.disabled = false;
     }
-});
+}
+
+document.getElementById('settingsDeleteAllChats')?.addEventListener(
+    'click', event => deleteChatFromSettings('all', event.currentTarget)
+);
+document.getElementById('settingsDeleteCurrentChat')?.addEventListener(
+    'click', event => deleteChatFromSettings('one', event.currentTarget)
+);
 
 
 railExpand?.addEventListener(
