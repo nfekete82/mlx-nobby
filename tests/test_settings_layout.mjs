@@ -48,6 +48,8 @@ assert.equal(api.sectionFromPath('/settings/general'), 'chat');
 assert.equal(api.sectionFromPath('/settings/advanced/generation'), 'chat');
 assert.equal(api.sectionFromPath('/settings/models'), 'models');
 assert.equal(api.sectionFromPath('/settings/knowledge'), 'knowledge');
+assert.equal(api.sectionFromPath('/settings/memory'), 'memory');
+assert.equal(api.sectionFromPath('/settings/memory/'), 'memory');
 assert.equal(api.sectionFromPath('/settings/profile'), 'personal');
 assert.equal(api.sectionFromPath('/settings/appearance'), 'personal');
 assert.equal(api.sectionFromPath('/settings/functions'), 'tools');
@@ -73,6 +75,13 @@ assert.equal(api.sectionTarget('automations'), 'automations');
 const selections = [];
 window.settingsTest.setController({ select: value => selections.push(value) });
 window.MLXModelConsole = { setTab: value => selections.push(value) };
+window.MLXMemory = { activate: () => selections.push('memory') };
+api.activate('memory');
+assert.deepEqual(selections.splice(0), ['memory'], 'Memory nav opens actual Memory pane');
+context.location.pathname = '/settings/memory';
+api.sync();
+assert.deepEqual(selections.splice(0), ['memory'], 'Deep link opens Memory rather than Chat');
+
 for (const tab of ['models', 'runtime', 'storage', 'downloads']) {
     api.activateModel(tab);
     assert.equal(window.settingsTest.modelTab(), tab);
@@ -86,4 +95,11 @@ for (const tab of ['runtime', 'storage']) {
     assert.equal(window.settingsTest.modelTab(), tab);
     assert.deepEqual(selections.splice(0), ['models', tab]);
 }
-console.log('Organized settings navigation helpers and model tab switching passed.');
+const localeDe = JSON.parse(fs.readFileSync(
+    new URL('../frontend/i18n/settings-layout.de.json', import.meta.url), 'utf8'));
+const localeEn = JSON.parse(fs.readFileSync(
+    new URL('../frontend/i18n/settings-layout.en.json', import.meta.url), 'utf8'));
+assert.equal(localeDe.memory, 'Gedächtnis');
+assert.equal(localeEn.memory, 'Memory');
+assert.ok(localeDe.memory_description && localeEn.memory_description);
+console.log('Organized settings navigation, Memory deep links and model switching passed.');
