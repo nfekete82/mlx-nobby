@@ -508,19 +508,6 @@ function sessionT(key, fallback = '', variables = {}) {
         }
     }
 
-    async function deleteServerSession(id) {
-        if (!serverReady) {
-            return;
-        }
-
-        try {
-            await fetch(
-                '/api/mlx/chats/' + encodeURIComponent(id),
-                { method: 'DELETE' }
-            );
-        } catch {}
-    }
-
     function loadSessions() {
         acknowledgedSnapshots.clear();
         acknowledgedUpdated.clear();
@@ -828,18 +815,12 @@ function sessionT(key, fallback = '', variables = {}) {
         renderAll();
     }
 
-    async function deleteAllSessions() {
+    async function deleteAllSessions(deletionToken) {
+        // Never destructive without a short-lived, Settings-authorized token.
+        if (typeof deletionToken !== 'string' || !deletionToken) return false;
         if (clearingHistory || confirmingHistory) return false;
         confirmingHistory = true;
         try {
-            const confirmed = await window.MLXConfirm?.({
-                title: sessionT('ui.delete_all_chats_title', 'Delete all chats?'),
-                message: sessionT('ui.delete_all_chats_message', 'This removes the entire chat history and cannot be undone.'),
-                confirmLabel: sessionT('ui.delete_all_chats', 'Delete all chats'),
-                cancelLabel: sessionT('ui.cancel', 'Cancel'),
-            });
-            if (!confirmed) return false;
-
             clearingHistory = true;
             historyEpoch++;
             const oldSessions = [...state.sessions];
@@ -851,7 +832,7 @@ function sessionT(key, fallback = '', variables = {}) {
             await Promise.allSettled([...pendingPersists]);
             const { response, data } = await MLXCommon.fetchJson(
                 '/api/mlx/chats',
-                MLXCommon.jsonRequest('DELETE', { ids: oldSessions.map(session => session.id) })
+                MLXCommon.jsonRequest('DELETE', { ids: oldSessions.map(session => session.id), deletion_token: deletionToken })
             );
             if (!response.ok || data.ok !== true) {
                 throw new Error('Chat history deletion failed');
@@ -918,167 +899,34 @@ function sessionT(key, fallback = '', variables = {}) {
         renderSidebar();
     }
 
-    function deleteSession(id) {
-        if (isGenerating()) return;
-
-        const session = state.sessions.find(
-            item => item.id === id
+    async function deleteSession(id, deletionToken) {
+        // One-chat deletion is available only through the Settings approval UI.
+        if (typeof deletionToken !== 'string' || !deletionToken || clearingHistory || isGenerating()) return false;
+        const session = state.sessions.find(item => item.id === id);
+        if (!session || !serverReady) return false;
+        await Promise.allSettled([...pendingPersists]);
+        const { response, data } = await MLXCommon.fetchJson(
+            '/api/mlx/chats/' + encodeURIComponent(id),
+            MLXCommon.jsonRequest('DELETE', { deletion_token: deletionToken })
         );
-
-        if (!session) return;
-
-        if (!confirm(
-            sessionT(
-            'sessions.delete_confirm',
-            'Really delete chat "{name}"?',
-            {
-                name:
-                    session.title ||
-                    sessionT('sessions.new_chat', 'New chat')
-            }
-        )
-        )) {
-            return;
-        }
-
-        state.sessions = state.sessions.filter(
-            item => item.id !== id
-        );
+        if (!response.ok || data.deleted !== id) return false;
+        bumpRuntimeRevision(session);
+        await window.MLXChatGeneration?.resetSessionRuntime?.(session);
+        state.sessions = state.sessions.filter(item => item.id !== id);
         acknowledgedSnapshots.delete(id);
         acknowledgedUpdated.delete(id);
         clearConflictMarker(id);
-
-        deleteServerSession(id);
-
-        if (!state.sessions.length) {
-            createSession();
-            return;
-        }
-
-        if (state.activeId === id) {
-            state.activeId = state.sessions[0].id;
-        }
-
+        if (state.activeId === id) state.activeId = state.sessions[0]?.id || null;
+        if (!state.sessions.length) createSession();
         saveSessions();
         renderAll();
+        return true;
     }
 
     async function deleteMessages() {
-        const session = currentSession();
-
-        if (!session) {
-            return;
-        }
-
-        if (session.messages.length) {
-            const confirmFn = window.MLXConfirm;
-
-            if (typeof confirmFn !== 'function') {
-                console.error(
-                    'MLX confirmation modal is unavailable'
-                );
-                return;
-            }
-
-            const confirmed = await confirmFn({
-                title: sessionT(
-                    'ui.clear_chat',
-                    'Chat leeren'
-                ),
-                message: sessionT(
-                    'ui.clear_chat_confirm',
-                    'Diesen Chat wirklich leeren?'
-                ),
-                confirmLabel: sessionT(
-                    'ui.clear_chat',
-                    'Leeren'
-                ),
-                cancelLabel: sessionT(
-                    'ui.cancel',
-                    'Cancel'
-                ),
-            });
-
-            if (!confirmed) {
-                return;
-            }
-        }
-
-        // Invalidate every async operation that started before this reset.
-        // The revision is runtime-only and intentionally not persisted.
-        bumpRuntimeRevision(session);
-
-        // Stop active runtime work before removing message/job state.
-        await window.MLXChatGeneration?.resetSessionRuntime?.(session);
-
-        // Reset the persisted chat on the backend. This also removes
-        // locally generated images referenced by this chat.
-        if (serverReady) {
-            try {
-                const response = await fetch(
-                    '/api/mlx/chats/' +
-                        encodeURIComponent(session.id) +
-                        '/reset',
-                    { method: 'POST' }
-                );
-
-                if (!response.ok) {
-                    console.warn(
-                        'Chat backend reset failed:',
-                        response.status
-                    );
-                } else {
-                    const resetResult = await response.json();
-                    const revision = resetResult?.chat?.revision;
-
-                    if (
-                        Number.isSafeInteger(revision) &&
-                        revision >= 0
-                    ) {
-                        session.revision = revision;
-                    }
-                }
-            } catch (error) {
-                console.warn(
-                    'Chat backend reset failed:',
-                    error
-                );
-            }
-        }
-
-        session.messages = [];
-
-        // Clearing a chat must also detach generated-image context.
-        if (session.workspace) {
-            delete session.workspace.active_artifact_id;
-
-            if (!Object.keys(session.workspace).length) {
-                delete session.workspace;
-            }
-        }
-
-        // A cleared chat starts without an active code workspace.
-        // The workspace remains registered and can be selected again.
-        try {
-            await window.MLXChatWorkspace?.deactivate?.();
-        } catch (error) {
-            console.warn(
-                'Workspace deactivation during chat reset failed:',
-                error
-            );
-        }
-
-        // Clear transient frontend files/images.
-        window.MLXChatAttachments?.clearAttachments?.();
-
-        session.title = sessionT(
-            'sessions.new_chat',
-            'New chat'
-        );
-        session.updated = Date.now();
-
-        saveSessions();
-        renderAll();
+        // Clearing source text is destructive; never do it from a chat toolbar.
+        window.MLXChatSettings?.open?.('general');
+        return false;
     }
 
     function updateTitle(session) {
