@@ -2,7 +2,8 @@ name: Browser acceptance
 
 on:
   push:
-    branches: [main]
+    # Run the same acceptance gate without depending on PR merge-ref refresh.
+    branches: [main, feat/local-chat-archive-memory2-20261104]
   pull_request:
 
 concurrency:

@@ -60,6 +60,7 @@ class AddModelRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[dict]
+    chat_id: str | None = None
     temperature: float = 0.7
     max_tokens: int = 3000
     system_prompt: str = ""
@@ -1338,6 +1339,7 @@ def mlx_chat_stream(request: ChatRequest):
 
             stream_payload = {
                 "messages": messages,
+                "chat_id": request.chat_id,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
                 "stream": True,
@@ -1608,6 +1610,7 @@ def mlx_chat_stream(request: ChatRequest):
 
     payload = {
         "messages": messages,
+        "chat_id": request.chat_id,
         "temperature": temperature,
         "max_tokens": max_tokens,
         "stream": True,
