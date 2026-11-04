@@ -7,6 +7,10 @@ from agent import app as agent, shorts_jobs, media_queue
 from backend import app as backend
 
 
+def deletion_token():
+    return agent.chat_delete_intent.issue(scope="all", confirmation="LÖSCHEN")
+
+
 def chat(chat_id):
     return {'id': chat_id, 'title': chat_id, 'created': 1, 'updated': 2,
             'revision': 0, 'messages': [{'role': 'user', 'content': 'hello'}]}
@@ -35,7 +39,7 @@ def test_bulk_delete_cleans_history_and_chat_images_and_rejects_late_put(history
     original['messages'].append({'role': 'assistant', 'tool_result': {
         'artifacts': [{'image_id': managed, 'kind': 'image'}]}})
     agent.write_chat(original)
-    response = client.request('DELETE', '/api/chats', json={'ids': ['one', 'two', 'local-draft']})
+    response = client.request('DELETE', '/api/chats', json={'ids': ['one', 'two', 'local-draft'], 'deletion_token': deletion_token()})
     assert response.status_code == 200
     assert response.json()['ok'] is True
     assert response.json()['deleted_count'] == 2
@@ -56,7 +60,7 @@ def test_bulk_delete_cleans_history_and_chat_images_and_rejects_late_put(history
 def test_bulk_delete_is_atomic_when_deletion_state_cannot_be_written(history):
     client, images, _, _ = history
     with patch.object(agent.os, 'replace', side_effect=OSError('read-only')):
-        response = client.delete('/api/chats')
+        response = client.request('DELETE', '/api/chats', json={'deletion_token': deletion_token()})
     assert response.status_code == 500
     assert len(client.get('/api/chats').json()['chats']) == 2
     images.assert_not_called()
@@ -65,7 +69,7 @@ def test_bulk_delete_is_atomic_when_deletion_state_cannot_be_written(history):
 def test_bulk_delete_refuses_corrupt_chat_before_changing_history(history):
     client, images, _, _ = history
     agent.chat_path('bad').write_text('{')
-    assert client.delete('/api/chats').status_code == 500
+    assert client.request('DELETE', '/api/chats', json={'deletion_token': deletion_token()}).status_code == 500
     assert agent.read_chat('one') and agent.read_chat('two')
     assert not agent.deleted_chat_ids()
     images.assert_not_called()
@@ -74,7 +78,7 @@ def test_bulk_delete_refuses_corrupt_chat_before_changing_history(history):
 def test_invalid_ids_do_not_delete_anything(history):
     client, images, _, _ = history
     for ids in ('one', [None], ['../outside']):
-        assert client.request('DELETE', '/api/chats', json={'ids': ids}).status_code == 400
+        assert client.request('DELETE', '/api/chats', json={'ids': ids, 'deletion_token': deletion_token()}).status_code == 400
     assert len(client.get('/api/chats').json()['chats']) == 2
     images.assert_not_called()
 
@@ -82,7 +86,7 @@ def test_invalid_ids_do_not_delete_anything(history):
 def test_tombstone_commit_keeps_history_deleted_even_if_cleanup_fails(history):
     client, _, _, _ = history
     with patch.object(agent, 'delete_chat_images', return_value=([], ['cleanup-failed'])):
-        response = client.delete('/api/chats')
+        response = client.request('DELETE', '/api/chats', json={'deletion_token': deletion_token()})
     assert response.status_code == 200
     assert response.json()['failed_images']
     assert client.get('/api/chats').json()['chats'] == []
@@ -145,9 +149,28 @@ def test_shorts_planning_cannot_submit_a_job_after_bulk_delete(history):
     _, _, _, _ = history
     request = agent.ChatActionRequest(prompt='Create a short', chat_id='one', chat_revision=0)
     with patch.object(agent, 'agent_model_provider'), \
-         patch.object(agent, 'plan_short', side_effect=lambda *args, **kwargs: agent.delete_all_chats() or {}), \
+         patch.object(agent, 'plan_short', side_effect=lambda *args, **kwargs: agent.delete_all_chats({'deletion_token': deletion_token()}) or {}), \
          patch.object(shorts_jobs, 'create_short_job') as create:
         with pytest.raises(agent.HTTPException) as exc:
             agent._start_chat_shorts_job(request)
     assert exc.value.status_code == 404
     create.assert_not_called()
+
+
+def test_all_chat_delete_requires_explicit_settings_token(history):
+    client, images, _, _ = history
+    assert client.delete('/api/chats').status_code == 403
+    assert client.request('DELETE', '/api/chats', json={'deletion_token': 'invalid'}).status_code == 403
+    assert len(client.get('/api/chats').json()['chats']) == 2
+    images.assert_not_called()
+    refused = client.post('/api/chats/delete-intent', json={
+        'scope': 'all', 'confirmation': 'sure'
+    })
+    assert refused.status_code == 400
+    approved = client.post('/api/chats/delete-intent', json={
+        'scope': 'all', 'confirmation': 'LÖSCHEN'
+    })
+    assert approved.status_code == 200
+    token = approved.json()['deletion_token']
+    assert client.request('DELETE', '/api/chats', json={'deletion_token': token}).status_code == 200
+    assert client.request('DELETE', '/api/chats', json={'deletion_token': token}).status_code == 403
