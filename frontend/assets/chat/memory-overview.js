@@ -309,8 +309,8 @@
             const label = element('strong',
                 item.kind + ' · ' + item.operation + ' · ' + item.status);
             const summary = [
-                item.model ? 'Model: ' + item.model : '',
-                item.project ? 'Projekt: ' + item.project : '',
+                item.model ? t('activityModel') + ': ' + item.model : '',
+                item.project ? t('activityProject') + ': ' + item.project : '',
                 item.prompt || '',
             ].filter(Boolean).join(' | ');
             const detail = element('p', summary);
