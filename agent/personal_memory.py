@@ -130,6 +130,11 @@ def _schema(conn):
         CREATE TABLE IF NOT EXISTS excluded (
           chat_id TEXT PRIMARY KEY
         );
+        CREATE TABLE IF NOT EXISTS forgotten (
+          subject TEXT NOT NULL,
+          field TEXT NOT NULL,
+          PRIMARY KEY (subject, field)
+        );
     """)
 
 
@@ -156,6 +161,7 @@ def set_enabled(value: bool):
             conn.execute("DELETE FROM facts")
             conn.execute("DELETE FROM observed")
             conn.execute("DELETE FROM excluded")
+            conn.execute("DELETE FROM forgotten")
         conn.execute(
             "INSERT INTO settings(key,value) VALUES('enabled',?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -238,6 +244,11 @@ def _fact_for(conn, subject, field):
 
 def _propose(conn, subject, field, value, sensitive=False,
              source_chat_id=None, source_ordinal=None, explicit=False):
+    if conn.execute(
+        "SELECT 1 FROM forgotten WHERE subject=? AND field=?",
+        (subject, field),
+    ).fetchone():
+        return {"action": "forgotten"}
     active = _fact_for(conn, subject, field)
     now = time.time()
     if active and active["value"].casefold() == value.casefold():
@@ -438,6 +449,8 @@ def create_fact(subject, field, value, *, sensitive=False):
     val = _value(value)
     with LOCK, _connect() as conn:
         _schema(conn)
+        conn.execute("DELETE FROM forgotten WHERE subject=? AND field=?",
+                     (subj, key))
         return _propose(conn, subj, key, val, bool(sensitive), explicit=True)
 
 
@@ -462,12 +475,20 @@ def edit_fact(fact_id, *, subject=None, field=None, value=None, sensitive=None):
 
 
 def delete_fact(fact_id):
+    """Forget all revisions of one attribute and block automatic resurrection."""
     if not DB_PATH.exists():
         return False
     with LOCK, _connect() as conn:
         _schema(conn)
-        cursor = conn.execute("DELETE FROM facts WHERE id=?", (fact_id,))
-        return cursor.rowcount > 0
+        fact = conn.execute("SELECT subject,field FROM facts WHERE id=?",
+                            (fact_id,)).fetchone()
+        if not fact:
+            return False
+        conn.execute("DELETE FROM facts WHERE subject=? AND field=?",
+                     (fact["subject"], fact["field"]))
+        conn.execute("INSERT OR IGNORE INTO forgotten VALUES (?,?)",
+                     (fact["subject"], fact["field"]))
+        return True
 
 
 def resolve(conflict_id, decision, custom_value=None):
