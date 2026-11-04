@@ -42,6 +42,29 @@ nicht die Langzeiterinnerungen löschen.
   Erinnerungen. Das gezielte Verwalten der langfristigen Erinnerungen erfolgt
   in den Memory-Einstellungen.
 
+## Verbindung mit dem Qwen-Gedächtnis (PR #424)
+
+- `agent.app.memory_chat_reader(chat_id)` liest bei aktiven Chats die aktuelle
+  Quelle und nach Löschung aus der Seitenleiste die letzte unveränderte
+  private Kopie im Langzeitarchiv.
+- `agent.app.iter_memory_chats()` streamt die privaten archivierten Chats und
+  aktive Chats für spätere vollständige Qwen-Analyse. Der Haupt-Chatverlauf
+  wird dadurch **nicht wiederhergestellt**.
+- Die manuellen Rebuilds für persönliche Fakten und lexikalische Suche nutzen
+  diese Quellen. Ein später erst eingeschaltetes Gedächtnis kann also auch
+  ältere, aus der Seitenleiste entfernte Chats nachbearbeiten.
+- Die asynchrone Qwen-Verarbeitung verifiziert den **aktuellen Text der privaten
+  Quelldatei**, bevor ein Fakt geschrieben wird, und respektiert bestehende
+  Ausschlüsse/Tombstones. Sie nutzt keine Cloud-Inferenz.
+- Die Volltextquelle ist dauerhaft gespeichert; die Verfügbarkeit für eine
+  konkrete Antwort hängt weiterhin von Indexierung, Relevanz, Kontextbudget
+  und aktiviertem lokalem Qwen-Gedächtnis ab.
+- „Vergiss …“ und „Das war nur ein Beispiel“ im Chat löschen keine
+  bestehenden Erinnerungen automatisch. Gezielt und ausdrücklich bestätigtes
+  Löschen bleibt eine eigenständige Einstellungsfunktion.
+- Dieses Zusammenspiel ist derzeit **nur im Integrations-PR #424**, nicht in
+  `main` oder der produktiven Instanz, und erfordert CI plus isolierte Abnahme.
+
 ## Wichtige Einschränkungen
 
 **Löschen aus der Chatliste bedeutet nicht „alle Spuren entfernen“**:
