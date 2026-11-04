@@ -5,21 +5,6 @@
     const $ = id => document.getElementById(id);
     const lang = () => window.MLXI18n?.getLanguage?.() === 'de' ? 'de' : 'en';
     const words = {
-        de: {
-            title: 'Lokales Chatgedächtnis 2.0',
-            explanation: 'Durchsuchbarer Chatindex ausschließlich auf diesem Mac. Standardmäßig deaktiviert. GitHub und externe Dienste erhalten keine Chatdaten.',
-            toggle: 'Automatische lokale Indizierung aktivieren',
-            rebuild: 'Gesamten Index neu aufbauen',
-            search: 'Frühere Chats durchsuchen …',
-            go: 'Suchen',
-            disabled: 'Deaktiviert – es wird kein zusätzlicher Chatindex angelegt.',
-            count: n => n + ' indexierte Nachrichten',
-            saved: 'Einstellung gespeichert.',
-            error: 'Fehler',
-            remove: 'Diesen Chat aus dem Gedächtnis ausschließen',
-            empty: 'Keine passenden früheren Nachrichten.',
-            warning: 'Beim Deaktivieren werden die zusätzlichen Suchindex-Daten gelöscht; die ursprünglichen Chats bleiben bestehen.',
-        },
         en: {
             title: 'On-device chat memory 2.0',
             explanation: 'Searchable chat index stored only on this Mac. Disabled by default. No chat content is sent to GitHub or external services.',
@@ -28,15 +13,24 @@
             search: 'Search previous chats …',
             go: 'Search',
             disabled: 'Disabled – no additional chat index is created.',
-            count: n => n + ' indexed messages',
+            count: 'indexed messages',
             saved: 'Settings saved.',
             error: 'Error',
             remove: 'Exclude this chat from memory',
             empty: 'No matching prior messages.',
             warning: 'Turning off removes the derived search index, not the original chats.',
         },
+        de: {},
     };
-    const t = key => words[lang()][key];
+    const t = key => (words[lang()][key] || words.en[key] || key);
+    fetch('/i18n/memory-archive.json')
+        .then(response => response.ok ? response.json() : null)
+        .then(data => {
+            if (data?.de) words.de = data.de;
+            labels();
+        })
+        .catch(() => {});
+
     const html = `
         <section class="settings-card" id="localArchivePanel">
             <h4 id="localArchiveTitle"></h4>
@@ -71,7 +65,7 @@
         const data = await api('/api/mlx/memory/archive/status');
         $('localArchiveEnabled').checked = data.enabled;
         $('localArchiveRebuild').disabled = !data.enabled;
-        status(data.enabled ? t('count')(data.indexed_messages) : t('disabled'));
+        status(data.enabled ? (data.indexed_messages + ' ' + t('count')) : t('disabled'));
     }
     async function toggle() {
         const checkbox = $('localArchiveEnabled');
@@ -79,7 +73,7 @@
         checkbox.disabled = true;
         try {
             const data = await post('/api/mlx/memory/archive/config', {enabled});
-            status(data.enabled ? t('count')(data.indexed_messages) : t('disabled'));
+            status(data.enabled ? (data.indexed_messages + ' ' + t('count')) : t('disabled'));
             $('localArchiveRebuild').disabled = !data.enabled;
             $('localArchiveResults').replaceChildren();
         } catch (error) {
@@ -92,7 +86,7 @@
         button.disabled = true;
         try {
             const data = await post('/api/mlx/memory/archive/rebuild', {});
-            status(t('count')(data.indexed_messages));
+            status((data.indexed_messages + ' ' + t('count')));
         } catch (error) {
             status(t('error') + ': ' + error.message);
         } finally { button.disabled = false; }
