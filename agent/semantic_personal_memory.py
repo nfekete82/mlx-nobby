@@ -11,6 +11,7 @@ import json
 import queue
 import re
 import threading
+import time
 from typing import Callable
 
 from agent import personal_memory as pm
@@ -44,6 +45,7 @@ _HYPOTHETICAL = re.compile(
     r"könnte|might|would|could|if)\b", re.I,
 )
 _STATUS = {"queued": 0, "processed": 0, "failed": 0}
+_FULL = {"active": False, "total": 0, "examined": 0, "queued": 0, "skipped": 0}
 _TASKS: queue.Queue[tuple[str, int, str]] = queue.Queue(maxsize=100)
 _ENQUEUED: set[tuple[str, int, str]] = set()
 _STATE_LOCK = threading.RLock()
@@ -119,6 +121,7 @@ def status() -> dict:
             "processed": _STATUS["processed"],
             "failed": _STATUS["failed"],
             "local_only": True,
+            "full_scan": dict(_FULL),
         }
 
 
@@ -282,6 +285,9 @@ def _worker():
         chat_id, ordinal, digest = _TASKS.get()
         try:
             if not enabled():
+                continue
+            from agent import memory_dashboard
+            if memory_dashboard.paused():
                 continue
             current = _current(chat_id, ordinal)
             if current is None or current[1] != digest or _SECRET.search(current[0]):
