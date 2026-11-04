@@ -381,6 +381,26 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
             )
 
 
+    if "/api/mlx/memory/smart/status" not in paths:
+        @app.get("/api/mlx/memory/smart/status")
+        def smart_memory_status():
+            return agent_json_request(
+                "GET", "/api/smart-memory/status", timeout=10,
+            )
+
+        @app.post("/api/mlx/memory/smart/config")
+        def smart_memory_config(payload: dict):
+            return agent_json_request(
+                "POST", "/api/smart-memory/config", payload=payload, timeout=10,
+            )
+
+        @app.post("/api/mlx/memory/smart/backfill")
+        def smart_memory_backfill(payload: dict | None = None):
+            return agent_json_request(
+                "POST", "/api/smart-memory/backfill",
+                payload=payload or {}, timeout=20,
+            )
+
     if "/api/mlx/memory/dashboard/status" not in paths:
         @app.get("/api/mlx/memory/dashboard/status")
         def memory_dashboard_status():
