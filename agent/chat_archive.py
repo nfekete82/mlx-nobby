@@ -6,7 +6,7 @@ chat saves nor memory retrieval opens/creates the database until enabled.
 """
 from __future__ import annotations
 
-import hashlib
+import os
 import re
 import sqlite3
 import threading
@@ -27,6 +27,7 @@ _STOPWORDS = frozenset({
 def _connect():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     conn = sqlite3.connect(DB_PATH, timeout=5)
+    os.chmod(DB_PATH, 0o600)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     return conn
@@ -118,13 +119,18 @@ def _entries(chat):
 
 def index_chat(chat):
     """Incremental per-message indexing; unchanged messages are not rewritten."""
-    if not enabled():
+    if not DB_PATH.exists():
         return False
     chat_id = str(chat["id"])
     updated = float(chat["updated"])
     entries = {ordinal: (role, content) for ordinal, role, content in _entries(chat)}
     with LOCK, _connect() as conn:
         _schema(conn)
+        active = conn.execute(
+            "SELECT value FROM archive_meta WHERE key='enabled'"
+        ).fetchone()
+        if active is None or active["value"] != "1":
+            return False
         if conn.execute(
             "SELECT 1 FROM archive_excluded WHERE chat_id=?", (chat_id,)
         ).fetchone():
