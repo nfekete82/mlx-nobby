@@ -23,13 +23,13 @@ def install_routes(app, chat_host):
         if type(max_messages) is not int or not 1 <= max_messages <= 100:
             raise HTTPException(422, "limit must be between 1 and 100")
         try:
-            with chat_host.CHATS_LOCK:
-                # Never stream private content to the client. Queue only
-                # native-host tasks; inference happens asynchronously.
-                chats = chat_host.list_chats()
             if (payload or {}).get("full") is True:
                 from agent import smart_full_history
+                if hasattr(chat_host, 'iter_memory_chats'):
+                    return smart_full_history.start(chat_host.iter_memory_chats)
+                with chat_host.CHATS_LOCK: chats = chat_host.list_chats()
                 return smart_full_history.start(chats)
+            with chat_host.CHATS_LOCK: chats = chat_host.list_chats()
             return smart.backfill(chats, limit=max_messages)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc

@@ -741,6 +741,10 @@ function sessionT(key, fallback = '', variables = {}) {
             }
 
             serverReady = true;
+            const memorySource = (window.location?.search && typeof URLSearchParams !== 'undefined') ? new URLSearchParams(window.location.search).get('memory_chat') : null;
+            if (memorySource && state.sessions.some(item => item.id === memorySource)) {
+                state.activeId = memorySource;
+            }
 
             if (!state.sessions.length) {
                 createSession();

@@ -307,7 +307,9 @@ def _retrieval_scores(query, memories, now):
 
 def retrieve(query, *, limit=DEFAULT_LIMIT):
     limit = max(1, min(int(limit), MAX_LIMIT))
-    memories = list_memories(limit=500)
+    from agent import knowledge_memory as km, personal_memory as pm
+    memories = [m for m in list_memories(limit=500) if km.legacy_allowed(m)
+        and (not km._PRIVATE.search(m['text']) or pm.overview_requested(query) or km._PRIVATE.search(query))]
     now = time.time()
     scored = _retrieval_scores(query, memories, now)
     scored.sort(key=lambda pair: (pair[0], pair[1]["updated_at"]), reverse=True)
@@ -349,7 +351,8 @@ def context(query, *, limit=DEFAULT_LIMIT):
     # Show the bounded, stored long-term inventory when explicitly asked.
     from agent import personal_memory
     if personal_memory.overview_requested(query):
-        stored = list_memories(limit=25)
+        from agent import knowledge_memory as km
+        stored = [m for m in list_memories(limit=25) if km.legacy_allowed(m)]
         if not stored:
             return ""
         compact = []
@@ -375,7 +378,7 @@ def context(query, *, limit=DEFAULT_LIMIT):
 
 _VAGUE_FOLLOWUP = re.compile(
     r"^\s*(?:und|und jetzt|und weiter|weiter|was jetzt|wie weiter|"
-    r"was noch|und was ist damit|was meinst du dazu|was ist der stand|"
+    r"was noch|und was ist damit|was meinst du dazu|was denkst du dazu|wie geht es weiter|was ist der stand|"
     r"und wie sieht es aus|what next|and now|go on)"
     r"\s*[?.!]*\s*$", re.I,
 )
@@ -447,6 +450,9 @@ def observe_user_message(message, *, source_chat_id=None):
     if candidate is None:
         return {"action": "ignored"}
     memory_text, importance, confidence, pinned = candidate
+    from agent import knowledge_memory as km
+    if not km.legacy_allowed({'text':memory_text, 'source_chat_id':source_chat_id}):
+        return {'action':'ignored', 'reason':'forgotten'}
     item = add(
         memory_text,
         importance=importance,
@@ -518,4 +524,4 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=DEFAUL
     if not merged_context:
         return copied
 
-    return attach_system_context(copied, merged_context)
+    return attach_system_context(copied, merged_context[:6000])

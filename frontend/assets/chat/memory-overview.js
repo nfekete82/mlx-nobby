@@ -4,6 +4,55 @@
     if (window.MLXMemoryOverview) return;
     const $ = id => document.getElementById(id);
     const defaults = {
+        knowledgeTitle: "Knowledge & life story",
+        knowledgeHelp: "Browse every stored item by topic. A page is a selection; use More to continue. Statements reflect what you reported, not independently verified truth.",
+        knowledgeAbout: "About me",
+        knowledgeLife: "My life story",
+        knowledgePeople: "People & relationships",
+        knowledgeEvents: "Experiences & events",
+        knowledgePreferences: "Preferences & habits",
+        knowledgeWork: "Work & projects",
+        knowledgeMedia: "Images & videos",
+        knowledgeDecisions: "Decisions & tasks",
+        knowledgeChanges: "Timeline & changes",
+        knowledgeRelations: "Connections",
+        knowledgeOverview: "What does Nobby know about me?",
+        knowledgeProject: "Filter by project",
+        knowledgeSince: "From date",
+        knowledgeUntil: "To date",
+        knowledgeLoad: "Apply filters",
+        knowledgeExport: "Export knowledge",
+        knowledgeImport: "Import knowledge",
+        knowledgeBackupHelp: "Knowledge exports contain private information and source references. Back up original chats and media separately using Chat backup. Imports respect current deletion rules.",
+        knowledgePin: "Mark important",
+        knowledgeUnpin: "Remove priority",
+        knowledgeHistory: "Show correction history",
+        knowledgeMerge: "Merge selected memories",
+        knowledgeMergeValue: "Combined statement (original versions remain in history)",
+        knowledgeSelected: "Select for merging",
+        knowledgeShown: "Shown / stored",
+        knowledgeSources: "Open original chat",
+        knowledgeDiagnostics: "Processing & diagnostics",
+        knowledgeImportConfirm: "Import this private knowledge backup? Existing deletion rules take precedence.",
+        knowledgeSuccess: "Saved locally.",
+        knowledgeNoHistory: "No older versions.",
+        knowledgeConflicts: "Review open contradictions in the personal memory controls below.",
+        knowledgeStatement: "Reported statement",
+        knowledgePlan: "Plan",
+        knowledgeInterpretation: "Interpretation",
+        knowledgeAssumption: "Assumption",
+        knowledgeFact: "Confirmed memory",
+        knowledgeScopes: "What may Nobby retain?",
+        knowledgeSimilar: "Review similar memories",
+        knowledgeReported: "reported experience",
+        changeadded: "Added",
+        changeupdated: "Corrected",
+        changedeleted: "Deleted",
+        changemerged: "Merged",
+        changepinned: "Marked important",
+        changeunpinned: "Priority removed",
+        changeobserved: "Source analyzed",
+        changeimported: "Imported",
         title: 'Your memory',
         description: 'Everything Nobby has retained, in one place. All data stays on this device.',
         pause: 'Pause memory',
@@ -163,6 +212,14 @@
         Array.from($('memoryActivityFilter').options).forEach((item, index) => {
             item.textContent = t(activityKeys[index]);
         });
+        document.querySelectorAll?.('[data-i18n-memory]').forEach(node => {
+            node.textContent = t(node.dataset.i18nMemory);
+        });
+        if ($('memoryKnowledgeSearch')) {
+            $('memoryKnowledgeSearch').placeholder=t('search');
+            $('memoryKnowledgeProject').placeholder=t('knowledgeProject');
+            renderKnowledge();
+        }
         renderSmart();
         const filter = $('memoryOverviewFilter');
         for (const option of filter.options) option.textContent = t(option.value);
@@ -229,6 +286,244 @@
             await api(path, {method:'DELETE'});
         }
         await refresh();
+    }
+
+    const knowledge = {kind:'all',category:'',items:[],total:0,next:null,selected:new Set(),epoch:0};
+    const knowledgeCategories = [
+        ['','knowledgeOverview','all'], ['about','knowledgeAbout','fact'],
+        ['life','knowledgeLife','episode'], ['people','knowledgePeople','fact'],
+        ['events','knowledgeEvents','episode'], ['preferences','knowledgePreferences','fact'],
+        ['work','knowledgeWork','fact'], ['media','knowledgeMedia','media'],
+        ['decisions','knowledgeDecisions','fact'], ['changes','knowledgeChanges','change'],
+        ['relations','knowledgeRelations','relation'],
+    ];
+    const knowledgeBase = '/api/mlx/memory/knowledge/';
+    function sourceLink(source) {
+        if (source.role === 'manual') return element('small', t('manual'));
+        const link = element('a', t('knowledgeSources') + ' · #' + source.ordinal);
+        link.href = '/chat?memory_chat=' + encodeURIComponent(source.chat_id)
+            + '&memory_message=' + encodeURIComponent(source.ordinal);
+        return link;
+    }
+    async function knowledgeHistory(item, target) {
+        const data = await api(knowledgeBase + 'history/' + encodeURIComponent(item.id));
+        target.replaceChildren();
+        const rows = data.items || [];
+        if (!rows.length) target.append(element('p', t('knowledgeNoHistory')));
+        for (const row of rows) target.append(element('p',
+            new Date(row.created_at * 1000).toLocaleString() + ' · ' + row.value +
+            (row.status === 'active' ? ' ✓' : '')));
+    }
+    function renderKnowledge() {
+        const list = $('memoryKnowledgeList');
+        if (!list) return;
+        list.replaceChildren();
+        $('memoryKnowledgeSummary').textContent = t('knowledgeShown') + ': '
+            + knowledge.items.length + ' / ' + knowledge.total;
+        if (!knowledge.items.length) list.append(element('p', t('noItems')));
+        for (const item of knowledge.items) {
+            const card = element('article', '', 'memory-overview-item');
+            const isFact = Boolean(item.field);
+            const title = isFact ? readableField(item.field)
+                : (item.title || (item.subject && item.object ? item.subject + ' → ' + (item.predicate === 'reported_experience' ? t('knowledgeReported') : readableField(item.predicate)) + ' → ' + item.object : t('knowledgeChanges')));
+            card.append(element('strong', title), element('p', item.value || item.description || (item.action ? t('change'+item.action) : '')));
+            if (item.kind || item.status) {
+                const keys = {statement:'knowledgeStatement',fact:'knowledgeFact',plan:'knowledgePlan',
+                    interpretation:'knowledgeInterpretation',assumption:'knowledgeAssumption'};
+                const label = keys[item.kind || item.status];
+                if (label) card.append(element('small', t(label)));
+            }
+            if (item.period) card.append(element('small', item.period));
+            if (Array.isArray(item.people) && item.people.length) card.append(element('small', item.people.join(', ')));
+            for (const source of item.sources || []) card.append(sourceLink(source));
+            const actions = element('div', '', 'memory-overview-actions');
+            if (isFact) {
+                const select = element('input'); select.type = 'checkbox';
+                select.checked = knowledge.selected.has(item.id);
+                select.setAttribute('aria-label', t('knowledgeSelected'));
+                select.addEventListener('change', () => {
+                    if (select.checked) knowledge.selected.add(item.id);
+                    else knowledge.selected.delete(item.id);
+                    $('memoryKnowledgeMerge').disabled = knowledge.selected.size < 2;
+                });
+                const selectLabel = element('label', t('knowledgeSelected')); selectLabel.append(select);
+                card.append(selectLabel);
+                actions.append(action(t('edit'), async () => {
+                    const value = window.prompt(t('edit'), item.value);
+                    if (value === null || !value.trim()) return;
+                    await api('/api/mlx/memory/personal/facts/' + encodeURIComponent(item.id), {
+                        method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({value:value.trim()})});
+                    await loadKnowledge();
+                }));
+                actions.append(action(t(item.pinned ? 'knowledgeUnpin' : 'knowledgePin'), async () => {
+                    await post(knowledgeBase + 'pin/' + encodeURIComponent(item.id), {pinned:!item.pinned});
+                    await loadKnowledge();
+                }));
+                const history = element('details');
+                const heading = element('summary', t('knowledgeHistory')); history.append(heading);
+                const historyList = element('div'); history.append(historyList);
+                history.addEventListener('toggle', () => {
+                    if (history.open) knowledgeHistory(item, historyList).catch(error => notice(t('error') + ' ' + error.message));
+                });
+                card.append(history);
+            }
+            if (isFact || knowledge.kind === 'episode' || item.object_type === 'episode') actions.append(action(t('remove'), async () => {
+                if (!window.confirm(t('confirmDelete'))) return;
+                const path = isFact ? '/api/mlx/memory/personal/facts/' : knowledgeBase + 'episode/';
+                await api(path + encodeURIComponent(item.id), {method:'DELETE'});
+                await loadKnowledge();
+            }));
+            card.append(actions); list.append(card);
+        }
+        $('memoryKnowledgeMore').hidden = knowledge.next === null;
+        $('memoryKnowledgeMerge').disabled = knowledge.selected.size < 2;
+    }
+    async function loadKnowledge(append = false) {
+        if (!$('memoryKnowledge')) return;
+        const epoch = ++knowledge.epoch;
+        if (knowledge.kind === 'media') { await loadActivities(false); return; }
+        const params = new URLSearchParams({kind:knowledge.kind,
+            query:$('memoryKnowledgeSearch').value.trim(),
+            category:knowledge.kind === 'fact' ? knowledge.category : '',
+            project:$('memoryKnowledgeProject').value.trim(),
+            offset:String(append ? knowledge.next || 0 : 0),limit:'30'});
+        for (const [id, key] of [['memoryKnowledgeSince','since'],['memoryKnowledgeUntil','until']]) {
+            if ($(id).value) {
+                const date = new Date($(id).value + 'T00:00:00');
+                if (key === 'until') date.setDate(date.getDate() + 1);
+                params.set(key, String(date.getTime()/1000));
+            }
+        }
+        const data = await api(knowledgeBase + 'items?' + params);
+        if (epoch !== knowledge.epoch) return;
+        knowledge.items = append ? [...knowledge.items, ...(data.items || [])] : (data.items || []);
+        if (!append) knowledge.selected.clear();
+        knowledge.total = Number(data.total) || 0;
+        knowledge.next = data.next_offset ?? null;
+        renderKnowledge();
+        const diagnostics = await api(knowledgeBase + 'status');
+        if (epoch !== knowledge.epoch) return;
+        const node = $('memoryKnowledgeDiagnostics'); node.replaceChildren();
+        for (const [key, value] of Object.entries(diagnostics.counts || {})) {
+            const label = {chats:'archive',messages:'sourceMessage',episodes:'knowledgeEvents',facts:'personal',relations:'knowledgeRelations'}[key];
+            node.append(element('span', t(label || 'count') + ': ' + value + ' · '));
+        }
+        for (const [key, value] of Object.entries(diagnostics.jobs || {})) {
+            const label = {pending:'smartQueue',done:'smartProcessed',error:'smartFailed',excluded:'exclude'}[key];
+            node.append(element('span', t(label || 'count') + ': ' + value + ' · '));
+        }
+        for (const error of diagnostics.errors || []) node.append(element('p', t('error') + ' ' + error.error_code + ' (' + error.count + ')'));
+        for(const failed of diagnostics.failed_sources || []) node.append(element('p',
+            t('source')+' '+failed.source_id.slice(0,12)+' · '+t('sourceMessage')+' '+failed.chunk+' · '+failed.error_code));
+    }
+    async function exportKnowledge() {
+        const data = await api(knowledgeBase + 'export');
+        const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type:'application/json'}));
+        const link = element('a'); link.href = url; link.download = 'mlx-nobby-private-knowledge.json';
+        link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    async function loadKnowledgeScopes() {
+        const data = await api(knowledgeBase + 'scopes');
+        const controls = $('memoryKnowledgeScopes'); controls.replaceChildren();
+        for (const [key,label] of knowledgeCategories.filter(row =>
+            ['about','life','people','events','preferences','work','media','decisions'].includes(row[0]))) {
+            const item = element('label'); const span = element('span',t(label));
+            const check = element('input'); check.type='checkbox';check.value=key;
+            check.checked=(data.scopes || []).includes(key);
+            check.addEventListener('change',async () => {
+                const values = Array.from(controls.querySelectorAll('input:checked')).map(node=>node.value);
+                try { await post(knowledgeBase+'scopes',{scopes:values});notice(t('knowledgeSuccess')); }
+                catch(error) { check.checked=!check.checked;notice(t('error')+' '+error.message); }
+            });
+            item.append(check,span);controls.append(item);
+        }
+    }
+    async function showKnowledgeSimilar() {
+        const data = await api(knowledgeBase+'similar');
+        const output=$('memoryKnowledgeSimilar');output.replaceChildren();
+        if (!(data.items || []).length) output.append(element('p',t('noItems')));
+        for(const pair of data.items || []) {
+            const card=element('article','','memory-overview-item');
+            for(const value of pair.values) card.append(element('p',value));
+            card.append(action(t('knowledgeMerge'),async()=>{
+                const value=window.prompt(t('knowledgeMergeValue'),pair.values.join(' '));
+                if(!value?.trim()) return;
+                await post(knowledgeBase+'merge',{ids:pair.ids,value:value.trim()});
+                await loadKnowledge();await showKnowledgeSimilar();
+            }));output.append(card);
+        }
+    }
+
+    function mountKnowledge(panel) {
+        const section = element('section', '', 'memory-overview-group'); section.id = 'memoryKnowledge';
+        const heading = element('h3', t('knowledgeTitle')); heading.dataset.i18nMemory = 'knowledgeTitle';
+        const help = element('p', t('knowledgeHelp')); help.dataset.i18nMemory = 'knowledgeHelp';
+        const nav = element('div', '', 'memory-overview-search');
+        const category = element('select'); category.id = 'memoryKnowledgeCategory';
+        for (const [key,label,kind] of knowledgeCategories) {
+            const option = element('option', t(label)); option.value = key; option.dataset.kind = kind; option.dataset.i18nMemory = label; category.append(option);
+        }
+        const search = element('input'); search.id = 'memoryKnowledgeSearch'; search.type = 'search'; search.placeholder = t('search');
+        search.setAttribute('aria-label', t('search'));
+        const project = element('input'); project.id = 'memoryKnowledgeProject'; project.placeholder = t('knowledgeProject'); project.setAttribute('aria-label', t('knowledgeProject'));
+        const dates = element('div', '', 'memory-overview-search');
+        for (const [id,key] of [['memoryKnowledgeSince','knowledgeSince'],['memoryKnowledgeUntil','knowledgeUntil']]) {
+            const label = element('label'); const labelText=element('span',t(key));labelText.dataset.i18nMemory=key;label.append(labelText); const input = element('input'); input.id = id; input.type = 'date'; label.append(input); dates.append(label);
+        }
+        const load = action(t('knowledgeLoad'), () => loadKnowledge()); load.dataset.i18nMemory = 'knowledgeLoad';
+        nav.append(category, search, project, load);
+        const summary = element('p'); summary.id = 'memoryKnowledgeSummary'; summary.setAttribute('role','status');
+        const list = element('div', '', 'memory-overview-group'); list.id = 'memoryKnowledgeList';
+        const more = action(t('showMore'), () => loadKnowledge(true)); more.id = 'memoryKnowledgeMore'; more.hidden = true;
+        const merge = action(t('knowledgeMerge'), async () => {
+            const value = window.prompt(t('knowledgeMergeValue'));
+            if (!value?.trim()) return;
+            await post(knowledgeBase + 'merge', {ids:Array.from(knowledge.selected), value:value.trim()});
+            await loadKnowledge();
+        }); merge.id = 'memoryKnowledgeMerge'; merge.disabled = true; merge.dataset.i18nMemory = 'knowledgeMerge';
+        const tools = element('div', '', 'memory-overview-search');
+        const download = action(t('knowledgeExport'), exportKnowledge); download.dataset.i18nMemory = 'knowledgeExport';
+        const upload = element('input'); upload.type = 'file'; upload.accept = '.json,application/json'; upload.id = 'memoryKnowledgeImport';
+        upload.setAttribute('aria-label', t('knowledgeImport'));
+        upload.addEventListener('change', async () => {
+            const file = upload.files?.[0]; if (!file) return;
+            try {
+                if (file.size > 32 * 1024 * 1024) throw Error('32 MiB');
+                if (!window.confirm(t('knowledgeImportConfirm'))) return;
+                await post(knowledgeBase + 'import', JSON.parse(await file.text()));
+                notice(t('knowledgeSuccess')); await loadKnowledge();
+            } catch (error) { notice(t('error') + ' ' + error.message); }
+            finally { upload.value = ''; }
+        });
+        const uploadLabel = element('label');const uploadText=element('span',t('knowledgeImport'));uploadText.dataset.i18nMemory='knowledgeImport'; uploadLabel.append(uploadText,upload);
+        tools.append(download, uploadLabel);
+        const backupHelp = element('small', t('knowledgeBackupHelp')); backupHelp.dataset.i18nMemory = 'knowledgeBackupHelp';
+        const scopePanel=element('details');
+        const scopeTitle=element('summary',t('knowledgeScopes'));scopeTitle.dataset.i18nMemory='knowledgeScopes';
+        const scopeList=element('div','','memory-overview-search');scopeList.id='memoryKnowledgeScopes';
+        scopePanel.append(scopeTitle,scopeList);
+        scopePanel.addEventListener('toggle',()=>{if(scopePanel.open) loadKnowledgeScopes().catch(error=>notice(t('error')+' '+error.message));});
+        const similarPanel=element('details');
+        const similarTitle=element('summary',t('knowledgeSimilar'));similarTitle.dataset.i18nMemory='knowledgeSimilar';
+        const similarList=element('div');similarList.id='memoryKnowledgeSimilar';similarPanel.append(similarTitle,similarList);
+        similarPanel.addEventListener('toggle',()=>{if(similarPanel.open) showKnowledgeSimilar().catch(error=>notice(t('error')+' '+error.message));});
+        const diagnostics = element('details');
+        const diagnosticsTitle=element('summary',t('knowledgeDiagnostics'));diagnosticsTitle.dataset.i18nMemory='knowledgeDiagnostics';
+        diagnostics.append(diagnosticsTitle);
+        const diagnosticList = element('div'); diagnosticList.id = 'memoryKnowledgeDiagnostics'; diagnostics.append(diagnosticList);
+        section.append(heading,help,nav,dates,summary,list,more,merge,similarPanel,scopePanel,tools,backupHelp,diagnostics);
+        panel.append(section);
+        category.addEventListener('change', () => {
+            const selected = knowledgeCategories.find(row => row[0] === category.value);
+            knowledge.category = selected[0]; knowledge.kind = selected[2];
+            if (knowledge.kind === 'media') {
+                $('memoryOverviewActivities').open = true;
+                $('memoryOverviewActivities').scrollIntoView?.({behavior:'smooth'});
+            }
+            loadKnowledge().catch(error => notice(t('error') + ' ' + error.message));
+        });
+        search.addEventListener('keydown', event => { if (event.key === 'Enter') loadKnowledge().catch(error => notice(t('error') + ' ' + error.message)); });
     }
     function renderSmart() {
         if (!$('memorySmartToggle')) return;
@@ -434,7 +729,7 @@
             state.total = {};
             renderStatus();
             renderSmart();
-            await Promise.all(selected.map(source => loadPage(source)));
+            await Promise.all([...selected.map(source => loadPage(source)), loadKnowledge()]);
         } catch (error) {
             if (epoch === state.epoch) notice(t('error') + ' ' + error.message);
         }
@@ -560,8 +855,12 @@
         const items = element('div'); items.id = 'memoryOverviewItems';
         const status = element('p'); status.id = 'memoryOverviewNotice';
         status.setAttribute('role', 'status');
-        panel.append(top, mode, counts, layers, smartPanel, activityPanel,
-            search, items, warning, note, status);
+        mountKnowledge(panel);
+        panel.insertBefore(top, panel.children[0]);
+        panel.insertBefore(mode, panel.children[1]);
+        panel.insertBefore(counts, panel.children[2]);
+        panel.insertBefore(layers, panel.children[3]);
+        panel.append(smartPanel, activityPanel, search, items, warning, note, status);
         const advanced = element('details'); advanced.id = 'memoryOverviewAdvanced';
         const advancedLabel = element('summary'); advancedLabel.id = 'memoryOverviewAdvancedLabel';
         advanced.append(advancedLabel);

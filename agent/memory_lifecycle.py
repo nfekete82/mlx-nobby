@@ -144,14 +144,16 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory
         personal_context = personal_memory.context(
             memory.recall_query(copied), limit=6,
         )
+        from agent import knowledge_memory
+        knowledge_context = knowledge_memory.context(memory.recall_query(copied), semantic=True)
         extra = "\n\n".join(part for part in (
-            clarification, personal_context,
+            clarification, personal_context, knowledge_context,
         ) if part)
         if extra:
-            enriched = memory.attach_system_context(enriched, extra)
-    except Exception:
-        # Memory must never block normal chat completion.
-        pass
+            enriched = memory.attach_system_context(enriched, extra[:9000])
+    except Exception as error:
+        from agent import knowledge_memory
+        knowledge_memory.diagnose('recall', error)
     return enriched
 
 
@@ -169,7 +171,8 @@ def fast_personal_context(messages):
     if not query:
         return copied
     try:
-        private_context = personal_memory.context(query, limit=6)
+        from agent import knowledge_memory
+        private_context = '\n\n'.join(filter(None, (personal_memory.context(query, limit=6), knowledge_memory.context(query, budget=3000))))
         if private_context:
             return memory.attach_system_context(copied, private_context)
     except Exception:

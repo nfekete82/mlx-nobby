@@ -66,7 +66,8 @@ def test_full_scan_queues_all_user_turns_without_duplicate_assistant(monkeypatch
     assert result["full_scan"]["total"] == 3
     assert result["full_scan"]["examined"] == 3
     assert result["full_scan"]["queued"] == 3
-    assert not result["full_scan"]["active"]
+    assert result["full_scan"]["active"]  # queued durable work is still outstanding
+    assert not result["full_scan"]["feeding"]
     assert smart._TASKS.qsize() == 3
     ids = {smart._TASKS.get_nowait()[:2] for _ in range(3)}
     assert ids == {("test-a", 0), ("test-b", 0), ("test-b", 1)}

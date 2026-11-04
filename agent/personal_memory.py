@@ -223,6 +223,8 @@ def _schema(conn):
         conn.execute("INSERT INTO fact_lineage VALUES (?,?)", (fact["id"], root))
     if missing:
         conn.commit()
+    from agent import knowledge_memory
+    knowledge_memory.schema(conn)
 
 
 def _is_enabled(conn):
@@ -258,6 +260,13 @@ def set_enabled(value: bool):
             conn.execute("DELETE FROM facts")
             conn.execute("DELETE FROM observed")
             conn.execute("DELETE FROM smart_observed")
+            for table in ('memory_sources', 'episodes', 'knowledge_relations',
+                          'knowledge_entities', 'knowledge_changes', 'knowledge_vectors',
+                          'memory_diagnostics'):
+                conn.execute('DELETE FROM ' + table)
+            conn.execute("DELETE FROM knowledge_fts")
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE name='memory_command_receipts'").fetchone():
+                conn.execute('DELETE FROM memory_command_receipts')
             # Keep only exclusion/forgetting preferences, never private values.
             # A later opt-in must not silently resurrect explicitly deleted facts.
         conn.execute(
@@ -365,14 +374,21 @@ def _fact_for(conn, subject, field):
 
 def _propose(conn, subject, field, value, sensitive=False,
              source_chat_id=None, source_ordinal=None, explicit=False, lineage_id=None):
+    from agent import knowledge_memory as km
+    if not km.scope_allowed(conn, km.category(subject, field, value)) or km.blocked(conn, value):
+        return {"action": "forgotten"}
     if conn.execute(
         "SELECT 1 FROM forgotten WHERE subject=? AND field=?",
         (subject, field),
     ).fetchone():
         return {"action": "forgotten"}
+    equivalent = km.equivalent_preference(conn, subject, field, value)
+    if equivalent is not None:
+        return {'action':'unchanged','fact_id':equivalent['id']}
     active = _fact_for(conn, subject, field)
     now = time.time()
-    if active and active["value"].casefold() == value.casefold():
+    if active and km.normalized(active["value"]) == km.normalized(value):
+        km.annotate(conn, active['id'], subject=subject, field=field)
         return {"action": "unchanged", "fact_id": active["id"]}
     if active and not explicit:
         issue = conn.execute(
@@ -401,6 +417,12 @@ def _propose(conn, subject, field, value, sensitive=False,
          source_chat_id, source_ordinal, "active", now, now),
     )
     conn.execute("INSERT INTO fact_lineage VALUES (?,?)", (fid, root or fid))
+    km.annotate(conn, fid, subject=subject, field=field, evidence=value)
+    if active:
+        # Earlier sources remain attached to the historical revision, never to the new claim.
+        prior = conn.execute('SELECT pinned FROM fact_metadata WHERE fact_id=?', (active['id'],)).fetchone()
+        if prior and prior[0]: conn.execute('UPDATE fact_metadata SET pinned=1 WHERE fact_id=?', (fid,))
+    km.change(conn, 'fact', fid, 'updated' if active else 'added')
     return {"action": "updated" if active else "added", "fact_id": fid}
 
 
@@ -442,10 +464,11 @@ def list_facts(query="", *, limit=200, history=False):
         sql = "SELECT * FROM facts"
         if not history:
             sql += " WHERE status='active'"
-        sql += " ORDER BY updated_at DESC LIMIT 2000"
-        return [_row(r) for r in conn.execute(sql).fetchall()
-                if text in (r["subject"] + " " + r["field"] + " " + r["value"]).casefold()
-               ][:bounded]
+        from agent.knowledge_memory import _like
+        sql += " AND " if not history else " WHERE "
+        sql += "(subject || ' ' || field || ' ' || value) LIKE ? ESCAPE '\\'"
+        sql += " ORDER BY updated_at DESC LIMIT ?"
+        return [_row(r) for r in conn.execute(sql, ('%' + _like(text) + '%', bounded))]
 
 
 def list_conflicts():
@@ -468,6 +491,8 @@ def observe(message, *, source_chat_id=None, source_ordinal=None):
     if not enabled():
         return []
     text = str(message or "")
+    from agent import knowledge_memory as km
+    if km._NO_LEARN.search(text) or km._SECRET.search(text): return []
     found = _extract(text)
     with LOCK, _connect() as conn:
         _schema(conn)
@@ -477,14 +502,18 @@ def observe(message, *, source_chat_id=None, source_ordinal=None):
             "SELECT 1 FROM excluded WHERE chat_id=?", (source_chat_id,)
         ).fetchone():
             return []
-        if not found and len(text) > 1800:
-            return []
         events = []
+        from agent import knowledge_memory as km
+        sid = km.source(conn, source_chat_id, source_ordinal or 0, text) if source_chat_id else None
+        if km._NO_LEARN.search(text) or km._SECRET.search(text) or (sid and km.blocked(conn, text, sid)):
+            return []
         for subject, field, value, sensitive in found:
             events.append(_propose(
                 conn, subject, field, value, sensitive, source_chat_id,
                 source_ordinal, explicit=bool(_EXPLICIT_CHANGE.search(text)),
             ))
+            fid = events[-1].get('fact_id')
+            if fid: km.annotate(conn, fid, subject=subject, field=field, sid=sid, evidence=value)
         return events
 
 
@@ -514,9 +543,11 @@ def index_chat(chat):
                    if old.get(n) != digest}
         changed.update(set(old) - set(incoming))
         for ordinal in changed:
+            if ordinal not in old:
+                continue
             conn.execute("DELETE FROM conflicts WHERE source_chat_id=? AND source_ordinal=?",
                          (chat_id, ordinal))
-            conn.execute("DELETE FROM facts WHERE source_chat_id=? AND source_ordinal=?",
+            conn.execute("UPDATE facts SET status='source_changed' WHERE source_chat_id=? AND source_ordinal=? AND status='active'",
                          (chat_id, ordinal))
             conn.execute("DELETE FROM observed WHERE chat_id=? AND ordinal=?",
                          (chat_id, ordinal))
@@ -528,10 +559,17 @@ def index_chat(chat):
             digest, text = incoming[ordinal]
             conn.execute("INSERT INTO observed VALUES (?,?,?)",
                          (chat_id, ordinal, digest))
+            from agent import knowledge_memory as km
+            message = chat['messages'][ordinal]
+            sid = km.source(conn, chat_id, ordinal, text, message_key=message.get('id'), project=chat.get('title', ''), timestamp=message.get('timestamp', chat.get('updated')))
+            if km._NO_LEARN.search(text) or km._SECRET.search(text) or km.blocked(conn, text, sid):
+                continue
             for subject, field, value, sensitive in _extract(text):
-                _propose(conn, subject, field, value, sensitive,
+                event = _propose(conn, subject, field, value, sensitive,
                          chat_id, ordinal,
                          explicit=bool(_EXPLICIT_CHANGE.search(text)))
+                if event.get('fact_id'):
+                    km.annotate(conn, event['fact_id'], subject=subject, field=field, sid=sid, evidence=value)
     return {"processed": len(changed)}
 
 
@@ -544,6 +582,8 @@ def remove_chat(chat_id, *, exclude=False):
         conn.execute("DELETE FROM facts WHERE source_chat_id=?", (chat_id,))
         conn.execute("DELETE FROM observed WHERE chat_id=?", (chat_id,))
         conn.execute("DELETE FROM smart_observed WHERE chat_id=?", (chat_id,))
+        conn.execute('DELETE FROM memory_sources WHERE chat_id=?', (chat_id,))
+        conn.execute('DELETE FROM episodes WHERE id NOT IN (SELECT episode_id FROM episode_evidence)')
         if exclude:
             conn.execute("INSERT OR IGNORE INTO excluded VALUES (?)", (chat_id,))
 
@@ -591,6 +631,8 @@ def create_fact(subject, field, value, *, sensitive=False):
             raise ValueError("Personal memory is disabled")
         conn.execute("DELETE FROM forgotten WHERE subject=? AND field=?",
                      (subj, key))
+        from agent import knowledge_memory as km
+        conn.execute("DELETE FROM memory_tombstones WHERE scope='value' AND key=?", (km.digest(km.normalized(val)),))
         return _propose(conn, subj, key, val, bool(sensitive), explicit=True)
 
 
@@ -611,11 +653,16 @@ def edit_fact(fact_id, *, subject=None, field=None, value=None, sensitive=None):
         conn.execute("UPDATE facts SET status='superseded',updated_at=? WHERE id=?",
                      (time.time(), fact_id))
         conn.execute("DELETE FROM conflicts WHERE fact_id=?", (fact_id,))
-        return _propose(conn, new_subject, new_field, new_value,
+        result = _propose(conn, new_subject, new_field, new_value,
                         old["sensitive"] if sensitive is None else bool(sensitive),
-                        source_chat_id=old["source_chat_id"],
-                        source_ordinal=old["source_ordinal"],
+                        source_chat_id=old["source_chat_id"], source_ordinal=old["source_ordinal"],
                         explicit=True, lineage_id=_lineage(conn, fact_id))
+        if result.get('fact_id'):
+            from agent import knowledge_memory as km
+            sid = km.source(conn, 'manual', -1, new_value, message_key='edit:' + result['fact_id'])
+            conn.execute("UPDATE memory_sources SET role='manual' WHERE id=?", (sid,))
+            km.annotate(conn, result['fact_id'], subject=new_subject, field=new_field, sid=sid, evidence=new_value)
+        return result
 
 
 def delete_fact(fact_id):
@@ -635,10 +682,13 @@ def delete_fact(fact_id):
             "ON l.fact_id=f.id WHERE l.root_id=? OR (f.subject=? AND f.field=?) OR f.id=?",
             (root, fact["subject"], fact["field"], root),
         ).fetchall()
+        from agent import knowledge_memory as km
         for revision in revisions:
+            km.forget(conn, revision['id'])
             conn.execute("INSERT OR IGNORE INTO forgotten VALUES (?,?)",
                          (revision["subject"], revision["field"]))
             conn.execute("DELETE FROM facts WHERE id=?", (revision["id"],))
+        km.purge_orphans(conn)
         return True
 
 
@@ -778,7 +828,7 @@ def _fact_tokens(fact) -> set[str]:
 
 
 def _fact_line(fact: dict) -> str:
-    source = "chat" if fact.get("source_chat_id") else "manual"
+    source = (f"chat {fact['source_chat_id']} message {fact.get('source_ordinal')}" if fact.get("source_chat_id") else "manual")
     # Saved text is untrusted user data, never prompt structure.
     value = re.sub(r"\s+", " ", str(fact["value"]))[:250]
     return (
@@ -868,6 +918,9 @@ def context(query, *, limit=6):
     scored = []
     for fact in facts:
         if fact in identity:
+            continue
+        from agent import knowledge_memory as km
+        if (km._PRIVATE.search(fact['value']) or fact['field'].split('.')[0] in ('gesundheit', 'beziehung', 'kindheit', 'erlebnis')) and not km._PRIVATE.search(query):
             continue
         overlap = len(tokens & _fact_tokens(fact))
         relevant = overlap > 0

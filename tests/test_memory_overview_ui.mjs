@@ -22,6 +22,7 @@ function fixture() {
             this.text = '';
             this.value = '';
             this.style = {};
+            this.dataset = {};
             this.disabled = false;
         }
         set id(value) { this._id = value; registry.set(value, this); }
@@ -113,6 +114,7 @@ function fixture() {
         setInterval:()=>1,
         clearInterval:()=>{},
         URL,
+        URLSearchParams,
         console,
     };
     vm.runInNewContext(source, context);

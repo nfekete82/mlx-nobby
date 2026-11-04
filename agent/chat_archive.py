@@ -7,6 +7,8 @@ chat saves nor memory retrieval opens/creates the database until enabled.
 from __future__ import annotations
 
 import re
+import json
+import hashlib
 import threading
 from pathlib import Path
 from agent import private_memory_sqlite
@@ -60,6 +62,13 @@ def _schema(conn):
             updated REAL NOT NULL,
             PRIMARY KEY(chat_id, ordinal, kind)
         );
+        CREATE TABLE IF NOT EXISTS archive_activity_details(
+            chat_id TEXT NOT NULL,ordinal INTEGER NOT NULL,kind TEXT NOT NULL,
+            metadata TEXT NOT NULL,PRIMARY KEY(chat_id,ordinal,kind));
+        CREATE TABLE IF NOT EXISTS archive_revisions(
+            chat_id TEXT NOT NULL,ordinal INTEGER NOT NULL,digest TEXT NOT NULL,
+            role TEXT NOT NULL,content TEXT NOT NULL,updated REAL NOT NULL,
+            PRIMARY KEY(chat_id,ordinal,digest));
         CREATE INDEX IF NOT EXISTS idx_archive_activity_kind
             ON archive_activity(kind, updated DESC);
         CREATE VIRTUAL TABLE IF NOT EXISTS archive_fts USING fts5(
@@ -108,6 +117,8 @@ def set_enabled(value: bool):
         if not value:
             conn.execute("DELETE FROM archive_messages")
             conn.execute("DELETE FROM archive_activity")
+            conn.execute("DELETE FROM archive_activity_details")
+            conn.execute("DELETE FROM archive_revisions")
             # FTS5 may retain obsolete posting-list segments even after a
             # row DELETE. Rebuild the index from the now-empty content table.
             conn.execute("INSERT INTO archive_fts(archive_fts) VALUES('rebuild')")
@@ -267,6 +278,29 @@ def _activity_record(message, *, user_prompt="", project=""):
     }
 
 
+_METADATA_KEYS = frozenset({'negative_prompt', 'seed', 'steps', 'num_inference_steps',
+    'guidance', 'guidance_scale', 'cfg_scale', 'width', 'height', 'resolution',
+    'fps', 'frames', 'num_frames', 'duration', 'scheduler', 'sampler', 'workflow',
+    'workflow_id', 'reference_image_ids', 'reference_video_ids', 'artifact_id'})
+
+
+def _media_parameters(message):
+    result = {}
+    def visit(item, depth=0):
+        if not isinstance(item, dict) or depth > 4: return
+        for key, value in item.items():
+            if key in _METADATA_KEYS:
+                if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+                    safe = _safe_metadata(str(value), 1500)
+                    if safe: result[key] = value if isinstance(value, (int, float)) else safe
+                elif key.endswith('_ids') and isinstance(value, list):
+                    result[key] = [v for v in value[:30] if isinstance(v, str) and _SAFE_ACTIVITY_FIELD.fullmatch(v)]
+            elif key in ('payload', 'params', 'parameters', 'request', 'output', 'data', 'job', 'image_job', 'video_job', 'tool_result', 'result'):
+                visit(value, depth + 1)
+    visit(message)
+    return result
+
+
 def _entries(chat):
     messages = chat.get("messages", [])
     # A saved chat title helps recover actions from a project even when
@@ -282,13 +316,13 @@ def _entries(chat):
         note = _activity(message) if message["role"] == "assistant" else []
         if not value.strip() and not note:
             continue
-        segments = [value[:MAX_INDEXED_MESSAGE]]
+        segments = [value]
         if title and note:
             # Add project titles only to actual activity records: a generic
             # title must not make unrelated normal messages match searches.
             segments.append("Chat-Titel: " + title)
         segments.extend(note)
-        yield (ordinal, message["role"], "\n".join(segments)[:MAX_INDEXED_MESSAGE])
+        yield (ordinal, message["role"], "\n".join(segments))
 
 
 def index_chat(chat):
@@ -313,6 +347,7 @@ def index_chat(chat):
             project=str(chat.get("title") or ""),
         )
         if record:
+            record["metadata"] = _media_parameters(message)
             records[(ordinal, record["kind"])] = record
     with LOCK, _connect() as conn:
         _schema(conn)
@@ -331,6 +366,11 @@ def index_chat(chat):
                 (chat_id,),
             )
         }
+        for ordinal, old in existing.items():
+            new = entries.get(ordinal)
+            if new is None or (old['role'], old['content']) != new:
+                conn.execute('INSERT OR IGNORE INTO archive_revisions VALUES(?,?,?,?,?,?)',
+                    (chat_id, ordinal, hashlib.sha256(old['content'].encode()).hexdigest(), old['role'], old['content'], updated))
         for ordinal in existing.keys() - entries.keys():
             conn.execute(
                 "DELETE FROM archive_messages WHERE chat_id=? AND ordinal=?",
@@ -354,12 +394,15 @@ def index_chat(chat):
             )
         }
         for ordinal, kind in stored.keys() - records.keys():
+            conn.execute('DELETE FROM archive_activity_details WHERE chat_id=? AND ordinal=? AND kind=?', (chat_id, ordinal, kind))
             conn.execute(
                 "DELETE FROM archive_activity "
                 "WHERE chat_id=? AND ordinal=? AND kind=?",
                 (chat_id, ordinal, kind),
             )
         for (ordinal, kind), record in records.items():
+            conn.execute('INSERT INTO archive_activity_details VALUES(?,?,?,?) ON CONFLICT(chat_id,ordinal,kind) DO UPDATE SET metadata=excluded.metadata',
+                (chat_id, ordinal, kind, json.dumps(record['metadata'], ensure_ascii=False)))
             previous = stored.get((ordinal, kind))
             fields = ("operation", "status", "model", "prompt", "project", "artifact_ref")
             if previous is not None and all(
@@ -389,6 +432,8 @@ def remove_chat(chat_id, *, exclude=False):
         _schema(conn)
         conn.execute("DELETE FROM archive_messages WHERE chat_id=?", (chat_id,))
         conn.execute("DELETE FROM archive_activity WHERE chat_id=?", (chat_id,))
+        conn.execute("DELETE FROM archive_activity_details WHERE chat_id=?", (chat_id,))
+        conn.execute("DELETE FROM archive_revisions WHERE chat_id=?", (chat_id,))
         # FTS5 posting lists can retain deleted words even with secure_delete.
         # Rebuild then compact so exclusion/chat deletion purges derived bytes.
         conn.execute("INSERT INTO archive_fts(archive_fts) VALUES('rebuild')")
@@ -472,6 +517,7 @@ def search(query, *, limit=4):
             return []
         rows = conn.execute(
             "SELECT m.chat_id,m.ordinal,m.role,m.content,"
+            "snippet(archive_fts,0,'','', ' … ',96) AS matched_excerpt,"
             "bm25(archive_fts) AS rank "
             "FROM archive_fts JOIN archive_messages m ON m.id=archive_fts.rowid "
             "WHERE archive_fts MATCH ? ORDER BY rank LIMIT ?",
@@ -480,13 +526,22 @@ def search(query, *, limit=4):
     results = []
     seen = set()
     for row in rows:
+        from agent import knowledge_memory as km, personal_memory
+        if km.source_excluded(row['chat_id'], row['ordinal']): continue
+        if row['role'] == 'assistant':
+            with LOCK, _connect() as source_conn:
+                previous = source_conn.execute("SELECT ordinal FROM archive_messages WHERE chat_id=? AND ordinal<? AND role='user' ORDER BY ordinal DESC LIMIT 1", (row['chat_id'], row['ordinal'])).fetchone()
+            if previous and km.source_excluded(row['chat_id'], previous[0]): continue
+        if re.search(r'(?:password|passwort|api[ _-]?key|access[ _-]?token|bearer|private[ _-]?key)\s*[:=]|\bsk-[A-Za-z0-9_-]{12,}', row['content'], re.I): continue
+        if km._PRIVATE.search(row['content']) and not (personal_memory.overview_requested(query) or km._PRIVATE.search(query)):
+            continue
         key = (row["chat_id"], row["ordinal"])
         if key in seen:
             continue
         seen.add(key)
         results.append({
             "chat_id": row["chat_id"], "message_index": row["ordinal"],
-            "role": row["role"], "excerpt": row["content"][:1000],
+            "role": row["role"], "excerpt": row["matched_excerpt"][:1000],
         })
         if len(results) >= bounded:
             break

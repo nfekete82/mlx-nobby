@@ -25,16 +25,17 @@ def _valid(chat):
         for ordinal, message in enumerate(messages)
         if isinstance(message, dict) and message.get("role") == "user"
         and isinstance(message.get("content"), str)
-        and 12 <= len(message["content"]) <= smart.MAX_TEXT
+        and len(message["content"]) >= 12
     ]
 
 
 def _feeder(chats):
     try:
-        for chat in sorted(
-            (c for c in chats if isinstance(c, dict)),
-            key=lambda c: float(c.get("updated") or 0),
-        ):
+        stream = chats() if callable(chats) else sorted(
+            (c for c in chats if isinstance(c, dict)), key=lambda c: float(c.get('updated') or 0))
+        for chat in stream:
+            if callable(chats):
+                with smart._STATE_LOCK: smart._FULL['total'] += len(_valid(chat))
             for ordinal, value in _valid(chat):
                 with smart._STATE_LOCK:
                     smart._FULL["examined"] += 1
@@ -59,6 +60,8 @@ def _feeder(chats):
                     with smart._STATE_LOCK:
                         smart._FULL["skipped"] += 1
                     continue
+                from agent import knowledge_memory as km
+                km.schedule(chat, ordinal, value)
                 key = (chat_id, ordinal, digest)
                 while True:
                     if not smart.enabled() or memory_dashboard.paused():
@@ -77,6 +80,9 @@ def _feeder(chats):
                             smart._STATUS["queued"] = smart._TASKS.qsize()
                             break
                     time.sleep(0.2)
+    except Exception as error:
+        from agent import knowledge_memory
+        knowledge_memory.diagnose('historical_scan', error)
     finally:
         with smart._STATE_LOCK:
             smart._FULL["active"] = False
@@ -90,7 +96,11 @@ def start(chats):
         raise ValueError("Resume memory before scanning saved conversations")
     if smart._READER is None or smart._COMPLETE is None:
         raise ValueError("Native Qwen worker is not ready")
-    total = sum(len(_valid(chat)) for chat in chats)
+    from agent import knowledge_memory as km
+    with pm.LOCK, pm._connect() as conn:
+        pm._schema(conn)
+        conn.execute("UPDATE analysis_jobs SET status='pending',error_code=NULL WHERE status='error'")
+    total = 0 if callable(chats) else sum(len(_valid(chat)) for chat in chats)
     with smart._STATE_LOCK:
         if smart._FULL["active"]:
             return smart.status()

@@ -17,7 +17,7 @@ PERSONAL_MEMORY_SCRIPT = (
     b'<script src="/assets/chat/personal-memory.js?v=20261104-private-knowledge-review3"></script>'
 )
 MEMORY_OVERVIEW_SCRIPT = (
-    b'<script src="/assets/chat/memory-overview.js?v=20261104-total-local-memory-v2"></script>'
+    b'<script src="/assets/chat/memory-overview.js?v=20261104-persistent-knowledge-v3"></script>'
 )
 MEMORY_MANAGER_CONSOLIDATION_SCRIPT = (
     b'<script src="/assets/chat/memory-manager-consolidation.js?v=20260928-memory-manager-v12"></script>'
@@ -434,6 +434,34 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
             return agent_json_request(
                 "GET", "/api/memory-dashboard/items?" + params, timeout=15,
             )
+
+    @app.get('/api/mlx/memory/knowledge/{operation}')
+    def knowledge_read(operation: str, kind: str = 'fact', query: str = '', category: str = '', project: str = '', since: float = 0, until: float = 0, offset: int = 0, limit: int = 30):
+        from fastapi import HTTPException
+        if operation not in ('status', 'items', 'export', 'scopes', 'similar'):
+            raise HTTPException(404, 'Unknown knowledge operation')
+        params = urllib.parse.urlencode(dict(kind=kind, query=query, category=category, project=project,
+            since=since, until=until, offset=offset, limit=limit)) if operation == 'items' else ''
+        return agent_json_request('GET', '/api/knowledge-memory/' + operation + ('?' + params if params else ''), timeout=30)
+
+    @app.get('/api/mlx/memory/knowledge/history/{fid}')
+    def knowledge_history(fid: str):
+        return agent_json_request('GET', '/api/knowledge-memory/history/' + urllib.parse.quote(fid, safe=''), timeout=15)
+
+    @app.post('/api/mlx/memory/knowledge/{operation}')
+    def knowledge_write(operation: str, payload: dict):
+        from fastapi import HTTPException
+        if operation not in ('import', 'merge', 'command', 'scopes'):
+            raise HTTPException(404, 'Unknown knowledge operation')
+        return agent_json_request('POST', '/api/knowledge-memory/' + operation, payload=payload, timeout=60)
+
+    @app.post('/api/mlx/memory/knowledge/pin/{fid}')
+    def knowledge_pin(fid: str, payload: dict):
+        return agent_json_request('POST', '/api/knowledge-memory/pin/' + urllib.parse.quote(fid, safe=''), payload=payload, timeout=15)
+
+    @app.delete('/api/mlx/memory/knowledge/episode/{eid}')
+    def knowledge_delete_episode(eid: str):
+        return agent_json_request('DELETE', '/api/knowledge-memory/episode/' + urllib.parse.quote(eid, safe=''), timeout=15)
 
 
 __all__ = [

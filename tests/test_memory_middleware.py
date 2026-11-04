@@ -69,9 +69,11 @@ def test_streaming_chat_is_enriched(client):
 
 
 def test_streaming_chat_observes_explicit_remember(client):
+    pm.set_enabled(True)
     response = client.post(
         "/api/runtime/chat/stream",
         json={
+            "chat_id": "synthetic-chat",
             "messages": [
                 {
                     "role": "user",
@@ -82,9 +84,10 @@ def test_streaming_chat_observes_explicit_remember(client):
     )
 
     assert response.status_code == 200
-    items = memory.list_memories()
+    assert '"persisted": true' in response.text
+    items = pm.list_facts()
     assert len(items) == 1
-    assert "Qwen3.8-27B" in items[0]["text"]
+    assert "Qwen3.8-27B" in items[0]["value"]
 
 
 def test_slow_memory_enrichment_fails_open_without_blocking_chat(client, monkeypatch):

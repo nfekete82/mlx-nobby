@@ -15,6 +15,7 @@ import time
 from typing import Callable
 
 from agent import personal_memory as pm
+from agent import knowledge_memory as km
 
 SMART_KEY = "smart_learning"
 MAX_TEXT = 1600
@@ -26,7 +27,7 @@ ALLOWED_FIELDS = frozenset({
     "name", "geburtstag", "alter", "beruf", "wohnort", "gesundheit",
     "hobby", "vorliebe", "beziehung", "status", "ausbildung",
     "technologie", "rolle", "ziel", "beschreibung", "termin",
-    "entscheidung", "projekt", "notiz",
+    "entscheidung", "projekt", "notiz", "kindheit", "erlebnis", "problem", "aufgabe",
 })
 _SECRET = re.compile(
     r"\b(?:passwort|password|api[ _-]?key|access[ _-]?token|"
@@ -50,6 +51,8 @@ _TASKS: queue.Queue[tuple[str, int, str]] = queue.Queue(maxsize=100)
 _ENQUEUED: set[tuple[str, int, str]] = set()
 _STATE_LOCK = threading.RLock()
 _WORKER_STARTED = False
+_WORKER_THREAD = None
+_WORKER_STOP = threading.Event()
 _READER: Callable[[str], dict | None] | None = None
 _CHAT_LOCK = None
 _COMPLETE: Callable[[str], str] | None = None
@@ -73,6 +76,18 @@ _SYSTEM = (
     "Subject must refer to the person mentioned; use projects only with "
     "a clearly named project. Use a stable field for updates to the same "
     "attribute. Never return a field whose value is not found in evidence."
+)
+
+_SYSTEM += (
+    ' Also return an optional "episodes" array for autobiographical events. '
+    'Each episode: {"title":"short descriptive title","theme":"childhood|family|relationship|work|experience|goal",'
+    '"description":"literal contiguous extract from the user message",'
+    '"evidence":"literal contiguous quote containing description",'
+    '"period":"literal period if present or empty string","people":["literal names"],'
+    '"status":"statement|plan"}. Split distinct experiences into separate episodes. '
+    'Never infer psychological causes, diagnoses, intentions or completed actions. '
+    'Facts may additionally include "kind":"statement|fact|plan|interpretation|assumption"; '
+    'use statement for user reports, plan for future intentions, never fact for interpretations.'
 )
 
 
@@ -114,14 +129,21 @@ def set_enabled(value: bool) -> dict:
 
 
 def status() -> dict:
+    durable = km.stats()
+    from agent import memory_dashboard
+    active = enabled() and not memory_dashboard.paused()
     with _STATE_LOCK:
+        scan = dict(_FULL)
+        scan['feeding'] = scan['active']
+        scan['active'] = bool(active and (scan['active'] or durable.get('jobs',{}).get('pending',0)))
         return {
             "enabled": enabled(),
             "pending": _TASKS.qsize(),
             "processed": _STATUS["processed"],
             "failed": _STATUS["failed"],
             "local_only": True,
-            "full_scan": dict(_FULL),
+            "full_scan": scan,
+            "durable": durable,
         }
 
 
@@ -144,7 +166,7 @@ def _subject(value: object) -> str | None:
     key = value.strip().casefold()
     if key in ALLOWED_SUBJECTS:
         return key
-    if re.fullmatch(r"projekte\.[a-z0-9äöüß_-]{2,40}", key):
+    if re.fullmatch(r"(?:projekte|personen)\.[a-z0-9äöüß_-]{2,40}", key):
         return key
     return None
 
@@ -179,7 +201,7 @@ def parse_facts(output: str, original: str) -> list[dict]:
         confidence = item.get("confidence")
         if (not subject or not field or
             not 2 <= len(value) <= 160 or not 5 <= len(evidence) <= 250 or
-            type(confidence) not in (float, int) or confidence < 0.88 or
+            type(confidence) not in (float, int) or not 0.88 <= confidence <= 1 or
             evidence.casefold() not in source or
             value.casefold() not in evidence.casefold() or
             _SECRET.search(value) or _BAD.search(evidence) or
@@ -209,6 +231,9 @@ def parse_facts(output: str, original: str) -> list[dict]:
         facts.append({
             "subject": subject, "field": field, "value": value,
             "sensitive": True, "correction": correction,
+            "evidence": evidence,
+            "kind": item.get('kind') if item.get('kind') in km.KINDS else 'statement',
+            "confidence": confidence,
         })
     return facts
 
@@ -229,9 +254,15 @@ def _can_learn(conn, chat_id: str) -> bool:
     ).fetchone() is None
 
 
-def apply(chat_id: str, ordinal: int, text: str, output: str) -> dict:
+def apply(chat_id: str, ordinal: int, text: str, output: str, *, job=None) -> dict:
     """Persist verified candidates and source digest under one SQLite lock."""
     facts = parse_facts(output, text)
+    try:
+        validated = json.loads(output.strip().removeprefix('```json').removesuffix('```'))
+        if not isinstance(validated, dict) or not isinstance(validated.get('facts'), list):
+            raise ValueError('Invalid extraction schema')
+    except (ValueError, TypeError):
+        raise ValueError('Invalid extraction schema') from None
     digest = _digest(text)
     if not pm.DB_PATH.exists():
         return {"action": "disabled"}
@@ -244,8 +275,12 @@ def apply(chat_id: str, ordinal: int, text: str, output: str) -> dict:
             "SELECT digest FROM smart_observed WHERE chat_id=? AND ordinal=?",
             (chat_id, ordinal),
         ).fetchone()
-        if row and row["digest"] == digest:
+        if job is None and row and row["digest"] == digest:
             return {"action": "unchanged"}
+        sid = job['source_id'] if job else km.source(conn, chat_id, ordinal, text)
+        if km.blocked(conn, text, sid) or km._NO_LEARN.search(text):
+            if job: km.checkpoint(conn, job, 'excluded')
+            return {'action': 'excluded'}
         actions = []
         for fact in facts:
             actions.append(pm._propose(
@@ -253,12 +288,21 @@ def apply(chat_id: str, ordinal: int, text: str, output: str) -> dict:
                 fact["sensitive"], chat_id, ordinal,
                 explicit=fact["correction"],
             ))
+            fid = actions[-1].get('fact_id')
+            if fid:
+                conn.execute('UPDATE fact_metadata SET kind=?,confidence=? WHERE fact_id=?', (fact['kind'], fact['confidence'], fid))
+                km.annotate(conn, fid, subject=fact['subject'], field=fact['field'],
+                            sid=sid, evidence=fact['evidence'], kind=fact['kind'], confidence=fact['confidence'])
+        km.apply_episodes(conn, output, text, sid)
+        if job:
+            km.checkpoint(conn, job, 'done')
+            return {'action': 'processed', 'saved': sum(a['action'] in ('added', 'updated') for a in actions)}
         conn.execute(
             "INSERT INTO smart_observed(chat_id,ordinal,digest) VALUES(?,?,?) "
             "ON CONFLICT(chat_id,ordinal) DO UPDATE SET digest=excluded.digest",
             (chat_id, ordinal, digest),
         )
-    return {"action": "processed", "saved": len(actions)}
+    return {"action": "processed", "saved": sum(a["action"] in ("added", "updated") for a in actions)}
 
 
 def _current(chat_id: str, ordinal: int) -> tuple[str, str] | None:
@@ -275,60 +319,109 @@ def _current(chat_id: str, ordinal: int) -> tuple[str, str] | None:
         if not isinstance(message, dict) or message.get("role") != "user":
             return None
         text = message.get("content")
-        if not isinstance(text, str) or not 12 <= len(text) <= MAX_TEXT:
+        if not isinstance(text, str) or len(text) < 12:
             return None
         return text, _digest(text)
 
 
-def _worker():
-    while True:
-        chat_id, ordinal, digest = _TASKS.get()
+def process_message(chat_id, ordinal, digest):
+    """One local model call per segment; each committed checkpoint survives restart."""
+    from agent import memory_dashboard
+    if not enabled() or memory_dashboard.paused(): return
+    current = _current(chat_id, ordinal)
+    if current is None or current[1] != digest:
+        with pm.LOCK, pm._connect() as conn:
+            pm._schema(conn)
+            conn.execute("UPDATE analysis_jobs SET status='stale' WHERE source_id IN (SELECT id FROM memory_sources WHERE chat_id=? AND ordinal=?) AND digest=? AND status='pending'", (chat_id, ordinal, digest))
+        return
+    if km._SECRET.search(current[0]) or km._NO_LEARN.search(current[0]): return
+    with _CHAT_LOCK:
+        chat = _READER(chat_id)
+    km.schedule(chat, ordinal, current[0])
+    for job in km.pending(chat_id, ordinal, digest):
+        if not enabled() or memory_dashboard.paused(): return
+        # Exclusions and tombstones are checked BEFORE sending content to Qwen.
+        with pm.LOCK, pm._connect() as conn:
+            pm._schema(conn)
+            if not _can_learn(conn, chat_id): return
+            if km.blocked(conn, current[0], job['source_id']):
+                km.checkpoint(conn, job, 'excluded')
+                continue
         try:
-            if not enabled():
+            from agent import run_state
+            if run_state.active_agent_run_count() or run_state.chat_stream_progress_is_recent(60):
+                return  # durable pending checkpoint is resumed when foreground work is idle
+            segment = current[0][job['start_offset']:job['end_offset']]
+            if len(segment.strip()) < 12:
+                with pm.LOCK, pm._connect() as conn:
+                    pm._schema(conn); km.checkpoint(conn, job, 'done')
                 continue
-            from agent import memory_dashboard
-            if memory_dashboard.paused():
-                continue
-            current = _current(chat_id, ordinal)
-            if current is None or current[1] != digest or _SECRET.search(current[0]):
-                continue
-            if _COMPLETE is None:
-                continue
-            output = _COMPLETE(json.dumps({"message": current[0]}, ensure_ascii=False))
-            # A chat might be edited/deleted while Qwen is generating. Hold
-            # the chat lock until the result is committed so purge wins.
+            output = _COMPLETE(json.dumps({'message': segment}, ensure_ascii=False))
             with _CHAT_LOCK:
                 again = _current(chat_id, ordinal)
-                if again is None or again[1] != digest:
-                    continue
-                result = apply(chat_id, ordinal, current[0], output)
-            if result["action"] == "processed":
-                with _STATE_LOCK:
-                    _STATUS["processed"] += 1
-        except Exception:
-            # Never log prompt text, model response or private values.
-            with _STATE_LOCK:
-                _STATUS["failed"] += 1
+                if again is None or again[1] != digest: return
+                result = apply(chat_id, ordinal, segment, output, job=job)
+                if result['action'] == 'processed':
+                    with _STATE_LOCK: _STATUS['processed'] += 1
+        except Exception as error:
+            with pm.LOCK, pm._connect() as conn:
+                pm._schema(conn); km.checkpoint(conn, job, 'error', type(error).__name__)
+            km.diagnose('extraction', error)
+            with _STATE_LOCK: _STATUS['failed'] += 1
+            return
+    with pm.LOCK, pm._connect() as conn:
+        pm._schema(conn)
+        incomplete = conn.execute("SELECT 1 FROM analysis_jobs j JOIN memory_sources s ON s.id=j.source_id WHERE s.chat_id=? AND s.ordinal=? AND j.digest=? AND j.version=? AND j.status NOT IN ('done','excluded')", (chat_id, ordinal, digest, km.VERSION)).fetchone()
+        if not incomplete:
+            conn.execute('INSERT INTO smart_observed VALUES(?,?,?) ON CONFLICT(chat_id,ordinal) DO UPDATE SET digest=excluded.digest', (chat_id, ordinal, digest))
+    # Index at most one batch per processed message, after committing grounded data.
+    try: km.embed_pending()
+    except Exception as error: km.diagnose('embeddings', error)
+
+
+def _worker():
+    while not _WORKER_STOP.is_set():
+        try:
+            active_queue = _TASKS
+            key = active_queue.get(timeout=1)
+        except queue.Empty:
+            # Durable pending rows are the recovery source; the queue is a wake-up hint.
+            try:
+                from agent import memory_dashboard
+                if not enabled() or memory_dashboard.paused() or _READER is None: continue
+                with pm.LOCK, pm._connect() as conn:
+                    pm._schema(conn)
+                    row = conn.execute("SELECT s.chat_id,s.ordinal,j.digest FROM analysis_jobs j JOIN memory_sources s ON s.id=j.source_id WHERE j.status='pending' ORDER BY j.updated_at LIMIT 1").fetchone()
+                if row:
+                    process_message(row[0], row[1], row[2])
+            except Exception as error:
+                km.diagnose('worker', error)
+            continue
+        try:
+            process_message(*key)
+        except Exception as error:
+            km.diagnose('worker', error)
+            with _STATE_LOCK: _STATUS['failed'] += 1
         finally:
             with _STATE_LOCK:
-                _ENQUEUED.discard((chat_id, ordinal, digest))
-                _STATUS["queued"] = _TASKS.qsize()
-            _TASKS.task_done()
+                _ENQUEUED.discard(key)
+                _STATUS['queued'] = _TASKS.qsize()
+            active_queue.task_done()
 
 
 def configure(*, chat_reader, chat_lock, model_complete):
     """Called by native Agent entrypoint after startup imports complete."""
-    global _READER, _CHAT_LOCK, _COMPLETE, _WORKER_STARTED
+    global _READER, _CHAT_LOCK, _COMPLETE, _WORKER_STARTED, _WORKER_THREAD
     _READER, _CHAT_LOCK, _COMPLETE = chat_reader, chat_lock, model_complete
     with _STATE_LOCK:
         if not _WORKER_STARTED:
-            threading.Thread(
-                target=_worker, daemon=True, name="mlx-smart-personal-memory",
-            ).start()
+            _WORKER_STOP.clear()
+            _WORKER_THREAD = threading.Thread(target=_worker, daemon=True, name='mlx-smart-personal-memory')
+            _WORKER_THREAD.start()
             _WORKER_STARTED = True
 
 
-def enqueue(chat: dict, *, latest_only: bool = True, max_messages: int = 20) -> int:
+def enqueue(chat: dict, *, latest_only: bool = True, max_messages: int | None = None) -> int:
     """Queue user turns only; no model work on the chat-save thread."""
     if not enabled() or _READER is None:
         return 0
@@ -343,15 +436,15 @@ def enqueue(chat: dict, *, latest_only: bool = True, max_messages: int = 20) -> 
         for ordinal, message in enumerate(messages)
         if isinstance(message, dict) and message.get("role") == "user"
         and isinstance(message.get("content"), str)
-        and 12 <= len(message["content"]) <= MAX_TEXT
+        and len(message["content"]) >= 12
     ]
     if latest_only:
         candidates = candidates[-1:]
     queued = 0
     for ordinal, text in candidates:
-        if queued >= max_messages:
+        if max_messages is not None and queued >= max_messages:
             break
-        if _SECRET.search(text):
+        if km._SECRET.search(text) or km._NO_LEARN.search(text):
             continue
         digest = _digest(text)
         with pm.LOCK, pm._connect() as conn:
@@ -365,6 +458,7 @@ def enqueue(chat: dict, *, latest_only: bool = True, max_messages: int = 20) -> 
             ).fetchone()
             if row and row["digest"] == digest:
                 continue
+        km.schedule(chat, ordinal, text)
         key = (chat_id, ordinal, digest)
         with _STATE_LOCK:
             if key in _ENQUEUED:
@@ -383,11 +477,23 @@ def backfill(chats: list[dict], *, limit: int = 12) -> dict:
     """Bounded opt-in reanalysis of older chat messages (user turns only)."""
     if not enabled():
         raise ValueError("Enable smart learning first")
-    candidates = sorted(chats, key=lambda chat: chat.get("updated", 0))[-30:]
+    candidates = sorted(chats, key=lambda chat: chat.get("updated", 0))
     total = 0
-    cap = max(1, min(int(limit), 20))
+    cap = max(1, min(int(limit), 100))
     for chat in candidates:
         if total >= cap:
             break
         total += enqueue(chat, latest_only=False, max_messages=cap - total)
     return {"queued": total, **status()}
+
+
+def shutdown():
+    """Stop between calls; a current local inference may finish its checkpoint."""
+    global _WORKER_STARTED, _WORKER_THREAD
+    _WORKER_STOP.set()
+    if _WORKER_THREAD is not None:
+        _WORKER_THREAD.join(timeout=15)
+        if _WORKER_THREAD.is_alive(): return False
+    _WORKER_STARTED = False
+    _WORKER_THREAD = None
+    return True
