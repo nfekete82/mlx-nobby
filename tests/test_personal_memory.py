@@ -181,3 +181,25 @@ def test_rebuild_only_reads_source_text_and_obeys_exclusions():
     pm.include_chat("a")
     pm.rebuild([user_chat("a", "Meine Freundin heißt Tina")])
     assert pm.list_facts()
+
+
+def test_clarification_available_before_chat_autosave_finishes():
+    pm.set_enabled(True)
+    pm.index_chat(user_chat("old", "Mein Termin ist am 16. November"))
+    # The model starts responding before the new chat's PUT reaches the Agent.
+    instruction = pm.question_for("Mein Termin ist am 18. November")
+    assert "16" in instruction and "18" in instruction
+    assert "Ask which value" in instruction
+    assert "16" in pm.list_facts()[0]["value"]
+    assert pm.list_conflicts() == []
+    # A normal autosave later creates the durable question.
+    pm.index_chat(user_chat("new", "Mein Termin ist am 18. November"))
+    assert len(pm.list_conflicts()) == 1
+
+
+def test_pre_save_check_skips_identical_fact_and_clear_reschedule():
+    pm.set_enabled(True)
+    pm.observe("Mein Termin ist am 16. November")
+    assert pm.question_for("Mein Termin ist am 16. November") == ""
+    assert pm.question_for("Mein Termin wurde auf 18. November verschoben") == ""
+    assert "16" in pm.list_facts()[0]["value"]
