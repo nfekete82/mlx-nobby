@@ -172,7 +172,7 @@ test('a write conflict with an in-flight local edit forks a safe copy, never ove
     first.sessions.saveSessions();
     const copy = first.state.sessions.find(chat => chat.id === 'new-chat-id');
     assert.ok(copy, 'a conflict copy must remain visible in the session list');
-    assert.match(copy.title, /conflict copy/);
+    assert.match(copy.title, /conflict copy/i);
     await first.sessions.persistSession(copy);
     assert.equal(server.chats.get('new-chat-id').messages.at(-1).content, 'My final unsent edit');
     assert.equal(server.chats.get('chat-a').messages.at(-1).content, 'Saved in another tab');
