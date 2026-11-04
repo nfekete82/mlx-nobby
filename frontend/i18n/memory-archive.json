@@ -1,0 +1,32 @@
+{
+  "de": {
+    "title": "Lokales Chatgedächtnis 2.0",
+    "explanation": "Durchsuchbarer Chatindex ausschließlich auf diesem Mac. Standardmäßig deaktiviert. GitHub und externe Dienste erhalten keine Chatdaten.",
+    "toggle": "Automatische lokale Indizierung aktivieren",
+    "rebuild": "Gesamten Index neu aufbauen",
+    "search": "Frühere Chats durchsuchen …",
+    "go": "Suchen",
+    "disabled": "Deaktiviert – es wird kein zusätzlicher Chatindex angelegt.",
+    "count": "indexierte Nachrichten",
+    "saved": "Einstellung gespeichert.",
+    "error": "Fehler",
+    "remove": "Diesen Chat aus dem Gedächtnis ausschließen",
+    "empty": "Keine passenden früheren Nachrichten.",
+    "warning": "Beim Deaktivieren werden die zusätzlichen Suchindex-Daten gelöscht; die ursprünglichen Chats bleiben bestehen."
+  },
+  "en": {
+    "title": "On-device chat memory 2.0",
+    "explanation": "Searchable chat index stored only on this Mac. Disabled by default. No chat content is sent to GitHub or external services.",
+    "toggle": "Enable automatic local indexing",
+    "rebuild": "Rebuild full index",
+    "search": "Search previous chats …",
+    "go": "Search",
+    "disabled": "Disabled – no additional chat index is created.",
+    "count": "indexed messages",
+    "saved": "Settings saved.",
+    "error": "Error",
+    "remove": "Exclude this chat from memory",
+    "empty": "No matching prior messages.",
+    "warning": "Turning off removes the derived search index, not the original chats."
+  }
+}
