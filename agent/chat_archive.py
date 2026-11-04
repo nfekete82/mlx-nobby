@@ -154,7 +154,9 @@ def _entries(chat):
         if not value.strip() and not note:
             continue
         segments = [value[:MAX_INDEXED_MESSAGE]]
-        if title:
+        if title and note:
+            # Add project titles only to actual activity records: a generic
+            # title must not make unrelated normal messages match searches.
             segments.append("Chat-Titel: " + title)
         segments.extend(note)
         yield (ordinal, message["role"], "\n".join(segments)[:MAX_INDEXED_MESSAGE])
