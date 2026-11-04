@@ -23,6 +23,8 @@ def private_home(tmp_path, monkeypatch):
     monkeypatch.setattr(smart, "_READER", None)
     monkeypatch.setattr(smart, "_CHAT_LOCK", None)
     monkeypatch.setattr(smart, "_COMPLETE", None)
+    yield
+    smart.shutdown()
 
 
 def synthetic_result(**candidate):
