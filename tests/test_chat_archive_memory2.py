@@ -61,7 +61,7 @@ def test_delete_reset_exclude_and_rebuild_do_not_resurrect():
     assert archive.search("sandforge") == []
 
 
-def test_rebuild_prunes_deleted_chats():
+def test_rebuild_retains_deleted_chats_as_long_term_memory():
     archive.set_enabled(True)
     archive.rebuild([
         chat("a", "Sandforge alpha"),
@@ -69,8 +69,8 @@ def test_rebuild_prunes_deleted_chats():
     ])
     assert archive.status()["indexed_messages"] == 2
     archive.rebuild([chat("a", "Sandforge alpha")])
-    assert archive.status()["indexed_messages"] == 1
-    assert archive.search("beta") == []
+    assert archive.status()["indexed_messages"] == 2
+    assert archive.search("beta")
 
 
 def test_opt_out_purges_derived_content():
