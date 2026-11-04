@@ -507,26 +507,6 @@ function renderSidebar() {
             }
         );
 
-        const remove =
-            document.createElement('button');
-
-        remove.className =
-            'chat-menu-item danger';
-
-        remove.textContent =
-            rt('delete', 'Delete');
-
-        remove.addEventListener(
-            'click',
-            event => {
-                event.stopPropagation();
-
-                deleteSession(
-                    session.id
-                );
-            }
-        );
-
         menuButton.addEventListener(
             'click',
             event => {
@@ -551,7 +531,6 @@ function renderSidebar() {
         );
 
         menu.appendChild(rename);
-        menu.appendChild(remove);
 
         wrap.appendChild(entry);
         wrap.appendChild(menuButton);
