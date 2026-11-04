@@ -568,14 +568,9 @@ def rebuild(chats):
     for chat in sorted(valid, key=lambda item: item.get("updated", 0)):
         ids.add(chat["id"])
         count += index_chat(chat)["processed"]
-    with LOCK, _connect() as conn:
-        _schema(conn)
-        for r in conn.execute("SELECT DISTINCT chat_id FROM observed").fetchall():
-            if r["chat_id"] not in ids:
-                conn.execute("DELETE FROM observed WHERE chat_id=?", (r["chat_id"],))
-                conn.execute("DELETE FROM smart_observed WHERE chat_id=?", (r["chat_id"],))
-                conn.execute("DELETE FROM facts WHERE source_chat_id=?", (r["chat_id"],))
-                conn.execute("DELETE FROM conflicts WHERE source_chat_id=?", (r["chat_id"],))
+    # Missing live chats may have been removed from the sidebar on purpose.
+    # Historical facts, episodes and provenance are long-term memory:
+    # never purge them because a source chat is no longer in the UI.
     return {**status(), "processed_messages": count}
 
 
