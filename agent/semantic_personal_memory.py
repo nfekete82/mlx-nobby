@@ -182,6 +182,13 @@ def parse_facts(output: str, original: str) -> list[dict]:
             _SECRET.search(value) or _BAD.search(evidence) or
             _HYPOTHETICAL.search(evidence)):
             continue
+        # Reject a specifically negated value even inside explicit
+        # corrections ("nicht Architektin, sondern Lehrerin").
+        if re.search(
+            r"\b(?:nicht|kein|keine|nie|niemals)\s+"
+            + re.escape(value) + r"\b", evidence, re.I,
+        ):
+            continue
         # A negated assertion is not proof of the positive fact, even when
         # the extracted value literally occurs in the source phrase.
         if re.search(r"\b(?:nicht|kein|keine|nie|niemals)\b", evidence, re.I) and not (
