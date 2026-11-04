@@ -63,6 +63,18 @@ function fixture() {
             counts:{personal:1,legacy:1,archive:2},
             layers:{personal:true,archive:true},
         });
+        if (url.includes('/archive/activities?')) return response({
+            total: 1, activities: [{
+                chat_id:'example-work', ordinal:2, kind:'video',
+                operation:'video_generate',status:'completed',model:'LTX-2.5',
+                prompt:'Synthetic flying sand tower',project:'Example game',
+                artifact_ref:'example-asset',
+            }],
+        });
+        if (url.includes('/smart/backfill')) return response({
+            full_scan:{active:true,total:3,examined:0,queued:0,skipped:0},
+            pending:0,processed:0,failed:0,enabled:true,
+        });
         if (url.includes('/items?')) {
             const params = new URL('https://localhost' + url).searchParams;
             if (params.get('source') === 'personal') return response({
@@ -98,6 +110,8 @@ function fixture() {
         location:{pathname:'/chat'},
         setTimeout,
         clearTimeout,
+        setInterval:()=>1,
+        clearInterval:()=>{},
         URL,
         console,
     };
@@ -150,4 +164,26 @@ test('semantic dashboard groups facts and hides archive behind disclosure', asyn
         && r.options.method === 'POST'
         && JSON.parse(r.options.body).enabled === true));
     assert.equal(enable.textContent, 'Disable Qwen learning');
+});
+
+test('structured media activity timeline renders source-backed events', async () => {
+    const {registry,requests} = fixture();
+    await registry.get('memoryActivityLoad').listeners.get('click')();
+    assert.ok(requests.some(item => item.url.includes('/archive/activities?')));
+    const text = registry.get('memoryActivityList').textContent;
+    assert.match(text, /video_generate/);
+    assert.match(text, /LTX-2.5/);
+    assert.match(text, /Synthetic flying sand tower/);
+    assert.match(text, /example-work/);
+});
+
+test('full Qwen history scan requires an explicit UI action', async () => {
+    const {registry,requests} = fixture();
+    await registry.get('memorySmartToggle').listeners.get('click')();
+    await registry.get('memorySmartRebuild').listeners.get('click')();
+    const scan = requests.find(item => item.url.endsWith('/smart/backfill'));
+    assert.ok(scan);
+    assert.equal(scan.options.method, 'POST');
+    assert.equal(JSON.parse(scan.options.body).full, true);
+    assert.match(registry.get('memorySmartProgress').textContent, /3/);
 });
