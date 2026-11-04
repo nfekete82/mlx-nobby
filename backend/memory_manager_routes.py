@@ -299,6 +299,17 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
                 "GET", "/api/chat-archive/search?" + params, timeout=15,
             )
 
+        @app.get("/api/mlx/memory/archive/activities")
+        def memory_archive_activities(kind: str = "", limit: int = 25,
+                                      offset: int = 0):
+            params = urllib.parse.urlencode({
+                "kind": kind, "limit": max(1, min(int(limit), 100)),
+                "offset": max(0, min(int(offset), 1000000)),
+            })
+            return agent_json_request(
+                "GET", "/api/chat-archive/activities?" + params, timeout=15,
+            )
+
         @app.post("/api/mlx/memory/archive/exclude/{chat_id}")
         def memory_archive_exclude(chat_id: str):
             return agent_json_request(
