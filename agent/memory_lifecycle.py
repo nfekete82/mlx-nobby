@@ -184,7 +184,15 @@ def fast_personal_context(messages):
         return copied
     try:
         from agent import knowledge_memory
-        private_context = '\n\n'.join(filter(None, (personal_memory.context(query, limit=6), knowledge_memory.context(query, budget=3000))))
+        # Include the old durable-memory inventory for explicit user overviews.
+        # Unlike ordinary lexical recall, this does not require embeddings.
+        parts = [
+            personal_memory.context(query, limit=6),
+            knowledge_memory.context(query, budget=3000),
+        ]
+        if personal_memory.overview_requested(query):
+            parts.append(memory.context(query))
+        private_context = "\n\n".join(filter(None, parts))
         if private_context:
             return memory.attach_system_context(copied, private_context)
     except Exception:
