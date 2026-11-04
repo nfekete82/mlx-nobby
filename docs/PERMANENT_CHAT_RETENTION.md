@@ -1,62 +1,78 @@
-# Permanent chat retention — explicit Settings deletion only
+# MLX Nobby: Chats löschen, Erinnerungen behalten
 
-This is a non-destructive migration for the authoritative local chat store.
+## Gewünschte Benutzeroberfläche
 
-## Contract
+Der Button **„Alle Chats löschen“** bleibt in der linken Seitenleiste unter
+„Letzte Chats“ (Drei-Punkte-Menü). Jeder einzelne Chat hat weiterhin
+„Löschen“ im Kontextmenü. Ein klarer Bestätigungsdialog ist erforderlich.
 
-- Chat records are saved to host-side JSON, not GitHub. No automatic chat TTL or
-  chat-history deletion.
-- Ordinary chat appends are persisted by the existing client/server write path.
-  New saves wait for disk flush before acknowledging. This is not a guarantee
-  against data loss from a failed request, sudden power loss before a request,
-  an unavailable Agent, disk failure, or loss of the computer.
-- Before an accepted edit, reset-like replacement, removal of messages or
-  rollback of assistant text, a private **full previous chat revision** is
-  retained under `~/.config/mlx-web/chats/.revisions/<chat_id>/<uuid>.json`.
-  Revisions are not removed by the optional test-artifact maintenance job.
-- The sidebar no longer offers delete actions. Chat clearing in navigation is
-  non-destructive and opens Settings instead.
-- Only **Settings → Chat → Daten dauerhaft löschen** contains actions for
-  deleting one chat or the complete history. The user must type
-  `LÖSCHEN` (or `DELETE`) and accept an additional confirmation.
-- Server endpoints `DELETE /api/chats`, `DELETE /api/chats/{id}` and
-  `POST /api/chats/{id}/reset` all require an exact-scope, one-use,
-  90-second approval token. The web proxy forwards rather than bypasses it.
-- An authorized deletion still removes the affected indexed derived chat
-  memories; separately saved legacy memories and independently maintained
-  backups have separate lifetimes. The user controls whether to erase any
-  data. This is intentionally not an automatic full memory wipe.
+Diese Aktion entfernt nur die **aktiven Chats aus der Chatliste**. Sie darf
+nicht die Langzeiterinnerungen löschen.
 
-## Scope and safety limitations
+| Daten | Sidebar „Alle Chats löschen“ |
+| --- | --- |
+| Aktuelle Chat-JSON in der Verlaufsliste | Wird entfernt |
+| Vorherige Chat-Revisionen | Bleiben |
+| Privates Langzeit-Chatarchiv | Vollständige Quellkopie vor Entfernung |
+| Memory DB (`memory.db`) | Bleibt |
+| Private persönliche Fakten / Episoden | Bleiben |
+| Indizierte Volltext-Chaterinnerungen | Bleiben |
+| Durch Chats erzeugte Bilder | Bleiben |
+| Externe Backups | Bleiben |
 
-The one-time approval is a protection against accidental deletion and ordinary
-non-Settings UI/API calls, **not authentication** for a hostile process with
-access to the local Agent. The existing local request guard remains in force.
+## Technische Umsetzung
 
-The existing chat frontend saves changes via asynchronous requests. A network
-failure or crashed browser *before a save completes* can still lose unsent text.
-A truly zero-loss journal would require per-keystroke local durable storage and
-a separate reviewed recovery flow, neither of which is claimed here.
+- Bereits beim normalen Chat-Speichern werden Daten atomar auf die lokale
+  Platte geschrieben. Ein bestehender Chat bekommt vor einer destruktiven
+  Bearbeitung eine private Version unter `chats/.revisions/<id>/`.
+- Vor jeder Sidebar-Löschung wird der **vollständige Chat** zusätzlich nach
+  `~/.config/mlx-web/long-term-chat-memory/<id>/<uuid>.json` kopiert
+  (Dateirechte 0600). Die Kopie liegt **außerhalb** der sichtbaren
+  Chatliste und wird nicht durch automatische Testbereinigung gelöscht.
+- Scheitert das private Archivieren, wird der Chat nicht gelöscht.
+  Erst nach erfolgreichem Archivieren werden Tombstones geschrieben und die
+  aktiven Chatdateien entfernt, damit alte Browser-Tabs sie nicht wiederbeleben.
+- Der Agent ruft bei Sidebar-Löschungen **nicht**
+  `personal_memory.remove_chat` oder `chat_archive.remove_chat` auf.
+  Suchindex-Rebuilds lassen historisch gespeicherte Einträge in Ruhe.
+- Chats werden per Bestätigungsdialog gelöscht; ein kurzlebiger, nur einmal
+  nutzbarer Backend-Token verhindert versehentliche direkte Delete-Aufrufe.
+  Das ist kein Authentifizierungssystem gegen lokale Schadsoftware.
+- „Vergiss ...“ im Chat löscht weiterhin keine klassisch gespeicherten
+  Erinnerungen. Das gezielte Verwalten der langfristigen Erinnerungen erfolgt
+  in den Memory-Einstellungen.
 
-The local revision store is not a replacement for offline/off-device backup. A
-malfunctioning disk, accidental deletion of the `~/.config/mlx-web` directory or
-physical loss can destroy both. Keep verified private backups; never commit
-personal chats to GitHub.
+## Wichtige Einschränkungen
 
-PR #421 adds separately reviewed persistent memory/episodes. This change does
-not silently merge, deploy or activate it. Coordinate the new knowledge deletion
-policies with the durable Settings approval prior to PR #421 release.
+**Löschen aus der Chatliste bedeutet nicht „alle Spuren entfernen“**:
+Die Quellkopie im Langzeitgedächtnis und die Memory-Indizes bleiben explizit
+erhalten, so wie vom Benutzer gewünscht. Eine separate und klar beschriftete
+Einstellungsfunktion zur vollständigen Entfernung des Langzeit-Chatarchivs
+muss vor der allgemeinen Freigabe ergänzt bzw. geprüft werden.
+Die Erinnerungsdaten werden nicht automatisch mit dem Chatverlauf gelöscht.
 
-## Tests
+Chat-Archivierung allein bedeutet nicht, dass jedes Detail automatisch vom
+Sprachmodell erinnert wird. Eine spätere Suche/Wiederherstellung des
+vollständigen Quellarchivs ist technisch möglich, benötigt aber einen
+separaten, geprüften Index-/Restore-Prozess. Das aktuelle
+`chat-archive.sqlite3` bleibt ein eigener opt-in-Suchindex.
 
-```bash
+Weder diese Änderung noch PR #421 können bereits früher endgültig gelöschte
+und nicht anderweitig gesicherte Unterhaltungen rückwirkend rekonstruieren.
+Beim vollständigen PR-Review müssen auch die asynchronen Qwen- und
+Knowledge-Memory-Jobs nach einem Sidebar-Delete getestet werden, damit
+laufende Lernprozesse nicht unterbrochen werden.
+
+## Testen
+
+```sh
 python3 -m pytest -q tests/test_chat_retention.py tests/test_delete_all_chats.py \
-    tests/test_personal_memory_integration.py tests/test_image_variants.py
+  tests/test_personal_memory_integration.py tests/test_image_runtime.py
 node --test tests/*.mjs
 python3 scripts/check-public-privacy.py
 python3 scripts/i18n-audit.py
 ```
 
-Test on a private, isolated host or temporary HOME, not against the live Agent.
-Never copy backed-up chat JSON into a live deleted-chat-ID store without first
-reviewing tombstones and controlling writers.
+Die Tests müssen ausschließlich in isolierten Testverzeichnissen laufen, nie
+gegen produktive Chatdaten. Nicht mergen/deployen, bis die GitHub-CI und die
+lokale macOS-Abnahme erfolgreich sind.
