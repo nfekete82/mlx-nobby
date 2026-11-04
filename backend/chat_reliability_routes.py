@@ -52,6 +52,7 @@ RECOVERY_READY_TIMEOUT = max(
 
 class ReliableChatRequest(BaseModel):
     messages: list[dict]
+    chat_id: str | None = None
     temperature: float = 0.7
     max_tokens: int = 3000
     system_prompt: str = ""

@@ -6,11 +6,10 @@ chat saves nor memory retrieval opens/creates the database until enabled.
 """
 from __future__ import annotations
 
-import os
 import re
-import sqlite3
 import threading
 from pathlib import Path
+from agent import private_memory_sqlite
 
 DB_PATH = Path.home() / ".config/mlx-web/chat-archive.sqlite3"
 LOCK = threading.RLock()
@@ -25,14 +24,7 @@ _STOPWORDS = frozenset({
 
 
 def _connect():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    conn = sqlite3.connect(DB_PATH, timeout=5)
-    os.chmod(DB_PATH, 0o600)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA secure_delete=ON")
-    return conn
-
+    return private_memory_sqlite.connect(DB_PATH, timeout=5)
 
 def _schema(conn):
     conn.executescript("""
@@ -175,11 +167,16 @@ def remove_chat(chat_id, *, exclude=False):
     with LOCK, _connect() as conn:
         _schema(conn)
         conn.execute("DELETE FROM archive_messages WHERE chat_id=?", (chat_id,))
+        # FTS5 posting lists can retain deleted words even with secure_delete.
+        # Rebuild then compact so exclusion/chat deletion purges derived bytes.
+        conn.execute("INSERT INTO archive_fts(archive_fts) VALUES('rebuild')")
         if exclude:
             conn.execute(
                 "INSERT OR IGNORE INTO archive_excluded(chat_id) VALUES(?)",
                 (chat_id,),
             )
+        conn.commit()
+        conn.execute("VACUUM")
 
 
 def include_chat(chat_id):
@@ -247,6 +244,9 @@ def search(query, *, limit=4):
     bounded = max(1, min(int(limit), MAX_RESULTS))
     with LOCK, _connect() as conn:
         _schema(conn)
+        active = conn.execute("SELECT value FROM archive_meta WHERE key='enabled'").fetchone()
+        if not active or active["value"] != "1":
+            return []
         rows = conn.execute(
             "SELECT m.chat_id,m.ordinal,m.role,m.content,"
             "bm25(archive_fts) AS rank "

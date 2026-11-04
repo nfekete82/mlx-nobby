@@ -11,10 +11,10 @@ MEMORY_MANAGER_SCRIPT = (
     b'<script src="/assets/chat/memory-manager.js?v=20260928-memory-manager-v1"></script>'
 )
 MEMORY_ARCHIVE_SCRIPT = (
-    b'<script src="/assets/chat/memory-archive.js?v=20261104-memory2-local"></script>'
+    b'<script src="/assets/chat/memory-archive.js?v=20261104-memory2-local-review2"></script>'
 )
 PERSONAL_MEMORY_SCRIPT = (
-    b'<script src="/assets/chat/personal-memory.js?v=20261104-private-knowledge"></script>'
+    b'<script src="/assets/chat/personal-memory.js?v=20261104-private-knowledge-review2"></script>'
 )
 MEMORY_MANAGER_CONSOLIDATION_SCRIPT = (
     b'<script src="/assets/chat/memory-manager-consolidation.js?v=20260928-memory-manager-v12"></script>'

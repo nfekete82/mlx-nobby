@@ -654,3 +654,11 @@ def test_real_gateway_marks_progress_and_unregisters_after_completion(monkeypatc
         assert not run_state.chat_stream_progress_is_recent(1000)
 
     asyncio.run(exercise())
+
+
+def test_reliable_chat_keeps_source_chat_identity():
+    request = web_routes.ReliableChatRequest.model_validate({
+        'messages': [{'role': 'user', 'content': 'Synthetic confirmation'}],
+        'chat_id': 'synthetic-source-chat',
+    })
+    assert request.chat_id == 'synthetic-source-chat'

@@ -44,7 +44,7 @@ def client(tmp_path, monkeypatch):
     async def unrelated(request: Request):
         return await request.json()
 
-    return TestClient(app)
+    return TestClient(app, base_url="http://localhost")
 
 
 def test_streaming_chat_is_enriched(client):
@@ -143,3 +143,47 @@ def test_unrelated_routes_are_untouched(client):
     assert response.status_code == 200
     assert response.json() == payload
     assert memory.list_memories() == []
+
+
+def test_chat_identity_reaches_memory_clarification(client, monkeypatch):
+    seen = []
+
+    def enrich(messages, **kwargs):
+        seen.append(kwargs.get('source_chat_id'))
+        return messages
+
+    monkeypatch.setattr(memory_lifecycle, 'enrich_messages', enrich)
+    response = client.post('/api/runtime/chat/stream', json={
+        'chat_id': 'synthetic-question-chat',
+        'messages': [{'role': 'user', 'content': 'Ja, das neue Datum stimmt'}],
+    })
+    assert response.status_code == 200
+    assert seen == ['synthetic-question-chat']
+
+
+def test_rejected_origin_cannot_observe_or_resolve_memory_before_local_guard(monkeypatch):
+    from local_security import LocalRequestGuard
+    observed = []
+
+    def enrich(messages, **kwargs):
+        observed.append(messages)
+        return messages
+
+    monkeypatch.setattr(memory_lifecycle, 'enrich_messages', enrich)
+    app = FastAPI()
+    app.add_middleware(LocalRequestGuard)
+    # Production installs the memory layer after the original app guard.
+    app.add_middleware(MemoryChatMiddleware)
+
+    @app.post('/api/runtime/chat/stream')
+    async def echo(request: Request):
+        return await request.json()
+
+    with TestClient(app, base_url='http://localhost') as client:
+        response = client.post('/api/runtime/chat/stream', headers={
+            'Origin': 'https://foreign.invalid', 'Sec-Fetch-Site': 'cross-site',
+        }, json={'chat_id': 'synthetic', 'messages': [
+            {'role': 'user', 'content': 'Ja, das neue Datum stimmt'},
+        ]})
+    assert response.status_code == 403
+    assert observed == [], 'Rejected requests must not reach memory enrichment'

@@ -85,7 +85,8 @@
         for (const fact of shown) {
             const card = entry(fact.subject + ' · ' + fact.field, fact.value);
             const metadata = [
-                t('source') + ': ' + (fact.source_chat_id || 'manual'),
+                t('source') + ': ' + (fact.source_chat_id || 'manual') +
+                    (Number.isInteger(fact.source_ordinal) ? ' · #' + fact.source_ordinal : ''),
                 t('date') + ': ' + new Date(fact.updated_at * 1000).toLocaleString(),
                 t('status') + ': ' + fact.status,
                 fact.sensitive ? t('sensitive') : '',
@@ -121,7 +122,8 @@
                 t('ask') + ': ' + question.previous_value +
                 '  ↔  ' + question.proposed_value);
             card.append(el('small', t('source') + ': ' +
-                (question.source_chat_id || 'manual')));
+                (question.source_chat_id || 'manual') +
+                (Number.isInteger(question.source_ordinal) ? ' · #' + question.source_ordinal : '')));
             const buttons = el('div', '', 'memory-manager-actions');
             buttons.append(action(t('old'), async () => {
                 await api('conflicts/' + encodeURIComponent(question.id) + '/resolve',
@@ -183,11 +185,11 @@
         panel.id = 'privateMemoryPanel';
         const title = el('h4'); title.id = 'privateMemoryTitle';
         const description = el('p'); description.id = 'privateMemoryDescription';
-        const toggle = el('label', '', 'memory-manager-switch');
+        const toggleLabel = el('label', '', 'memory-manager-switch');
         const input = document.createElement('input');
         input.id = 'privateMemoryEnabled'; input.type = 'checkbox';
         const toggleText = el('span'); toggleText.id = 'privateMemoryToggleLabel';
-        toggle.append(input, toggleText);
+        toggleLabel.append(input, toggleText);
         const warning = el('p'); warning.id = 'privateMemoryWarning';
         warning.style.opacity = '.75';
         const toolbar = el('div', '', 'memory-manager-toolbar');
@@ -219,7 +221,7 @@
         const pendingTitle = el('h4'); pendingTitle.id = 'privateMemoryPendingTitle';
         const conflicts = el('div'); conflicts.id = 'privateMemoryConflicts';
         const facts = el('div'); facts.id = 'privateMemoryFacts';
-        panel.append(title, description, toggle, warning,
+        panel.append(title, description, toggleLabel, warning,
             toolbar, history, rebuild, notice, pendingTitle, conflicts, facts);
         host.append(panel);
         input.addEventListener('change', toggle);

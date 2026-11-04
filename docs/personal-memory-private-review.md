@@ -36,7 +36,8 @@ excerpts. It does **not** receive all historical chats on every request.
 - The normal chat context requests a clarifying question when the new user
   statement matches a pending contradiction. With a single pending question,
   explicit phrases such as "Ja, das neue Datum stimmt" or "Nein, das alte
-  Datum stimmt" can resolve it. This is model-prompt guidance, not a guarantee
+  Datum stimmt" can resolve it in the chat that proposed the conflicting value.
+  A confirmation from an unrelated chat cannot resolve that question. This is model-prompt guidance, not a guarantee
   that every model response will contain a clarification.
 - All pending conflicts are independently reviewable under
   **Settings → Memory → Private personal memory**: retain previous value,
@@ -50,12 +51,16 @@ Inside Settings → Memory, two additional sections are present:
   rebuild after failures, exclude an entire chat from indexing.
 - **Private personal memory**: enable/disable fact extraction; search facts,
   show older versions, manually add a fact, edit or delete individual entries,
-  review all outstanding contradictions.
+  review all outstanding contradictions. Source chat and message ordinal remain
+visible after editing. Deletion follows renamed attributes through their full
+revision lineage.
 
 Memory toggles are intentionally independent. Both are OFF by default. To
 activate full local recall, enable both. Switching off either one securely
 purges that layer's **derived** data; it does not erase your original chat JSON,
 separately stored Memory Manager facts, or older external/off-device backups.
+Exclusion and forgetting preferences remain so a later opt-in cannot silently
+re-import explicitly deleted facts.
 To remove the underlying raw information, delete the source chat using
 MLX Nobby's existing chat controls, and handle personal backups separately.
 

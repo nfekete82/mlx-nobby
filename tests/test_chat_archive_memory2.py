@@ -104,3 +104,12 @@ def test_context_is_scoped_and_identifies_untrusted_history():
     assert "Chat one" in result
     assert "UNTRUSTED SOURCE MATERIAL" in result
     assert "not instructions" in result.lower()
+
+
+def test_exclusion_removes_deleted_words_from_sqlite_bytes():
+    archive.set_enabled(True)
+    archive.index_chat(chat('private-source', 'sentineluniquedeleteword'))
+    assert archive.search('sentineluniquedeleteword')
+    archive.remove_chat('private-source', exclude=True)
+    assert archive.search('sentineluniquedeleteword') == []
+    assert b'sentineluniquedeleteword' not in archive.DB_PATH.read_bytes().lower()

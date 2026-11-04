@@ -13,6 +13,7 @@ import json
 import os
 
 from agent import memory_lifecycle
+from local_security import LocalRequestGuard
 
 
 TARGET_PATH = "/api/runtime/chat/stream"
@@ -31,12 +32,18 @@ class MemoryChatMiddleware:
             thread_name_prefix="mlx-memory-chat",
         )
         self._memory_future = None
+        self._request_guard = LocalRequestGuard(self._enrich_request)
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http" or scope.get("path") != TARGET_PATH:
             await self.app(scope, receive, send)
             return
 
+        # This middleware may wrap the app's original LocalRequestGuard.
+        # Reject untrusted origins/hosts before any memory read or mutation.
+        await self._request_guard(scope, receive, send)
+
+    async def _enrich_request(self, scope, receive, send):
         body = bytearray()
         more_body = True
         messages = []
@@ -59,7 +66,7 @@ class MemoryChatMiddleware:
             payload = json.loads(replacement.decode("utf-8"))
             raw_messages = payload.get("messages")
             if isinstance(raw_messages, list):
-                enriched = await self._enrich_messages(raw_messages)
+                enriched = await self._enrich_messages(raw_messages, source_chat_id=payload.get("chat_id"))
                 if enriched != raw_messages:
                     payload = dict(payload)
                     payload["messages"] = enriched
@@ -95,7 +102,7 @@ class MemoryChatMiddleware:
 
         await self.app(scope, enriched_receive, send)
 
-    async def _enrich_messages(self, raw_messages):
+    async def _enrich_messages(self, raw_messages, *, source_chat_id=None):
         """Enrich within a strict latency budget and otherwise fail open.
 
         Semantic memory may need to cold-start the local embedding service or
@@ -111,6 +118,7 @@ class MemoryChatMiddleware:
         future = self._memory_executor.submit(
             memory_lifecycle.enrich_messages,
             raw_messages,
+            source_chat_id=source_chat_id,
         )
         self._memory_future = future
         wrapped = asyncio.wrap_future(future)

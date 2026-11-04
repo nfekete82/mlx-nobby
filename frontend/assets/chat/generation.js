@@ -1685,6 +1685,7 @@ try {
 
                 body: JSON.stringify({
                     messages: apiMessages,
+                    chat_id: session.id,
 
                     temperature:
                         generationSettings.temperature,

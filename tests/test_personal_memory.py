@@ -58,7 +58,7 @@ def test_date_conflict_asks_before_changing_and_supports_yes_answer():
     prompt = pm.question_for("Mein Termin ist am 18. November")
     assert "Ask which information is current" in prompt
     assert "16" in prompt and "18" in prompt
-    pm.question_for("Ja, das neue Datum stimmt")
+    pm.question_for("Ja, das neue Datum stimmt", source_chat_id="chat2")
     assert pm.list_conflicts() == []
     assert "18" in pm.list_facts()[0]["value"]
     history = pm.list_facts(history=True)
@@ -203,3 +203,93 @@ def test_pre_save_check_skips_identical_fact_and_clear_reschedule():
     assert pm.question_for("Mein Termin ist am 16. November") == ""
     assert pm.question_for("Mein Termin wurde auf 18. November verschoben") == ""
     assert "16" in pm.list_facts()[0]["value"]
+
+
+def test_edit_keeps_source_and_delete_purges_renamed_history():
+    pm.set_enabled(True)
+    pm.index_chat(user_chat('source-a', 'Meine Freundin heißt Beispielname'))
+    original = pm.list_facts()[0]
+    edited = pm.edit_fact(original['id'], field='rufname', value='Korrigiertername')
+    fact = pm.list_facts()[0]
+    assert fact['source_chat_id'] == 'source-a'
+    assert fact['source_ordinal'] == 0
+    assert pm.delete_fact(edited['fact_id'])
+    assert pm.list_facts(history=True) == []
+    pm.rebuild([user_chat('source-a', 'Meine Freundin heißt Beispielname')])
+    pm.index_chat(user_chat('source-b', 'Meine Freundin heißt Beispielname'))
+    assert pm.list_facts(history=True) == []
+
+
+def test_optout_during_extraction_cannot_restore_private_facts(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    pm.set_enabled(True)
+    extracting, resume = threading.Event(), threading.Event()
+    extract = pm._extract
+
+    def delayed(text):
+        extracting.set()
+        assert resume.wait(5)
+        return extract(text)
+
+    monkeypatch.setattr(pm, '_extract', delayed)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        pending = executor.submit(pm.observe, 'Meine Freundin heißt Testperson')
+        assert extracting.wait(5)
+        pm.set_enabled(False)
+        resume.set()
+        assert pending.result(timeout=5) == []
+    assert pm.status()['active_facts'] == 0
+
+
+def test_confirmation_in_another_chat_cannot_resolve_a_private_conflict():
+    pm.set_enabled(True)
+    pm.index_chat(user_chat('previous', 'Mein Termin ist am 16. November'))
+    pm.index_chat(user_chat('question-chat', 'Mein Termin ist am 18. November'))
+    pm.question_for('Ja, das neue Datum stimmt', source_chat_id='unrelated-chat')
+    assert len(pm.list_conflicts()) == 1
+    pm.question_for('Ja, das neue Datum stimmt', source_chat_id='question-chat')
+    assert pm.list_conflicts() == []
+    assert '18' in pm.list_facts()[0]['value']
+
+
+def test_private_database_connection_closes_after_context():
+    pm.set_enabled(True)
+    with pm._connect() as connection:
+        assert connection.execute('SELECT 1').fetchone()[0] == 1
+    with pytest.raises(sqlite3.ProgrammingError, match='closed'):
+        connection.execute('SELECT 1')
+
+
+def test_backfill_handles_newest_first_chat_lists_in_chronological_order():
+    pm.set_enabled(True)
+    older = user_chat('older', 'Mein Termin ist am 16. November') | {'updated': 100}
+    newer = user_chat('newer', 'Mein Termin ist am 18. November') | {'updated': 200}
+    pm.rebuild([newer, older])
+    assert '16' in pm.list_facts()[0]['value']
+    assert '18' in pm.list_conflicts()[0]['proposed_value']
+
+
+def test_forgetting_and_chat_exclusion_survive_optout_reenable():
+    pm.set_enabled(True)
+    source = user_chat('forgotten-source', 'Meine Freundin heißt Beispielperson')
+    excluded = user_chat('excluded-source', 'Mein Sohn heißt Beispielkind')
+    pm.index_chat(source)
+    pm.delete_fact(pm.list_facts()[0]['id'])
+    pm.remove_chat('excluded-source', exclude=True)
+    pm.set_enabled(False)
+    pm.set_enabled(True)
+    pm.rebuild([source, excluded])
+    assert pm.list_facts(history=True) == []
+
+
+def test_pre_review_database_history_migrates_before_rename_and_delete():
+    pm.set_enabled(True)
+    pm.create_fact('synthetic', 'attribute', 'Original value')
+    current = pm.create_fact('synthetic', 'attribute', 'Newer value')
+    with sqlite3.connect(pm.DB_PATH) as connection:
+        connection.execute('DROP TABLE fact_lineage')
+    assert len(pm.list_facts(history=True)) == 2
+    edited = pm.edit_fact(current['fact_id'], field='renamed', value='Corrected value')
+    pm.delete_fact(edited['fact_id'])
+    assert pm.list_facts(history=True) == []

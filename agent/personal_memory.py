@@ -7,13 +7,12 @@ prompts. It creates no database until explicitly enabled, and is not networked.
 from __future__ import annotations
 
 import hashlib
-import os
 import re
-import sqlite3
 import threading
 import time
 import uuid
 from pathlib import Path
+from agent import private_memory_sqlite
 
 DB_PATH = Path.home() / ".config/mlx-web/personal-memory.sqlite3"
 LOCK = threading.RLock()
@@ -83,15 +82,7 @@ _RULES = [
 ]
 
 def _connect():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with LOCK:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
-        os.chmod(DB_PATH, 0o600)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA secure_delete=ON")
-        conn.execute("PRAGMA foreign_keys=ON")
-        return conn
-
+    return private_memory_sqlite.connect(DB_PATH, timeout=10)
 
 def _schema(conn):
     conn.executescript("""
@@ -112,6 +103,10 @@ def _schema(conn):
         );
         CREATE INDEX IF NOT EXISTS idx_facts_subject
           ON facts(subject,field,status);
+        CREATE TABLE IF NOT EXISTS fact_lineage (
+          fact_id TEXT PRIMARY KEY REFERENCES facts(id) ON DELETE CASCADE,
+          root_id TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS conflicts (
           id TEXT PRIMARY KEY,
           fact_id TEXT NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
@@ -136,6 +131,28 @@ def _schema(conn):
           PRIMARY KEY (subject, field)
         );
     """)
+    missing = conn.execute(
+        "SELECT f.id,f.subject,f.field FROM facts f LEFT JOIN fact_lineage l "
+        "ON l.fact_id=f.id WHERE l.fact_id IS NULL"
+    ).fetchall()
+    for fact in missing:
+        root = conn.execute(
+            "SELECT id FROM facts WHERE subject=? AND field=? ORDER BY created_at,id LIMIT 1",
+            (fact["subject"], fact["field"]),
+        ).fetchone()["id"]
+        conn.execute("INSERT INTO fact_lineage VALUES (?,?)", (fact["id"], root))
+    if missing:
+        conn.commit()
+
+
+def _is_enabled(conn):
+    row = conn.execute("SELECT value FROM settings WHERE key='enabled'").fetchone()
+    return bool(row and row["value"] == "1")
+
+
+def _lineage(conn, fact_id):
+    row = conn.execute("SELECT root_id FROM fact_lineage WHERE fact_id=?", (fact_id,)).fetchone()
+    return row["root_id"] if row else fact_id
 
 
 def enabled():
@@ -160,8 +177,8 @@ def set_enabled(value: bool):
             conn.execute("DELETE FROM conflicts")
             conn.execute("DELETE FROM facts")
             conn.execute("DELETE FROM observed")
-            conn.execute("DELETE FROM excluded")
-            conn.execute("DELETE FROM forgotten")
+            # Keep only exclusion/forgetting preferences, never private values.
+            # A later opt-in must not silently resurrect explicitly deleted facts.
         conn.execute(
             "INSERT INTO settings(key,value) VALUES('enabled',?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -243,7 +260,7 @@ def _fact_for(conn, subject, field):
 
 
 def _propose(conn, subject, field, value, sensitive=False,
-             source_chat_id=None, source_ordinal=None, explicit=False):
+             source_chat_id=None, source_ordinal=None, explicit=False, lineage_id=None):
     if conn.execute(
         "SELECT 1 FROM forgotten WHERE subject=? AND field=?",
         (subject, field),
@@ -272,12 +289,14 @@ def _propose(conn, subject, field, value, sensitive=False,
         conn.execute("UPDATE facts SET status='superseded',updated_at=? WHERE id=?",
                      (now, active["id"]))
         conn.execute("DELETE FROM conflicts WHERE fact_id=?", (active["id"],))
+    root = lineage_id or (_lineage(conn, active["id"]) if active else None)
     fid = uuid.uuid4().hex
     conn.execute(
         "INSERT INTO facts VALUES (?,?,?,?,?,?,?,?,?,?)",
         (fid, subject, field, value, int(sensitive),
          source_chat_id, source_ordinal, "active", now, now),
     )
+    conn.execute("INSERT INTO fact_lineage VALUES (?,?)", (fid, root or fid))
     return {"action": "updated" if active else "added", "fact_id": fid}
 
 
@@ -314,6 +333,8 @@ def list_facts(query="", *, limit=200, history=False):
     text = str(query or "").casefold()
     with LOCK, _connect() as conn:
         _schema(conn)
+        if not _is_enabled(conn):
+            return []
         sql = "SELECT * FROM facts"
         if not history:
             sql += " WHERE status='active'"
@@ -328,6 +349,8 @@ def list_conflicts():
         return []
     with LOCK, _connect() as conn:
         _schema(conn)
+        if not _is_enabled(conn):
+            return []
         rows = conn.execute(
             "SELECT c.*, f.subject,f.field,f.value AS previous_value, "
             "f.sensitive FROM conflicts c JOIN facts f ON c.fact_id=f.id "
@@ -344,6 +367,8 @@ def observe(message, *, source_chat_id=None, source_ordinal=None):
     found = _extract(text)
     with LOCK, _connect() as conn:
         _schema(conn)
+        if not _is_enabled(conn):
+            return []
         if source_chat_id and conn.execute(
             "SELECT 1 FROM excluded WHERE chat_id=?", (source_chat_id,)
         ).fetchone():
@@ -373,6 +398,8 @@ def index_chat(chat):
             incoming[ordinal] = (hashlib.sha256(value.encode()).hexdigest(), value)
     with LOCK, _connect() as conn:
         _schema(conn)
+        if not _is_enabled(conn):
+            return {"processed": 0}
         if conn.execute("SELECT 1 FROM excluded WHERE chat_id=?",
                         (chat_id,)).fetchone():
             return {"processed": 0}
@@ -427,10 +454,13 @@ def rebuild(chats):
         raise ValueError("Personal memory is disabled")
     count = 0
     ids = set()
-    for chat in chats:
-        if isinstance(chat, dict) and isinstance(chat.get("id"), str):
-            ids.add(chat["id"])
-            count += index_chat(chat)["processed"]
+    # The sidebar API returns newest-first. Establish the older observation
+    # before queuing a conflicting newer statement, never the reverse.
+    valid = [chat for chat in chats
+             if isinstance(chat, dict) and isinstance(chat.get("id"), str)]
+    for chat in sorted(valid, key=lambda item: item.get("updated", 0)):
+        ids.add(chat["id"])
+        count += index_chat(chat)["processed"]
     with LOCK, _connect() as conn:
         _schema(conn)
         for r in conn.execute("SELECT DISTINCT chat_id FROM observed").fetchall():
@@ -449,6 +479,8 @@ def create_fact(subject, field, value, *, sensitive=False):
     val = _value(value)
     with LOCK, _connect() as conn:
         _schema(conn)
+        if not _is_enabled(conn):
+            raise ValueError("Personal memory is disabled")
         conn.execute("DELETE FROM forgotten WHERE subject=? AND field=?",
                      (subj, key))
         return _propose(conn, subj, key, val, bool(sensitive), explicit=True)
@@ -459,6 +491,8 @@ def edit_fact(fact_id, *, subject=None, field=None, value=None, sensitive=None):
         raise ValueError("Personal memory is disabled")
     with LOCK, _connect() as conn:
         _schema(conn)
+        if not _is_enabled(conn):
+            raise ValueError("Personal memory is disabled")
         old = conn.execute("SELECT * FROM facts WHERE id=?",
                            (fact_id,)).fetchone()
         if old is None:
@@ -471,7 +505,9 @@ def edit_fact(fact_id, *, subject=None, field=None, value=None, sensitive=None):
         conn.execute("DELETE FROM conflicts WHERE fact_id=?", (fact_id,))
         return _propose(conn, new_subject, new_field, new_value,
                         old["sensitive"] if sensitive is None else bool(sensitive),
-                        explicit=True)
+                        source_chat_id=old["source_chat_id"],
+                        source_ordinal=old["source_ordinal"],
+                        explicit=True, lineage_id=_lineage(conn, fact_id))
 
 
 def delete_fact(fact_id):
@@ -484,10 +520,17 @@ def delete_fact(fact_id):
                             (fact_id,)).fetchone()
         if not fact:
             return False
-        conn.execute("DELETE FROM facts WHERE subject=? AND field=?",
-                     (fact["subject"], fact["field"]))
-        conn.execute("INSERT OR IGNORE INTO forgotten VALUES (?,?)",
-                     (fact["subject"], fact["field"]))
+        # Follow revisions even when a user changed the attribute's name.
+        root = _lineage(conn, fact_id)
+        revisions = conn.execute(
+            "SELECT f.id,f.subject,f.field FROM facts f LEFT JOIN fact_lineage l "
+            "ON l.fact_id=f.id WHERE l.root_id=? OR (f.subject=? AND f.field=?) OR f.id=?",
+            (root, fact["subject"], fact["field"], root),
+        ).fetchall()
+        for revision in revisions:
+            conn.execute("INSERT OR IGNORE INTO forgotten VALUES (?,?)",
+                         (revision["subject"], revision["field"]))
+            conn.execute("DELETE FROM facts WHERE id=?", (revision["id"],))
         return True
 
 
@@ -498,6 +541,8 @@ def resolve(conflict_id, decision, custom_value=None):
         raise ValueError("Invalid decision")
     with LOCK, _connect() as conn:
         _schema(conn)
+        if not _is_enabled(conn):
+            raise ValueError("Personal memory is disabled")
         issue = conn.execute(
             "SELECT c.*,f.subject,f.field,f.sensitive "
             "FROM conflicts c JOIN facts f ON c.fact_id=f.id WHERE c.id=?",
@@ -516,7 +561,7 @@ def resolve(conflict_id, decision, custom_value=None):
         return result
 
 
-def question_for(query):
+def question_for(query, *, source_chat_id=None):
     """Clarify changed facts even if the current chat PUT has not finished.
 
     Chat generation and autosave run independently. The model's memory lookup
@@ -529,9 +574,13 @@ def question_for(query):
     candidates = {(s, k): v for s, k, v, _ in extracted}
     with LOCK, _connect() as conn:
         _schema(conn)
+        if not _is_enabled(conn):
+            return ""
         if not candidates:
             if _RESOLVE_NEW.match(query) or _RESOLVE_OLD.match(query):
-                questions = conn.execute("SELECT id FROM conflicts").fetchall()
+                questions = conn.execute(
+                    "SELECT id FROM conflicts WHERE source_chat_id IS ?", (source_chat_id,)
+                ).fetchall()
                 if len(questions) == 1:
                     resolve(questions[0]["id"],
                             "new" if _RESOLVE_NEW.match(query) else "old")
