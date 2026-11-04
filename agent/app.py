@@ -394,6 +394,13 @@ def read_chat(chat_id):
 
 
 def write_chat(chat):
+    from agent import memory_forgetting
+    try:
+        memory_forgetting.filter_deleted_originals(chat)
+    except Exception as error:
+        # Never accept a stale save when original-deletion rules cannot be checked.
+        if personal_memory.DB_PATH.exists():
+            raise HTTPException(503, 'Chat-Löschregeln konnten nicht geprüft werden') from error
     path = chat_path(chat["id"])
     temporary_path = None
 
@@ -413,11 +420,15 @@ def write_chat(chat):
             try:
                 chat_archive.index_chat(chat)
             except Exception as archive_error:
-                logger.warning("Local chat archive indexing failed: %s", archive_error)
+                logger.warning("Local chat archive indexing failed: %s", type(archive_error).__name__)
+                from agent import knowledge_memory
+                knowledge_memory.diagnose("archive", archive_error)
             try:
                 personal_memory.index_chat(chat)
             except Exception as memory_error:
-                logger.warning("Private personal memory indexing failed: %s", memory_error)
+                logger.warning("Private personal memory indexing failed: %s", type(memory_error).__name__)
+                from agent import knowledge_memory
+                knowledge_memory.diagnose("indexing", memory_error)
             try:
                 # Fire-and-forget: the local Qwen worker must never delay a
                 # chat save or write model output into the authoritative chat.
@@ -432,6 +443,16 @@ def write_chat(chat):
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
+
+
+def iter_memory_chats():
+    """Historical analysis reads one authoritative chat at a time, oldest file first."""
+    paths = sorted(CHAT_DIRECTORY.glob('*.json'), key=lambda path: path.stat().st_mtime)
+    for path in paths:
+        if not CHAT_ID_PATTERN.fullmatch(path.stem): continue
+        with CHATS_LOCK:
+            chat = read_chat(path.stem)
+        if chat is not None: yield chat
 
 
 def list_chats():
@@ -6673,7 +6694,18 @@ def tool_pii_audit(request):
     return deterministic_pii_audit(path.read_text(encoding="utf-8", errors="replace"))
 
 def tool_knowledge_search(request):
-    return knowledge.search(request.prompt)
+    result = knowledge.search(request.prompt)
+    try:
+        from agent import knowledge_memory
+        current = run_state.current_run_context()
+        original_goal = current.user_goal if current and current.user_goal else request.prompt
+        recalled = knowledge_memory.context(request.prompt, budget=5000, semantic=True, privacy_query=original_goal)
+        if recalled and isinstance(result, dict):
+            result = {**result, 'personal_memory': recalled}
+    except Exception as error:
+        from agent import knowledge_memory
+        knowledge_memory.diagnose('additional_recall', error)
+    return result
 
 def tool_knowledge_add(request):
     match = re.search(r"(?:indexiere)\s+(.+?)(?:\s*$)", request.prompt, re.I)
@@ -13372,7 +13404,7 @@ def _build_agent_tool_registry():
         ("system_status", "Inspect system and MLX runtime status.", "READ", (), None, None),
         ("logs_query", "Read recent service logs.", "READ", (), None, None),
         ("batch_status", "Inspect batch job status.", "READ", (), None, None),
-        ("knowledge_search", "Search the local knowledge index.", "READ", (), None, None),
+        ("knowledge_search", "Search local documents and source-linked personal memories for additional evidence.", "READ", (), None, None),
         ("code_search", "Search the active code workspace.", "READ", (), None, None),
         ("code_files", "Find files in the active code workspace.", "READ", (), None, None),
         ("code_read", "Read a workspace file, optionally with a line range.", "READ", (), None, None),

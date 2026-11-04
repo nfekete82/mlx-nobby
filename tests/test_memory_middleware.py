@@ -11,6 +11,8 @@ import pytest
 from agent import memory
 from agent import memory_lifecycle
 from agent import memory_middleware
+from agent import memory_dashboard
+from agent import personal_memory as pm
 from agent.memory_middleware import MemoryChatMiddleware
 
 
@@ -19,6 +21,8 @@ def client(tmp_path, monkeypatch):
     root = tmp_path / "mlx-web"
     monkeypatch.setattr(memory, "ROOT", root)
     monkeypatch.setattr(memory, "MEMORY_DB", root / "memory.db")
+    monkeypatch.setattr(pm, "DB_PATH", tmp_path / "private.sqlite3")
+    monkeypatch.setattr(memory_dashboard, "STATE_PATH", tmp_path / "pause.json")
 
     app = FastAPI()
     app.add_middleware(MemoryChatMiddleware)
@@ -65,9 +69,11 @@ def test_streaming_chat_is_enriched(client):
 
 
 def test_streaming_chat_observes_explicit_remember(client):
+    pm.set_enabled(True)
     response = client.post(
         "/api/runtime/chat/stream",
         json={
+            "chat_id": "synthetic-chat",
             "messages": [
                 {
                     "role": "user",
@@ -78,9 +84,10 @@ def test_streaming_chat_observes_explicit_remember(client):
     )
 
     assert response.status_code == 200
-    items = memory.list_memories()
+    assert '"persisted": true' in response.text
+    items = pm.list_facts()
     assert len(items) == 1
-    assert "Qwen3.8-27B" in items[0]["text"]
+    assert "Qwen3.8-27B" in items[0]["value"]
 
 
 def test_slow_memory_enrichment_fails_open_without_blocking_chat(client, monkeypatch):
@@ -124,6 +131,34 @@ def test_slow_memory_enrichment_fails_open_without_blocking_chat(client, monkeyp
     finally:
         release.set()
 
+
+
+
+def test_slow_semantic_recall_still_supplies_safe_private_identity(client, monkeypatch):
+    pm.set_enabled(True)
+    pm.create_fact("ich", "beruf", "Informatiker", sensitive=True)
+    pm.create_fact("partner", "gesundheit", "Beispieldiagnose", sensitive=True)
+    started, release = threading.Event(), threading.Event()
+
+    def slow_enrichment(messages, **_kwargs):
+        started.set()
+        release.wait(timeout=1.0)
+        return messages
+
+    monkeypatch.setattr(memory_lifecycle, "enrich_messages", slow_enrichment)
+    monkeypatch.setattr(memory_middleware, "MEMORY_ENRICH_TIMEOUT_SECONDS", 0.01)
+    try:
+        response = client.post("/api/runtime/chat/stream", json={
+            "messages": [{"role": "user", "content": "Erkläre CSS."}]
+        })
+        assert started.wait(timeout=0.2)
+        assert response.status_code == 200
+        assert response.json()["messages"][0]["role"] == "system"
+        system = response.json()["messages"][0]["content"]
+        assert "Informatiker" in system
+        assert "Beispieldiagnose" not in system
+    finally:
+        release.set()
 
 def test_memory_middleware_preserves_streaming_response(client):
     response = client.post(

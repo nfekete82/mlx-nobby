@@ -113,3 +113,70 @@ def test_exclusion_removes_deleted_words_from_sqlite_bytes():
     archive.remove_chat('private-source', exclude=True)
     assert archive.search('sentineluniquedeleteword') == []
     assert b'sentineluniquedeleteword' not in archive.DB_PATH.read_bytes().lower()
+
+
+def test_completed_actions_and_chat_title_are_retrievable_with_provenance():
+    archive.set_enabled(True)
+    value = {
+        "id": "project-actions",
+        "title": "Sandforge: Bastion Wars",
+        "updated": 200,
+        "messages": [
+            {"role": "user", "content": "Bitte die Wegfindung verbessern."},
+            {"role": "assistant", "content": "Der Testlauf wurde abgeschlossen.",
+             "tool_result": {"tool": "coding_agent", "status": "completed",
+                             "data": {"secret": "NEVER_INDEX_PRIVATE_TOOL_OUTPUT"}}},
+        ],
+    }
+    archive.index_chat(value)
+    results = archive.search("Sandforge", limit=6)
+    assert len(results) == 1
+    assert results[0]["chat_id"] == "project-actions"
+    assert results[0]["message_index"] == 1
+    assert results[0]["role"] == "assistant"
+    assert "coding_agent completed" in results[0]["excerpt"]
+    assert archive.search("NEVER_INDEX_PRIVATE_TOOL_OUTPUT") == []
+    assert archive.search("Wegfindung")[0]["role"] == "user"
+
+
+def test_pending_action_is_not_misrepresented_as_completed():
+    archive.set_enabled(True)
+    value = chat("action-status", "Starte eine neue Codeprüfung.")
+    value["messages"].append({
+        "role": "assistant", "content": "Codeprüfung gestartet",
+        "agent_run": {"status": "running"},
+    })
+    archive.index_chat(value)
+    result = archive.search("Aktionsstatus")[0]["excerpt"]
+    assert "agent_run running" in result
+    assert "completed" not in result
+    value["messages"][-1]["agent_run"]["status"] = "completed"
+    archive.index_chat(value)
+    assert "agent_run completed" in archive.search("Aktionsstatus")[0]["excerpt"]
+    assert "agent_run running" not in archive.search("Aktionsstatus")[0]["excerpt"]
+
+
+def test_archive_indexes_more_of_long_text_but_keeps_bounded_derived_copy():
+    archive.set_enabled(True)
+    marker = "projektstatuswochenbericht"
+    very_long = "intro " + "x" * 25000 + " " + marker
+    archive.index_chat(chat("long-text", very_long))
+    matched = archive.search(marker)
+    assert matched and matched[0]["chat_id"] == "long-text"
+
+
+def test_untrusted_activity_metadata_is_not_copied_to_local_fts():
+    archive.set_enabled(True)
+    value = chat("ignore-payload", "Versuche eine Aktion zu finden")
+    value["messages"].append({
+        "role": "assistant", "content": "",
+        "tool_result": {
+            "tool": "coding_agent", "status": "completed",
+            "data": {"api_key": "SENTINEL_UNINDEXED_TOKEN"},
+        },
+    })
+    archive.index_chat(value)
+    assert archive.search("coding_agent")
+    assert archive.search("SENTINEL_UNINDEXED_TOKEN") == []
+    archive.remove_chat("ignore-payload", exclude=True)
+    assert archive.search("coding_agent") == []

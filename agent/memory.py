@@ -307,7 +307,9 @@ def _retrieval_scores(query, memories, now):
 
 def retrieve(query, *, limit=DEFAULT_LIMIT):
     limit = max(1, min(int(limit), MAX_LIMIT))
-    memories = list_memories(limit=500)
+    from agent import knowledge_memory as km, personal_memory as pm
+    memories = [m for m in list_memories(limit=500) if km.legacy_allowed(m)
+        and (not km._PRIVATE.search(m['text']) or pm.overview_requested(query) or km._PRIVATE.search(query))]
     now = time.time()
     scored = _retrieval_scores(query, memories, now)
     scored.sort(key=lambda pair: (pair[0], pair[1]["updated_at"]), reverse=True)
@@ -345,7 +347,60 @@ def context_from_memories(selected):
 
 
 def context(query, *, limit=DEFAULT_LIMIT):
+    # "What do you know about me?" is not an ordinary lexical search.
+    # Show the bounded, stored long-term inventory when explicitly asked.
+    from agent import personal_memory
+    if personal_memory.overview_requested(query):
+        from agent import knowledge_memory as km
+        stored = [m for m in list_memories(limit=25) if km.legacy_allowed(m)]
+        if not stored:
+            return ""
+        compact = []
+        chars = 0
+        for entry in stored:
+            text = str(entry["text"])[:300]
+            if compact and chars + len(text) > 4500:
+                break
+            compact.append({**entry, "text": text})
+            chars += len(text)
+        omitted = len(stored) - len(compact)
+        return (
+            "THE USER REQUESTED AN OVERVIEW OF STORED LONG-TERM MEMORY.\n"
+            "Summarize stored items alongside relevant private facts and "
+            "profile data, distinguishing older or uncertain claims. "
+            "This inventory is bounded, not a complete transcript.\n\n"
+            + context_from_memories(compact)
+            + (f"\n{omitted} additional long-term memory items omitted "
+               "because of context limits." if omitted else "")
+        )
     return context_from_memories(retrieve(query, limit=limit))
+
+
+_VAGUE_FOLLOWUP = re.compile(
+    r"^\s*(?:und|und jetzt|und weiter|weiter|was jetzt|wie weiter|"
+    r"was noch|und was ist damit|was meinst du dazu|was denkst du dazu|wie geht es weiter|was ist der stand|"
+    r"und wie sieht es aus|what next|and now|go on)"
+    r"\s*[?.!]*\s*$", re.I,
+)
+
+
+def recall_query(messages) -> str:
+    """Reuse the preceding user topic for an otherwise ambiguous follow-up.
+
+    This is *only* a memory search query; the original chat messages and
+    conversation context remain unchanged.
+    """
+    users = [
+        message["content"] for message in (messages or [])
+        if isinstance(message, dict) and message.get("role") == "user"
+        and isinstance(message.get("content"), str)
+    ]
+    if not users:
+        return ""
+    last = users[-1]
+    if len(users) >= 2 and _VAGUE_FOLLOWUP.fullmatch(last):
+        return (users[-2][:500] + " " + last)[:MAX_MEMORY_TEXT]
+    return last
 
 
 def _durable_candidate(message):
@@ -395,6 +450,9 @@ def observe_user_message(message, *, source_chat_id=None):
     if candidate is None:
         return {"action": "ignored"}
     memory_text, importance, confidence, pinned = candidate
+    from agent import knowledge_memory as km
+    if not km.legacy_allowed({'text':memory_text, 'source_chat_id':source_chat_id}):
+        return {'action':'ignored', 'reason':'forgotten'}
     item = add(
         memory_text,
         importance=importance,
@@ -452,11 +510,12 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=DEFAUL
         return copied
     if observe:
         observe_user_message(last_user, source_chat_id=source_chat_id)
-    memory_context = context(last_user, limit=limit)
+    search_query = recall_query(copied)
+    memory_context = context(search_query, limit=limit)
     # Opt-in chat archive augments distilled preferences with sourced excerpts.
     # The archive is local, derived and disabled until explicitly activated.
     try:
-        archive_context = chat_archive.context(last_user, limit=3)
+        archive_context = chat_archive.context(search_query, limit=3)
     except Exception:
         archive_context = ""
     merged_context = "\n\n".join(
@@ -465,4 +524,4 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=DEFAUL
     if not merged_context:
         return copied
 
-    return attach_system_context(copied, merged_context)
+    return attach_system_context(copied, merged_context[:6000])

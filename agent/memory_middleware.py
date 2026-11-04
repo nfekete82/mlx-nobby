@@ -25,13 +25,19 @@ MEMORY_ENRICH_TIMEOUT_SECONDS = max(
 
 
 class MemoryChatMiddleware:
-    def __init__(self, app):
+    def __init__(self, app, chat_host=None):
         self.app = app
+        self.chat_host = chat_host
         self._memory_executor = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix="mlx-memory-chat",
         )
         self._memory_future = None
+        self._private_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="mlx-private-recall",
+        )
+        self._private_future = None
         self._request_guard = LocalRequestGuard(self._enrich_request)
 
     async def __call__(self, scope, receive, send):
@@ -66,6 +72,18 @@ class MemoryChatMiddleware:
             payload = json.loads(replacement.decode("utf-8"))
             raw_messages = payload.get("messages")
             if isinstance(raw_messages, list):
+                from agent import memory_commands, knowledge_memory
+                try:
+                    command = await asyncio.to_thread(memory_commands.execute, raw_messages, chat_id=payload.get('chat_id'), chat_host=self.chat_host)
+                except Exception as error:
+                    knowledge_memory.diagnose('command', error)
+                    command = {'text': 'Die Gedächtnisaktion ist fehlgeschlagen. Es wurde keine erfolgreiche Speicherung bestätigt.', 'persisted': False, 'action': 'error'}
+                if command is not None:
+                    from starlette.responses import Response
+                    result = ('data: ' + json.dumps({'text': command['text'], 'memory_receipt': command}, ensure_ascii=False)
+                              + '\n\nevent: done\ndata: {}\n\n')
+                    await Response(result, media_type='text/event-stream')(scope, receive, send)
+                    return
                 enriched = await self._enrich_messages(raw_messages, source_chat_id=payload.get("chat_id"))
                 if enriched != raw_messages:
                     payload = dict(payload)
@@ -113,7 +131,7 @@ class MemoryChatMiddleware:
         """
         current = self._memory_future
         if current is not None and not current.done():
-            return raw_messages
+            return await self._fast_personal(raw_messages)
 
         future = self._memory_executor.submit(
             memory_lifecycle.enrich_messages,
@@ -129,7 +147,28 @@ class MemoryChatMiddleware:
                 timeout=MEMORY_ENRICH_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
+            return await self._fast_personal(raw_messages)
+        except Exception:
+            return await self._fast_personal(raw_messages)
+
+    async def _fast_personal(self, raw_messages):
+        """Preserve private opt-in recall even when legacy embeddings time out.
+
+        Run in a separate bounded worker so a stuck legacy memory lookup cannot
+        starve the fast SQLite-only path. Strictly read-only and fail-open.
+        """
+        current = self._private_future
+        if current is not None and not current.done():
             return raw_messages
+        future = self._private_executor.submit(
+            memory_lifecycle.fast_personal_context, raw_messages,
+        )
+        self._private_future = future
+        try:
+            return await asyncio.wait_for(
+                asyncio.shield(asyncio.wrap_future(future)),
+                timeout=0.2,
+            )
         except Exception:
             return raw_messages
 
