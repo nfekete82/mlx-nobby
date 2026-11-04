@@ -4,7 +4,7 @@
     if (window.__mlxNobbySettingsLayout) return;
     window.__mlxNobbySettingsLayout = true;
 
-    const SECTIONS = ['chat', 'models', 'knowledge', 'personal', 'tools', 'automations', 'system'];
+    const SECTIONS = ['chat', 'models', 'knowledge', 'memory', 'personal', 'tools', 'automations', 'system'];
     const MODEL_TABS = ['models', 'runtime', 'storage', 'downloads'];
     const SYSTEM_TABS = ['server', 'logs'];
     const FALLBACK = {
@@ -18,6 +18,8 @@
         downloads: 'Downloads',
         knowledge: 'Knowledge',
         knowledge_description: 'Local documents and semantic search.',
+        memory: 'Memory',
+        memory_description: 'Private chat history, personal facts, corrections and deletion.', 
         personal: 'Personal',
         personal_description: 'Profile, response style and appearance.',
         tools: 'Tools',
@@ -66,6 +68,7 @@
         if (/^\/settings\/models\/?$/.test(path)) return 'models';
         if (/^\/settings\/advanced\/(runtime|storage)\/?$/.test(path)) return 'models';
         if (/^\/settings\/knowledge\/?$/.test(path)) return 'knowledge';
+        if (/^\/settings\/memory\/?$/.test(path)) return 'memory';
         if (/^\/settings\/(profile|appearance)\/?$/.test(path)) return 'personal';
         if (/^\/settings\/functions\/?$/.test(path)) return 'tools';
         if (/^\/settings\/automations\/?$/.test(path)) return 'automations';
@@ -239,6 +242,11 @@
     function activateSection(section) {
         if (!controller || !SECTIONS.includes(section)) return;
         activeSection = section;
+        if (section === 'memory') {
+            window.MLXMemory?.activate?.();
+            render();
+            return;
+        }
         if (section === 'automations') {
             window.MLXAutomationsUI?.show({ updateHistory: true });
             render();
@@ -302,6 +310,13 @@
         }
 
         activeSection = sectionFromPath(path);
+        if (activeSection === 'memory') {
+            // The Memory manager owns a dynamically inserted settings pane.
+            // Opening its route must show that pane, not the Chat fallback.
+            window.MLXMemory?.activate?.();
+            render();
+            return;
+        }
         if (activeSection === 'automations') {
             window.MLXAutomationsUI?.show({ updateHistory: false });
             render();
