@@ -49,6 +49,15 @@ _RULES = [
         r"\bmeine\s+(?:freundin|partnerin)\s+(?:hat|leidet an)\s+"
         r"(?P<value>lichen\s+sclerosus|(?:eine\s+)?(?:diagnose|erkrankung)\s+"
         r"[\wÄÖÜäöüß -]{3,80})\b", re.I), True),
+    ("familie.sohn", "name", re.compile(
+        r"\bmein\s+sohn\s+(?:heißt|heisst)\s+(?P<value>[\wÄÖÜäöüß-]{2,80})\b", re.I), True),
+    ("familie.tochter", "name", re.compile(
+        r"\bmeine\s+tochter\s+(?:heißt|heisst)\s+(?P<value>[\wÄÖÜäöüß-]{2,80})\b", re.I), True),
+    ("partner", "vorliebe", re.compile(
+        r"\bmeine\s+(?:freundin|partnerin)\s+(?:mag|liebt)\s+"
+        r"(?P<value>[^.!?\n]{3,100})", re.I), True),
+    ("ich", "vorliebe", re.compile(
+        r"\bich\s+(?:mag|liebe)\s+(?P<value>[^.!?\n]{3,100})", re.I), False),
     ("ich", "wohnort", re.compile(
         r"\bich\s+wohne\s+(?:jetzt\s+)?in\s+(?P<value>[\wÄÖÜäöüß .-]{2,70})"
         r"(?=[,.;!?]|$)", re.I), True),
@@ -193,6 +202,21 @@ def _extract(text):
     if event:
         entries.append(("termine", event.group("event").casefold(),
                         _value(event.group("value")), True))
+    explicit = re.match(
+        r"^\s*(?:bitte\s+)?(?:merk(?:e)?\s+dir|"
+        r"speicher(?:e)?\s+dir)\s*[:,-]?\s*(?P<value>.+)$",
+        text, re.I | re.S,
+    )
+    if explicit and not re.search(
+        r"\b(passwort|password|api.key|token|secret|private.key|pin.code)\b",
+        explicit.group("value"), re.I,
+    ):
+        try:
+            note = _value(explicit.group("value"))
+            field = "notiz." + hashlib.sha256(note.casefold().encode()).hexdigest()[:16]
+            entries.append(("ich", field, note, True))
+        except ValueError:
+            pass
     return entries
 
 
