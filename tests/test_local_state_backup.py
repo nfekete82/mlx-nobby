@@ -93,3 +93,36 @@ def test_backup_includes_private_long_term_chat_memory_sources(tmp_path):
     assert json.loads(restored.read_text()) == data
     assert restored.stat().st_mode & 0o777 == 0o600
     assert backup.verify(destination)["verified"] is True
+
+
+def test_backup_changed_sources_reports_paths_without_contents(tmp_path):
+    first = {
+        str(tmp_path / "memory.sqlite3"): (32, 10),
+        str(tmp_path / "old-chat.json"): (11, 5),
+    }
+    second = {
+        str(tmp_path / "memory.sqlite3"): (34, 11),
+        str(tmp_path / "new-chat.json"): (10, 6),
+    }
+    result = backup.changed_sources(first, second)
+    assert result["changed_count"] == 3
+    assert set(result["changed_paths"]) == set(first) | set(second)
+    assert result["truncated"] is False
+    assert "private contents" not in str(result)
+
+
+def test_readonly_writer_diagnosis_is_non_destructive(tmp_path, monkeypatch):
+    root = tmp_path / "source"
+    chats = root / "chats"
+    chats.mkdir(parents=True)
+    file = chats / "fictional.json"
+    file.write_text('{"id": "fictional"}')
+
+    def synthetic_tick(_seconds):
+        file.write_text('{"id": "fictional", "updated": true}')
+
+    monkeypatch.setattr(backup.time, "sleep", synthetic_tick)
+    result = backup.diagnose_writers({"mlx-web": root}, seconds=0)
+    assert result["changed_count"] == 1
+    assert result["changed_paths"] == [str(file)]
+    assert file.read_text().endswith('true}')
