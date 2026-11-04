@@ -816,7 +816,7 @@ function sessionT(key, fallback = '', variables = {}) {
     }
 
     async function chatDeleteApproval(scope, chatId = null) {
-        const payload = { scope, confirmation: 'LÖSCHEN' };
+        const payload = { scope, confirmation: 'DELETE' };
         if (chatId) payload.chat_id = chatId;
         const { response, data } = await MLXCommon.fetchJson(
             '/api/mlx/chats/delete-intent',
@@ -834,11 +834,11 @@ function sessionT(key, fallback = '', variables = {}) {
         confirmingHistory = true;
         try {
             const confirmed = await window.MLXConfirm({
-                title: sessionT('ui.delete_all_chats_title', 'Alle Chats löschen?'),
+                title: sessionT('ui.delete_all_chats_title', 'Delete all chats?'),
                 message: sessionT('chat_retention.delete_chats_only',
-                    'Alle Chats aus der Chatliste entfernen? Dein langfristiges Gedächtnis bleibt erhalten.'),
-                confirmLabel: sessionT('ui.delete_all_chats', 'Alle Chats löschen'),
-                cancelLabel: sessionT('ui.cancel', 'Abbrechen'),
+                    'Remove all chats from the list? Long-term memory will be preserved.'),
+                confirmLabel: sessionT('ui.delete_all_chats', 'Delete all chats'),
+                cancelLabel: sessionT('ui.cancel', 'Cancel'),
             });
             if (!confirmed) return false;
             clearingHistory = true;
@@ -928,11 +928,11 @@ function sessionT(key, fallback = '', variables = {}) {
         const session = state.sessions.find(item => item.id === id);
         if (!session) return false;
         const confirmed = await window.MLXConfirm?.({
-            title: sessionT('sessions.delete_confirm', 'Chat löschen?'),
+            title: sessionT('sessions.delete_confirm', 'Delete chat?'),
             message: sessionT('chat_retention.delete_one_only',
-                'Diesen Chat entfernen? Langfristige Erinnerungen bleiben erhalten.'),
-            confirmLabel: sessionT('ui.delete_chat', 'Chat löschen'),
-            cancelLabel: sessionT('ui.cancel', 'Abbrechen'),
+                'Remove this chat? Long-term memories will be preserved.'),
+            confirmLabel: sessionT('ui.delete_chat', 'Delete chat'),
+            cancelLabel: sessionT('ui.cancel', 'Cancel'),
         });
         if (!confirmed) return false;
         try {
@@ -959,10 +959,10 @@ function sessionT(key, fallback = '', variables = {}) {
         } catch (error) {
             console.warn('[MLX nobby] Chat deletion failed:', error);
             await window.MLXConfirm?.({
-                title: sessionT('chat_retention.error_title', 'Löschen fehlgeschlagen'),
-                message: sessionT('chat_retention.error', 'Der Chat konnte nicht gelöscht werden.'),
-                confirmLabel: sessionT('common.close', 'Schließen'),
-                cancelLabel: sessionT('common.close', 'Schließen'),
+                title: sessionT('chat_retention.error_title', 'Deletion failed'),
+                message: sessionT('chat_retention.error', 'The chat could not be deleted.'),
+                confirmLabel: sessionT('common.close', 'Close'),
+                cancelLabel: sessionT('common.close', 'Close'),
             });
             return false;
         }
