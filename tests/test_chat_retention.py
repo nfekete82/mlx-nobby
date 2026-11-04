@@ -14,6 +14,8 @@ from agent import chat_delete_intent, chat_retention
 @pytest.fixture()
 def local_chats(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, "CHAT_DIRECTORY", tmp_path / "chats")
+    # Never write synthetic tests into real personal/semantic memory databases.
+    monkeypatch.setattr(agent.memory_dashboard, "paused", lambda: True)
     return tmp_path / "chats"
 
 
@@ -142,3 +144,58 @@ def test_failed_memory_archive_prevents_chat_deletion(local_chats, monkeypatch):
         assert result.status_code == 500
         assert client.get("/api/chats/a").status_code == 200
         assert not (local_chats / ".deleted-chat-ids.json").exists()
+
+
+def test_saved_source_is_available_to_memory_after_chat_list_deletion(local_chats, monkeypatch, tmp_path):
+    from agent import chat_archive, personal_memory, semantic_personal_memory
+    monkeypatch.setattr(personal_memory, "DB_PATH", tmp_path / "private-facts.sqlite3")
+    monkeypatch.setattr(chat_archive, "DB_PATH", tmp_path / "chat-index.sqlite3")
+    monkeypatch.setattr(agent.memory_dashboard, "paused", lambda: False)
+    sample = chat("recall-sample", "Meine Freundin heißt Beispielperson")
+    with TestClient(agent.app, base_url="http://localhost") as client:
+        assert client.put("/api/chats/recall-sample", json=sample).status_code == 200
+        permit = client.post("/api/chats/delete-intent", json={
+            "scope": "all", "confirmation": "LÖSCHEN"
+        }).json()["deletion_token"]
+        assert client.request("DELETE", "/api/chats", json={
+            "deletion_token": permit
+        }).status_code == 200
+        assert client.get("/api/chats").json()["chats"] == []
+
+    # History is invisible in the sidebar yet accessible to private memory.
+    assert not (local_chats / "recall-sample.json").exists()
+    retained = agent.memory_chat_reader("recall-sample")
+    assert retained["messages"][0]["content"] == "Meine Freundin heißt Beispielperson"
+    sources = list(agent.iter_memory_chats())
+    assert len(sources) == 1
+    assert sources[0]["id"] == "recall-sample"
+
+    # Independent indexes may be enabled later and rebuilt from the vault.
+    personal_memory.set_enabled(True)
+    personal_memory.rebuild(sources)
+    assert any("Beispielperson" in item["value"]
+               for item in personal_memory.list_facts())
+    chat_archive.set_enabled(True)
+    chat_archive.rebuild(sources)
+    assert chat_archive.search("Beispielperson")
+
+    # The local Qwen worker validates archived originals after the UI delete.
+    monkeypatch.setattr(semantic_personal_memory, "_READER", agent.memory_chat_reader)
+    monkeypatch.setattr(semantic_personal_memory, "_CHAT_LOCK", agent.CHATS_LOCK)
+    current = semantic_personal_memory._current("recall-sample", 0)
+    assert current is not None and current[0] == "Meine Freundin heißt Beispielperson"
+
+
+def test_memory_archived_chat_does_not_reappear_in_sidebar(local_chats):
+    sample = chat("archived-offscreen", "This long conversation stays privately saved.")
+    with TestClient(agent.app, base_url="http://localhost") as client:
+        assert client.put("/api/chats/archived-offscreen", json=sample).status_code == 200
+        token = client.post("/api/chats/delete-intent", json={
+            "scope": "one", "chat_id": "archived-offscreen", "confirmation": "DELETE",
+        }).json()["deletion_token"]
+        result = client.request("DELETE", "/api/chats/archived-offscreen",
+                                json={"deletion_token": token})
+        assert result.status_code == 200
+        assert agent.memory_chat_reader("archived-offscreen")
+        assert client.get("/api/chats").json()["chats"] == []
+        assert client.get("/api/chats/archived-offscreen").status_code == 404
