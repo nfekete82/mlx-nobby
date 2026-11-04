@@ -18,6 +18,7 @@ import time
 import uuid
 
 from agent import memory_embeddings
+from agent import chat_archive
 
 
 ROOT = Path.home() / ".config/mlx-web"
@@ -420,11 +421,20 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=DEFAUL
     if observe:
         observe_user_message(last_user, source_chat_id=source_chat_id)
     memory_context = context(last_user, limit=limit)
-    if not memory_context:
+    # Opt-in chat archive augments distilled preferences with sourced excerpts.
+    # The archive is local, derived and disabled until explicitly activated.
+    try:
+        archive_context = chat_archive.context(last_user, limit=3)
+    except Exception:
+        archive_context = ""
+    merged_context = "\n\n".join(
+        part for part in (memory_context, archive_context) if part
+    )
+    if not merged_context:
         return copied
 
     insert_at = 0
     while insert_at < len(copied) and copied[insert_at].get("role") == "system":
         insert_at += 1
-    copied.insert(insert_at, {"role": "system", "content": memory_context})
+    copied.insert(insert_at, {"role": "system", "content": merged_context})
     return copied
