@@ -5,6 +5,7 @@ a model, access user conversations, or make any network requests.
 """
 import json
 import threading
+import time
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
@@ -166,3 +167,40 @@ def test_regex_memory_does_not_promote_negated_relationship_to_preference():
     pm.set_enabled(True)
     pm.observe("Ich liebe sie nicht mehr, ich habe sie verlassen")
     assert not any("sie nicht" in entry["value"] for entry in pm.list_facts())
+
+
+
+def test_saving_chat_schedules_nonblocking_real_worker_with_mock_local_qwen():
+    pm.set_enabled(True)
+    smart.set_enabled(True)
+    text = "Meine Partnerin ist Psychologin"
+    chat = {
+        "id": "fictional-source", "updated": 123,
+        "messages": [{"role": "user", "content": text}],
+    }
+    calls = []
+    started = threading.Event()
+
+    def fake_local_qwen(payload):
+        message = json.loads(payload)["message"]
+        calls.append(message)
+        started.set()
+        return fact(message)
+
+    smart.configure(
+        chat_reader=lambda chat_id: chat if chat_id == chat["id"] else None,
+        chat_lock=threading.RLock(),
+        model_complete=fake_local_qwen,
+    )
+    before = time.monotonic()
+    assert smart.enqueue(chat) == 1
+    assert time.monotonic() - before < 1.0  # No inference on the write path.
+    assert started.wait(3)
+    for _ in range(200):
+        if pm.list_facts():
+            break
+        time.sleep(.01)
+    assert calls == [text]
+    assert pm.list_facts()[0]["source_chat_id"] == "fictional-source"
+    assert pm.list_facts()[0]["source_ordinal"] == 0
+    assert smart.enqueue(chat) == 0
