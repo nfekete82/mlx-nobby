@@ -12,7 +12,7 @@
     "error": "Fehler",
     "remove": "Diesen Chat aus dem Gedächtnis ausschließen",
     "empty": "Keine passenden früheren Nachrichten.",
-    "warning": "Beim Deaktivieren werden die zusätzlichen Suchindex-Daten gelöscht; die ursprünglichen Chats bleiben bestehen."
+    "warning": "Deaktivieren pausiert die Suche. Der Suchindex und die ursprünglichen Chats bleiben gespeichert, bis du Inhalte ausdrücklich löschst."
   },
   "en": {
     "title": "On-device chat memory 2.0",
@@ -27,6 +27,6 @@
     "error": "Error",
     "remove": "Exclude this chat from memory",
     "empty": "No matching prior messages.",
-    "warning": "Turning off removes the derived search index, not the original chats."
+    "warning": "Turning off pauses search. The index and original chats remain saved until explicit deletion."
   }
 }
