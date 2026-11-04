@@ -158,9 +158,11 @@
         $('memoryActivityTitle').textContent = t('activityTitle');
         $('memoryActivityLoad').textContent = t('activityLoad');
         $('memoryActivityMore').textContent = t('activityMore');
-        for (const item of $('memoryActivityFilter').options) {
-            item.textContent = t(item.dataset.label);
-        }
+        const activityKeys = ['activityAll', 'activityImage', 'activityVideo',
+            'activityAgent', 'activityTool'];
+        Array.from($('memoryActivityFilter').options).forEach((item, index) => {
+            item.textContent = t(activityKeys[index]);
+        });
         renderSmart();
         const filter = $('memoryOverviewFilter');
         for (const option of filter.options) option.textContent = t(option.value);
@@ -531,7 +533,7 @@
         ]) {
             const option = element('option');
             option.value = kind;
-            option.dataset.label = label;
+            option.textContent = t(label);
             activityFilter.append(option);
         }
         const activityLoad = action('', () => loadActivities(false));
