@@ -95,11 +95,13 @@ def test_removed_chat_purges_derived_activity_and_search():
     assert archive_activity_context.inventory()["total"] == 0
 
 
-def test_rebuild_prunes_old_activity_when_chat_deleted():
+def test_rebuild_preserves_old_activity_as_long_term_memory():
     chat_archive.set_enabled(True)
     chat_archive.index_chat(creative_chat())
+    assert archive_activity_context.inventory()["total"] == 1
+    # Clearing visible chats cannot erase a previously recorded action.
     chat_archive.rebuild([])
-    assert archive_activity_context.inventory()["total"] == 0
+    assert archive_activity_context.inventory()["total"] == 1
 
 
 def test_media_library_verified_results_are_separate_from_job_history(monkeypatch):
