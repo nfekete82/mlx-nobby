@@ -184,6 +184,8 @@
         <div class="nobby-sidebar-section-label nobby-recent-heading nobby-sidebar-recent-divider">
           <button id="recentToggle" class="nobby-recent-toggle" type="button" aria-expanded="true" aria-controls="chatList"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><span data-i18n="library.recent">Letzte Chats</span></button>
           <div class="nobby-recent-controls">
+            <details id="chatHistoryMenu" class="chat-history-menu nobby-recent-more"><summary aria-label="Chat-Menü" data-i18n-aria-label="ui.chat_history_menu"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg></summary><button id="deleteAllChats" type="button" data-i18n="ui.delete_all_chats">Alle Chats löschen</button></details>
+            
             
             <button id="recentFilterToggle" class="nobby-sidebar-icon" type="button" aria-expanded="false" aria-controls="recentFilter" title="Chats filtern" data-i18n-title="library.filter" aria-label="Chats filtern" data-i18n-aria-label="library.filter"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M7 12h10M10 17h4"/></svg></button>
             <button id="recentNewChat" class="nobby-sidebar-icon" type="button" title="Neuer Chat" data-i18n-title="ui.new_chat" aria-label="Neuer Chat" data-i18n-aria-label="ui.new_chat"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h8"/><path d="m15 5 4 4"/><path d="m10 14 9-9a2.1 2.1 0 0 1 3 3l-9 9-4 1z"/></svg></button>
@@ -617,14 +619,7 @@
             </div>
             <input id="importChatsFile" type="file" accept="application/json,.json" hidden>
         </section>
-        <section class="settings-card" id="permanentChatDeletion">
-            <h4 class="settings-group-title" data-i18n="chat_retention.title">Daten dauerhaft löschen</h4>
-            <p class="settings-hint" data-i18n="chat_retention.warning">Chats und ihre gespeicherten Versionen bleiben dauerhaft erhalten. Nur hier kannst du sie nach ausdrücklicher Bestätigung endgültig löschen. Abgeleitete Erinnerungen können dabei ebenfalls entfernt werden. Backups bleiben separat bestehen.</p>
-            <div class="settings-export-row">
-                <button id="settingsDeleteCurrentChat" class="message-action-btn" type="button" data-i18n="chat_retention.one">Aktuellen Chat endgültig löschen</button>
-                <button id="settingsDeleteAllChats" class="message-action-btn" type="button" data-i18n="chat_retention.all">Alle Chats endgültig löschen</button>
-            </div>
-        </section>
+
     </div>
     <div class="settings-pane" data-settings-pane="functions" hidden>
         <div class="settings-page-intro">
