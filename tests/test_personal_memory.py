@@ -120,6 +120,15 @@ def test_manual_fact_edit_delete_and_history():
     assert len(pm.list_facts()) == 1
     assert pm.delete_fact(updated["fact_id"])
     assert pm.list_facts() == []
+    assert pm.list_facts(history=True) == []
+    # Source chat changes and future rebuilds cannot silently recreate a
+    # specifically forgotten attribute; manual addition is an explicit opt-in.
+    pm.index_chat(user_chat("a", "Meine Freundin heißt Clara"))
+    assert pm.delete_fact(pm.list_facts()[0]["id"])
+    pm.rebuild([user_chat("a", "Meine Freundin heißt Clara")])
+    assert not any(f["subject"] == "partner" for f in pm.list_facts())
+    pm.create_fact("partner", "name", "Clara")
+    assert any(f["value"] == "Clara" for f in pm.list_facts())
     assert not pm.delete_fact("unknown")
 
 
