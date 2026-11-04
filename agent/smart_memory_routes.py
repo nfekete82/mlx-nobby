@@ -27,6 +27,9 @@ def install_routes(app, chat_host):
                 # Never stream private content to the client. Queue only
                 # native-host tasks; inference happens asynchronously.
                 chats = chat_host.list_chats()
+            if (payload or {}).get("full") is True:
+                from agent import smart_full_history
+                return smart_full_history.start(chats)
             return smart.backfill(chats, limit=max_messages)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
