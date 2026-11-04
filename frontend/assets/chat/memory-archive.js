@@ -2,6 +2,7 @@
 (() => {
     'use strict';
     let mounted = false;
+    let viewEpoch = 0;
     const $ = id => document.getElementById(id);
     const lang = () => window.MLXI18n?.getLanguage?.() === 'de' ? 'de' : 'en';
     const words = {
@@ -62,12 +63,16 @@
     });
     const status = (message) => { $('localArchiveStatus').textContent = message; };
     async function refresh() {
+        if ($('localArchiveEnabled').disabled) return;
+        const epoch = viewEpoch;
         const data = await api('/api/mlx/memory/archive/status');
+        if (epoch !== viewEpoch) return;
         $('localArchiveEnabled').checked = data.enabled;
         $('localArchiveRebuild').disabled = !data.enabled;
         status(data.enabled ? (data.indexed_messages + ' ' + t('count')) : t('disabled'));
     }
     async function toggle() {
+        ++viewEpoch;
         const checkbox = $('localArchiveEnabled');
         const enabled = checkbox.checked;
         checkbox.disabled = true;
@@ -82,23 +87,27 @@
         } finally { checkbox.disabled = false; }
     }
     async function rebuild() {
+        const epoch = ++viewEpoch;
         const button = $('localArchiveRebuild');
         button.disabled = true;
         try {
             const data = await post('/api/mlx/memory/archive/rebuild', {});
+            if (epoch !== viewEpoch) return;
             status((data.indexed_messages + ' ' + t('count')));
         } catch (error) {
             status(t('error') + ': ' + error.message);
-        } finally { button.disabled = false; }
+        } finally { button.disabled = !$('localArchiveEnabled').checked; }
     }
     async function search() {
+        const epoch = ++viewEpoch;
         const target = $('localArchiveResults');
         const query = $('localArchiveQuery').value.trim();
         target.replaceChildren();
-        if (!query) return;
+        if (!query || !$('localArchiveEnabled').checked || $('localArchiveEnabled').disabled) return;
         try {
             const data = await api('/api/mlx/memory/archive/search?query=' +
                 encodeURIComponent(query) + '&limit=8');
+            if (epoch !== viewEpoch) return;
             for (const item of data.results || []) {
                 const card = document.createElement('div');
                 card.className = 'memory-manager-card';
@@ -126,7 +135,9 @@
                 target.append(card);
             }
             if (!target.childElementCount) target.textContent = t('empty');
-        } catch (error) { status(t('error') + ': ' + error.message); }
+        } catch (error) {
+            if (epoch === viewEpoch) status(t('error') + ': ' + error.message);
+        }
     }
     function labels() {
         if (!mounted) return;

@@ -3,6 +3,7 @@
     'use strict';
     const $ = id => document.getElementById(id);
     const state = { facts: [], conflicts: [], enabled: false, showHistory: false };
+    let refreshEpoch = 0;
     const text = {
         en: {
             title: 'Private personal memory',
@@ -151,30 +152,38 @@
             t('count') + ' · ' + state.conflicts.length + ' ' + t('conflictCount'));
     }
     async function refresh() {
+        const epoch = ++refreshEpoch;
         const current = await api('status');
-        state.enabled = current.enabled;
-        if (state.enabled) {
-            const [facts, conflicts] = await Promise.all([
+        let facts = [], conflicts = [];
+        if (current.enabled) {
+            const data = await Promise.all([
                 api('facts?history=' + state.showHistory + '&limit=250'),
                 api('conflicts'),
             ]);
-            state.facts = facts.facts || [];
-            state.conflicts = conflicts.conflicts || [];
-        } else {
-            state.facts = [];
-            state.conflicts = [];
+            facts = data[0].facts || [];
+            conflicts = data[1].conflicts || [];
         }
+        if (epoch !== refreshEpoch) return;
+        state.enabled = current.enabled;
+        state.facts = facts;
+        state.conflicts = conflicts;
         render();
     }
     async function toggle() {
         const enabled = $('privateMemoryEnabled').checked;
+        ++refreshEpoch;
+        let saved = false;
         $('privateMemoryEnabled').disabled = true;
         try {
             await api('config', json('POST', {enabled}));
+            saved = true;
+            state.enabled = enabled;
+            if (!enabled) { state.facts = []; state.conflicts = []; }
+            render();
             await refresh();
         } catch (error) {
             status(t('error') + ': ' + error.message);
-            $('privateMemoryEnabled').checked = !enabled;
+            if (!saved) $('privateMemoryEnabled').checked = !enabled;
         } finally { $('privateMemoryEnabled').disabled = false; }
     }
     function mount() {

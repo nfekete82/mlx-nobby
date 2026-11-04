@@ -25,6 +25,9 @@ the existing production/main checkout was not modified during development.
 - Turning personal memory off removed forgetting/exclusion preferences, allowing
   deleted facts to reappear after a later opt-in. Those preferences now survive;
   private fact values, history and pending questions are still purged.
+- In-flight facts/search responses could redisplay already-cleared private data
+  after opt-out. View epochs invalidate stale responses, and successful opt-out
+  immediately clears displayed values even if the following status refresh fails.
 - The memory middleware could enrich/mutate a request before the app's inner
   origin guard rejected it. It now applies the shared local request guard before
   touching memory; a native-stack regression verifies rejected requests have no
@@ -41,7 +44,7 @@ now covered by a dedicated regression.
 ## Validation
 
 - Complete Python suite: **3,844 passed; 472 subtests passed**.
-- Complete Node suite: **400 passed**.
+- Complete Node suite: **403 passed**.
 - Complete isolated Chromium suite: **120 passed**.
 - Focused real-Agent/Chromium memory acceptance: **6/6 passed**, no page errors.
 - Public privacy scan, translation audit, dependency consistency, syntax checks
