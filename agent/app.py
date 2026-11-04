@@ -168,6 +168,7 @@ class ChatSessionRequest(BaseModel):
     messages: list[dict]
     settings: dict | None = None
     workspace: dict | None = None
+    expected_updated: float | None = None
 
 
 CHAT_DIRECTORY = Path.home() / ".config/mlx-web/chats"
@@ -1205,6 +1206,16 @@ def put_chat(chat_id: str, request: ChatSessionRequest):
             raise HTTPException(status_code=410, detail="Chat history was deleted")
         existing = read_chat(chat_id)
 
+        if request.expected_updated is not None:
+            if existing is None:
+                if request.expected_updated != -1:
+                    raise HTTPException(409, "Chat disappeared during synchronization")
+            elif existing["updated"] != request.expected_updated:
+                return {"chat": existing, "conflict": True}
+
+        if existing == incoming:
+            return {"chat": existing, "conflict": False}
+
         if (
             existing is not None and
             existing["updated"] > incoming["updated"]
@@ -1216,6 +1227,11 @@ def put_chat(chat_id: str, request: ChatSessionRequest):
 
         if existing is not None:
             incoming["revision"] = existing.get("revision", 0)
+            # Accepted legacy writes must invalidate modern tabs' CAS tokens
+            # too, including edits made within the same millisecond.
+            incoming["updated"] = max(
+                incoming["updated"], existing["updated"] + 1
+            )
 
         write_chat(incoming)
 

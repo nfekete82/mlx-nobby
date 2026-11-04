@@ -42,7 +42,9 @@ test('empty startup and New chat clicks remain local drafts in the current produ
     assert.deepEqual(h.requests, [{ url: '/api/mlx/chats', method: 'GET' }]);
     h.api.currentSession().messages.push({ role: 'user', content: 'first user turn' });
     h.api.saveSessions();
-    await Promise.resolve();
+    // The persistence layer coalesces in-flight draft writes. Await its
+    // actual operation rather than one arbitrary microtask tick.
+    await h.api.persistSession(h.api.currentSession());
     assert.equal(h.requests.filter(request => request.method === 'PUT').length, 1);
 });
 

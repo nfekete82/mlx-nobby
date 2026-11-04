@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { webcrypto } from 'node:crypto';
 
 const source = fs.readFileSync(
     new URL('../frontend/assets/chat/sessions.js', import.meta.url),
@@ -17,6 +18,8 @@ const window = {};
 vm.runInNewContext(source, {
     window,
     console,
+    crypto: webcrypto,
+    TextEncoder,
     localStorage: {
         getItem(key) { return cache.get(key) ?? null; },
         setItem(key, value) { cache.set(key, value); },
@@ -104,6 +107,7 @@ let respond;
 nextResponse = () => new Promise(resolve => { respond = resolve; });
 const pending = sessions.persistSession(session);
 assistantMessage.agent_run.status = 'waiting';
+nextResponse = async body => ({ response: { ok: true }, data: { chat: { ...body, expected_updated: undefined } } });
 respond({
     response: { ok: true },
     data: {
@@ -141,6 +145,9 @@ for (const updated of [19, 20]) {
 assert.equal(renderCount, rendersAfterUpdate);
 
 generating = false;
+// A no-op save is intentionally skipped by the new persistence guard. Mutate
+// this chat so the simulated response is exercised through an actual PUT.
+session.updated = 25;
 nextResponse = async () => ({
     response: { ok: true },
     data: { chat: chat(30, [{ role: 'user', content: 'server' }]) },
@@ -151,10 +158,14 @@ assert.equal(session.messages[0].content, 'server');
 assert.equal(session.revision, 30);
 assert.equal(sessions.runtimeRevision(session), 1);
 
+session.updated = 31;
 nextResponse = () => new Promise(resolve => { respond = resolve; });
 const changedWhilePending = sessions.persistSession(session);
 const localMessage = { role: 'assistant', content: 'new local text' };
 session.messages.push(localMessage);
+session.title = 'Local rename while saving';
+session.workspace = { active_artifact_id: 'local-draft' };
+nextResponse = async body => ({ response: { ok: true }, data: { chat: { ...body, expected_updated: undefined } } });
 respond({
     response: { ok: true },
     data: { chat: chat(35, [{ role: 'user', content: 'old text' }]) },
@@ -162,6 +173,8 @@ respond({
 await changedWhilePending;
 assert.strictEqual(state.sessions[0], session);
 assert.strictEqual(session.messages[1], localMessage);
+assert.equal(session.title, 'Local rename while saving');
+assert.equal(session.workspace.active_artifact_id, 'local-draft');
 assert.equal(session.revision, 35);
 
 generating = true;
@@ -176,16 +189,19 @@ await sessions.syncWithServer();
 assert.strictEqual(state.sessions[0], session);
 assert.strictEqual(session.messages, activeMessages);
 assert.strictEqual(session.messages.at(-1), runningMessage);
-assert.equal(session.revision, 40);
+assert.equal(session.revision, 35);
 assert.equal(sessions.runtimeRevision(session), 1);
 
 generating = false;
+// The local generation is now a pending conflict, and must be rescued first.
+sessions.saveSessions();
+await new Promise(resolve => setImmediate(resolve));
 nextResponse = async () => ({
     response: { ok: true },
     data: { chats: [chat(50, [{ role: 'user', content: 'synced' }])] },
 });
 await sessions.syncWithServer();
-assert.strictEqual(state.sessions[0], session);
+assert.strictEqual(state.sessions.find(s => s.id === session.id), session);
 assert.equal(session.messages[0].content, 'synced');
 assert.equal(session.revision, 50);
 
@@ -194,7 +210,7 @@ nextResponse = async () => ({
     data: { chats: [chat(60, [dispatchingImageMessage()])] },
 });
 await sessions.syncWithServer();
-assertRecoveredDispatchingMessage(state.sessions[0].messages[0]);
+assertRecoveredDispatchingMessage(state.sessions.find(s => s.id === session.id).messages[0]);
 
 cache.set(
     'mlx-web-chats-v1',
