@@ -68,7 +68,8 @@ def test_delete_chat_purges_derived_fact_and_keeps_other_chats():
         client.post("/api/personal-memory/config", json={"enabled": True})
         writer.put("/api/chats/a", json=chat("a", "Meine Freundin heißt Kim"))
         assert client.get("/api/personal-memory/facts").json()["facts"]
-        assert writer.delete("/api/chats/a").status_code == 200
+        token = chat_host.chat_delete_intent.issue(scope="one", chat_id="a", confirmation="LÖSCHEN")
+        assert writer.request("DELETE", "/api/chats/a", json={"deletion_token": token}).status_code == 200
         assert client.get("/api/personal-memory/facts").json()["facts"] == []
 
 
