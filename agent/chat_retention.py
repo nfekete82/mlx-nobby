@@ -72,3 +72,34 @@ def remove_revisions(chat_directory: Path, chat_id: str) -> None:
         raise ValueError("Unsafe revision folder")
     if target.exists():
         shutil.rmtree(target)
+
+
+def preserve_deleted_chat(chat_directory: Path, chat_id: str) -> Path:
+    """Archive the full source before removing a chat from the UI history.
+
+    A chat-list delete MUST NOT erase the user's separate long-term knowledge.
+    Archive intentionally resides outside the visible chats directory and
+    is not pruned by the maintenance job or chat-list deletion.
+    """
+    source = chat_directory / (chat_id + ".json")
+    if not source.is_file() or source.is_symlink():
+        raise ValueError("Source chat is not a regular file")
+    memory_root = chat_directory.parent / "long-term-chat-memory"
+    if memory_root.is_symlink():
+        raise ValueError("Unsafe long-term memory root")
+    memory_root.mkdir(mode=0o700, exist_ok=True)
+    folder = memory_root / chat_id
+    if folder.is_symlink():
+        raise ValueError("Unsafe long-term chat-memory folder")
+    folder.mkdir(mode=0o700, exist_ok=True)
+    target = folder / (uuid.uuid4().hex + ".json")
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as output, source.open("rb") as original:
+            shutil.copyfileobj(original, output)
+            output.flush()
+            os.fsync(output.fileno())
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
+    return target
