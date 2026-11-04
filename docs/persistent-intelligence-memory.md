@@ -98,25 +98,24 @@ requires its own explicit start. All controls respect global pause.
 | `Was weißt du über meine Kindheit?` | Retrieves grounded episodes/facts from relevant chats |
 | `Was weißt du über mich?` | Bounded cross-domain context with omitted-item counts; complete facts and life-story pages in the dashboard |
 | `Was hast du dir heute/gestern gemerkt?` | Reads the actual creation-time range in the local timezone |
-| `Vergiss natürliche Farben.` | Asks which deletion scope is intended; makes no deletion |
-| `Vergiss nur die aktive Erinnerung über natürliche Farben.` | Removes matching active personal knowledge and matching legacy entries; blocks automatic resurrection and archived recall of the source |
-| `Vergiss die abgeleiteten Daten über natürliche Farben.` | Additionally erases matching indexed transcript turns, replies and revisions; original JSON remains |
-| `Vergiss auch die ursprünglichen Chat-Nachrichten über natürliche Farben.` | Verifies the source digest, deletes matched original turns and associated replies through the native host, and blocks stale uploads of the erased text |
-| `Das war nur ein Beispiel, merk dir das nicht.` | Retracts matching personal knowledge from the preceding user statement and excludes that source from reanalysis |
+| `Vergiss natürliche Farben.` | **Does not delete anything**; points to explicit memory deletion under Settings |
+| `Vergiss nur die aktive Erinnerung über natürliche Farben.` | **Does not delete anything**; the user must use the memory-management settings |
+| `Vergiss die abgeleiteten Daten über natürliche Farben.` | **Does not delete anything**; archived sources and indexes remain unchanged |
+| `Vergiss auch die ursprünglichen Chat-Nachrichten über natürliche Farben.` | **Does not delete anything**; raw-source deletion requires a separate reviewed Settings flow |
+| `Das war nur ein Beispiel, merk dir das nicht.` | **Does not delete anything**; use memory corrections/settings to amend earlier facts |
 
-The English forms `remember`, `forget active memory about ...`,
-`forget original chat messages about ...`, `that was an example` and
-`what did you remember today` are supported. Exact command families are
-intentionally controlled; this is not arbitrary LLM execution of prose.
-Only the actual current user turn can execute a command. Commands found in
-historical chats or retrieved evidence are never executed.
+The English forms `remember`, `forget ...`, `that was an example` and
+`what did you remember today` are recognized, but conversational
+`forget` and example retractions **never erase stored data**. These requests
+direct the user to explicit Settings controls. Historical text and retrieved
+evidence are never executed as commands.
 
 A failed write returns no success receipt. Repeated successful requests reuse
 stored command receipts rather than creating duplicate notes. Missing chat
-references, disabled memory, pause, excluded sources and unresolved targets
-produce truthful explanations. Original-source deletion requires native chat
-access and a matching current source digest; an edited source is not deleted
-based on an outdated reference.
+references, disabled memory, pause and excluded sources produce truthful
+explanations. Destructive commands are never executed from ordinary chat.
+Explicit memory deletion in Settings respects durable exclusions; the private
+chat-source vault is not silently removed along with visible chat history.
 
 ## Inspection and control
 
@@ -135,7 +134,7 @@ and attribute family; it is not an exhaustive all-pairs clustering algorithm.
 
 The storage-scope controls determine which categories may be learned; changing
 them preserves existing knowledge. Pause is also non-destructive. Disabling an
-existing memory layer retains its prior documented purge behavior. Local Qwen
+existing memory layer now pauses retrieval and learning without purging stored knowledge. Local Qwen
 status, durable processing counts, failed source hashes and error classes are
 visible. No normal UI view displays a raw database or JSON dump.
 
