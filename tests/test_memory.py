@@ -165,9 +165,10 @@ def test_enrich_messages_injects_bounded_memory_context(isolated_memory):
         {"role": "system", "content": "You are helpful."},
         {"role": "user", "content": "Hilf mir beim Coding."},
     ]
-    assert enriched[1]["role"] == "system"
-    assert "RELEVANT LONG-TERM USER MEMORY" in enriched[1]["content"]
-    assert "Qwen3.8-27B" in enriched[1]["content"]
+    assert [msg["role"] for msg in enriched] == ["system", "user"]
+    assert enriched[0]["content"].startswith("You are helpful.")
+    assert "RELEVANT LONG-TERM USER MEMORY" in enriched[0]["content"]
+    assert "Qwen3.8-27B" in enriched[0]["content"]
 
 
 def test_model_provider_memory_hook_skips_strict_json_prompt(isolated_memory):
@@ -206,3 +207,33 @@ def test_model_provider_memory_hook_enriches_normal_agent_prompt(isolated_memory
         and "Nenn mich Nobby." in message.get("content", "")
         for message in enriched.messages
     )
+
+
+def test_strict_chat_template_receives_single_leading_system_message(isolated_memory):
+    memory.add("Für Coding nutze ich Qwen3.8-27B.", pinned=True)
+    original = [
+        {"role": "system", "content": "You are helpful."},
+        {"role": "user", "content": "Which model for coding?"},
+    ]
+    result = memory.enrich_messages(original, observe=False)
+    assert [m["role"] for m in result] == ["system", "user"]
+    assert result[0]["content"].startswith("You are helpful.\n\n")
+    assert "RELEVANT LONG-TERM USER MEMORY" in result[0]["content"]
+    assert original[0]["content"] == "You are helpful."
+
+
+def test_combining_multiple_memory_sources_keeps_one_system_role(isolated_memory):
+    original = [
+        {"role": "system", "content": "Default response rules"},
+        {"role": "system", "content": "Older context"},
+        {"role": "user", "content": "Hello"},
+    ]
+    result = memory.attach_system_context(original, "Extra private context")
+    assert [m["role"] for m in result] == ["system", "user"]
+    assert result[0]["content"] == (
+        "Default response rules\n\nOlder context\n\nExtra private context"
+    )
+    assert len(original) == 3
+    assert memory.attach_system_context(
+        [{"role": "user", "content": "Hello"}], "Local memory"
+    )[0] == {"role": "system", "content": "Local memory"}
