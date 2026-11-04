@@ -399,14 +399,17 @@ def write_chat(chat):
     temporary_path = None
 
     try:
-        CHAT_DIRECTORY.mkdir(parents=True, exist_ok=True)
+        CHAT_DIRECTORY.mkdir(parents=True, exist_ok=True, mode=0o700)
         temporary_path = CHAT_DIRECTORY / (
             f".{chat['id']}.{uuid.uuid4().hex}.tmp"
         )
-        # Preserve old source text before an edit/truncation; never purge these
-        # revisions automatically. An archive-write failure blocks the edit.
+        # Preserve prior text before destructive edit; never auto-purge.
         chat_retention.preserve_before_overwrite(path, chat)
-        with temporary_path.open("w", encoding="utf-8") as stream:
+        fd = os.open(
+            temporary_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(chat, stream, ensure_ascii=False, indent=2)
             stream.flush()
             os.fsync(stream.fileno())
