@@ -4221,6 +4221,11 @@ class ImageRuntimeTests(unittest.TestCase):
                 ),
             ) as cancel_jobs,
             patch.object(
+                agent.chat_retention,
+                "preserve_deleted_chat",
+                return_value=self.root / "archived.json",
+            ) as preserve_memory,
+            patch.object(
                 agent,
                 "delete_chat_images",
                 return_value=([], []),
@@ -4237,7 +4242,8 @@ class ImageRuntimeTests(unittest.TestCase):
             chat_id,
             None,
         )
-        delete_images.assert_called_once_with(chat)
+        preserve_memory.assert_called_once_with(agent.CHAT_DIRECTORY, chat_id)
+        delete_images.assert_not_called()
 
         self.assertEqual(
             result["deleted"],
