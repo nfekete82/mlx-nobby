@@ -815,12 +815,32 @@ function sessionT(key, fallback = '', variables = {}) {
         renderAll();
     }
 
-    async function deleteAllSessions(deletionToken) {
-        // Never destructive without a short-lived, Settings-authorized token.
-        if (typeof deletionToken !== 'string' || !deletionToken) return false;
+    async function chatDeleteApproval(scope, chatId = null) {
+        const payload = { scope, confirmation: 'LÖSCHEN' };
+        if (chatId) payload.chat_id = chatId;
+        const { response, data } = await MLXCommon.fetchJson(
+            '/api/mlx/chats/delete-intent',
+            MLXCommon.jsonRequest('POST', payload)
+        );
+        if (!response.ok || !data?.deletion_token) {
+            throw new Error('Chat deletion authorization failed');
+        }
+        return data.deletion_token;
+    }
+
+    async function deleteAllSessions() {
+        if (!serverReady || typeof window.MLXConfirm !== 'function') return false;
         if (clearingHistory || confirmingHistory) return false;
         confirmingHistory = true;
         try {
+            const confirmed = await window.MLXConfirm({
+                title: sessionT('ui.delete_all_chats_title', 'Alle Chats löschen?'),
+                message: sessionT('chat_retention.delete_chats_only',
+                    'Alle Chats aus der Chatliste entfernen? Dein langfristiges Gedächtnis bleibt erhalten.'),
+                confirmLabel: sessionT('ui.delete_all_chats', 'Alle Chats löschen'),
+                cancelLabel: sessionT('ui.cancel', 'Abbrechen'),
+            });
+            if (!confirmed) return false;
             clearingHistory = true;
             historyEpoch++;
             const oldSessions = [...state.sessions];
@@ -830,9 +850,13 @@ function sessionT(key, fallback = '', variables = {}) {
             ));
             // Finish writes already sent before committing the bulk deletion.
             await Promise.allSettled([...pendingPersists]);
+            const deletionToken = await chatDeleteApproval('all');
             const { response, data } = await MLXCommon.fetchJson(
                 '/api/mlx/chats',
-                MLXCommon.jsonRequest('DELETE', { ids: oldSessions.map(session => session.id), deletion_token: deletionToken })
+                MLXCommon.jsonRequest('DELETE', {
+                    ids: oldSessions.map(session => session.id),
+                    deletion_token: deletionToken,
+                })
             );
             if (!response.ok || data.ok !== true) {
                 throw new Error('Chat history deletion failed');
@@ -899,28 +923,49 @@ function sessionT(key, fallback = '', variables = {}) {
         renderSidebar();
     }
 
-    async function deleteSession(id, deletionToken) {
-        // One-chat deletion is available only through the Settings approval UI.
-        if (typeof deletionToken !== 'string' || !deletionToken || clearingHistory || isGenerating()) return false;
+    async function deleteSession(id) {
+        if (clearingHistory || isGenerating() || !serverReady) return false;
         const session = state.sessions.find(item => item.id === id);
-        if (!session || !serverReady) return false;
-        await Promise.allSettled([...pendingPersists]);
-        const { response, data } = await MLXCommon.fetchJson(
-            '/api/mlx/chats/' + encodeURIComponent(id),
-            MLXCommon.jsonRequest('DELETE', { deletion_token: deletionToken })
-        );
-        if (!response.ok || data.deleted !== id) return false;
-        bumpRuntimeRevision(session);
-        await window.MLXChatGeneration?.resetSessionRuntime?.(session);
-        state.sessions = state.sessions.filter(item => item.id !== id);
-        acknowledgedSnapshots.delete(id);
-        acknowledgedUpdated.delete(id);
-        clearConflictMarker(id);
-        if (state.activeId === id) state.activeId = state.sessions[0]?.id || null;
-        if (!state.sessions.length) createSession();
-        saveSessions();
-        renderAll();
-        return true;
+        if (!session) return false;
+        const confirmed = await window.MLXConfirm?.({
+            title: sessionT('sessions.delete_confirm', 'Chat löschen?'),
+            message: sessionT('chat_retention.delete_one_only',
+                'Diesen Chat entfernen? Langfristige Erinnerungen bleiben erhalten.'),
+            confirmLabel: sessionT('ui.delete_chat', 'Chat löschen'),
+            cancelLabel: sessionT('ui.cancel', 'Abbrechen'),
+        });
+        if (!confirmed) return false;
+        try {
+            await Promise.allSettled([...pendingPersists]);
+            const deletionToken = await chatDeleteApproval('one', id);
+            const { response, data } = await MLXCommon.fetchJson(
+                '/api/mlx/chats/' + encodeURIComponent(id),
+                MLXCommon.jsonRequest('DELETE', { deletion_token: deletionToken })
+            );
+            if (!response.ok || data.deleted !== id) {
+                throw new Error('Chat deletion failed');
+            }
+            bumpRuntimeRevision(session);
+            await window.MLXChatGeneration?.resetSessionRuntime?.(session);
+            state.sessions = state.sessions.filter(item => item.id !== id);
+            acknowledgedSnapshots.delete(id);
+            acknowledgedUpdated.delete(id);
+            clearConflictMarker(id);
+            if (state.activeId === id) state.activeId = state.sessions[0]?.id || null;
+            if (!state.sessions.length) createSession();
+            saveSessions();
+            renderAll();
+            return true;
+        } catch (error) {
+            console.warn('[MLX nobby] Chat deletion failed:', error);
+            await window.MLXConfirm?.({
+                title: sessionT('chat_retention.error_title', 'Löschen fehlgeschlagen'),
+                message: sessionT('chat_retention.error', 'Der Chat konnte nicht gelöscht werden.'),
+                confirmLabel: sessionT('common.close', 'Schließen'),
+                cancelLabel: sessionT('common.close', 'Schließen'),
+            });
+            return false;
+        }
     }
 
     async function deleteMessages() {
