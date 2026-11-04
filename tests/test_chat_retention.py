@@ -107,3 +107,38 @@ def test_symlink_revision_directory_blocks_replacement(tmp_path):
     with pytest.raises(ValueError):
         chat_retention.preserve_before_overwrite(chat_file, chat("a", "edited"))
     assert not list(external.iterdir())
+
+
+def test_sidebar_bulk_delete_leaves_long_term_memory_and_source_copies(local_chats, monkeypatch):
+    def forbidden_purge(*args, **kwargs):
+        raise AssertionError("Bulk chat deletion must never purge memory")
+    monkeypatch.setattr(agent.personal_memory, "remove_chat", forbidden_purge)
+    monkeypatch.setattr(agent.chat_archive, "remove_chat", forbidden_purge)
+    with TestClient(agent.app, base_url="http://localhost") as client:
+        for cid in ("a", "b"):
+            assert client.put("/api/chats/" + cid, json=chat(cid, "retain " + cid)).status_code == 200
+        token = client.post("/api/chats/delete-intent", json={
+            "scope": "all", "confirmation": "LÖSCHEN",
+        }).json()["deletion_token"]
+        result = client.request("DELETE", "/api/chats", json={"deletion_token": token})
+        assert result.status_code == 200
+        assert client.get("/api/chats").json()["chats"] == []
+    for cid in ("a", "b"):
+        saved = list((local_chats.parent / "long-term-chat-memory" / cid).glob("*.json"))
+        assert len(saved) == 1
+        assert json.loads(saved[0].read_text())["messages"][0]["content"] == "retain " + cid
+
+
+def test_failed_memory_archive_prevents_chat_deletion(local_chats, monkeypatch):
+    with TestClient(agent.app, base_url="http://localhost") as client:
+        assert client.put("/api/chats/a", json=chat("a")).status_code == 200
+        def fail_archive(*args, **kwargs):
+            raise OSError("simulated unavailable disk")
+        monkeypatch.setattr(agent.chat_retention, "preserve_deleted_chat", fail_archive)
+        token = client.post("/api/chats/delete-intent", json={
+            "scope": "all", "confirmation": "LÖSCHEN",
+        }).json()["deletion_token"]
+        result = client.request("DELETE", "/api/chats", json={"deletion_token": token})
+        assert result.status_code == 500
+        assert client.get("/api/chats/a").status_code == 200
+        assert not (local_chats / ".deleted-chat-ids.json").exists()
