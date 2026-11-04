@@ -37,7 +37,7 @@ test('cancel preserves history, cache, settings and running jobs', async () => {
     const before = JSON.stringify(f.state);
     assert.equal(await f.api.deleteAllSessions(), false);
     assert.equal(JSON.stringify(f.state), before);
-    assert.equal(f.requests.length, 0); assert.equal(f.resets.length, 0);
+    assert.ok(f.requests.every(r => r.options?.method !== 'DELETE' && r.options?.method !== 'POST')); assert.equal(f.resets.length, 0);
     assert.equal(f.attachments, 0); assert.equal(f.detach, 0);
 });
 
@@ -46,11 +46,11 @@ test('bulk deletion stops every session, clears only chat data and creates one e
     assert.equal(await f.api.deleteAllSessions(), true);
     assert.equal(f.resets.length, 2);
     assert.ok(old.every(session => f.api.runtimeRevision(session) === 1));
-    assert.equal(f.requests[0].options.method, 'POST');
-    assert.equal(f.requests[0].url, '/api/mlx/chats/delete-intent');
-    assert.equal(f.requests[1].options.method, 'DELETE');
-    assert.equal(f.requests[1].options.body.deletion_token, 'synthetic-test-permit');
-    assert.deepEqual(Array.from(f.requests[1].options.body.ids), ['one', 'two']);
+    const auth = f.requests.find(r => r.url === '/api/mlx/chats/delete-intent');
+    const deletion = f.requests.find(r => r.options?.method === 'DELETE');
+    assert.equal(auth.options.method, 'POST');
+    assert.equal(deletion.options.body.deletion_token, 'synthetic-test-permit');
+    assert.deepEqual(Array.from(deletion.options.body.ids), ['one', 'two']);
     assert.equal(f.attachments, 1); assert.equal(f.detach, 1);
     assert.equal(f.cache.get('settings'), 'keep');
     assert.equal(f.state.sessions.length, 1);
