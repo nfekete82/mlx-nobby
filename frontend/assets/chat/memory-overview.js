@@ -255,7 +255,9 @@
             } else group.append(heading);
             const output = archiveFolder || group;
             const values = state.pages[source] || [];
-            if (!values.length) output.append(element('p', t('noItems'), 'memory-overview-empty'));
+            if (!values.length && source !== 'personal') {
+                output.append(element('p', t('noItems'), 'memory-overview-empty'));
+            }
             // Group meaningful personal facts by subject instead of showing
             // opaque subject.hash identifiers from the storage schema.
             const buckets = new Map();
@@ -266,7 +268,7 @@
                     buckets.get(name).push(item);
                 }
             }
-            const addCard = item => {
+            const addCard = (item, parent = output) => {
                 const card = element('div', '', 'memory-overview-item');
                 const label = element('strong', itemTitle(item, source));
                 const raw = String(itemBody(item, source) || '');
@@ -284,16 +286,20 @@
                     () => modify(item, source, 'delete'),
                     'settings-button memory-overview-danger'));
                 card.append(label, detail, meta, actions);
-                output.append(card);
+                parent.append(card);
             };
             if (source === 'personal') {
                 for (const name of categoryNames) {
                     const facts = buckets.get(name) || [];
-                    if (!facts.length) continue;
-                    // The heading is shared by each subject category; cards
-                    // retain source IDs in their provenance line.
-                    output.append(element('h4', t(name) + ' (' + facts.length + ')'));
-                    for (const item of facts) addCard(item);
+                    const bucket = element('details', '', 'memory-subject-category');
+                    bucket.open = facts.length > 0;
+                    bucket.append(element('summary', t(name) + ' (' + facts.length + ')'));
+                    if (!facts.length) {
+                        bucket.append(element('p', t('noItems'), 'memory-overview-empty'));
+                    } else {
+                        for (const item of facts) addCard(item, bucket);
+                    }
+                    output.append(bucket);
                 }
             } else {
                 for (const item of values) addCard(item);
@@ -379,6 +385,9 @@
             #memoryOverviewSearch{flex:1;min-width:160px}
             #memoryOverview .memory-overview-group{display:grid;gap:9px;padding-top:8px}
             #memoryOverview .memory-overview-group h4{font-size:.95rem;margin:8px 0 2px}
+            #memoryOverview .memory-subject-category{border:1px solid rgba(127,127,127,.22);border-radius:10px;padding:12px;display:grid;gap:8px;margin:6px 0}
+            #memoryOverview .memory-subject-category>summary{cursor:pointer;font-weight:600}
+            #memoryOverview .memory-subject-category>.memory-overview-item{margin-top:8px}
             #memoryOverview .memory-overview-item{border:1px solid rgba(127,127,127,.2);border-radius:10px;padding:12px;display:grid;gap:6px}
             #memoryOverview .memory-overview-item details{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85rem}
             #memoryOverview .memory-overview-item summary{cursor:pointer}
