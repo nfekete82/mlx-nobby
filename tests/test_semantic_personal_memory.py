@@ -115,6 +115,21 @@ def test_hypotheticals_cannot_be_promoted_even_by_hallucinating_model():
     ) == []
 
 
+def test_correction_never_confirms_explicitly_negated_old_value():
+    changed = "Ich habe mich vertan: Meine Partnerin ist nicht Architektin, sondern Lehrerin."
+    old = fact(
+        changed, value="Architektin", evidence=changed, correction=True,
+    )
+    assert smart.parse_facts(old, changed) == []
+    new = fact(
+        changed, value="Lehrerin", evidence=changed, correction=True,
+    )
+    candidates = smart.parse_facts(new, changed)
+    assert len(candidates) == 1
+    assert candidates[0]["value"] == "Lehrerin"
+    assert candidates[0]["correction"] is True
+
+
 def test_deleted_facts_do_not_reappear_on_new_model_output():
     pm.set_enabled(True)
     smart.set_enabled(True)
