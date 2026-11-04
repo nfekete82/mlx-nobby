@@ -77,3 +77,19 @@ def test_external_sqlite_snapshot_does_not_replay_old_wal_sidecars(tmp_path):
         assert not list(destination.rglob('*-shm'))
     finally:
         connection.close()
+
+
+def test_backup_includes_private_long_term_chat_memory_sources(tmp_path):
+    root = tmp_path / "source"
+    archived = root / "long-term-chat-memory" / "deleted-chat"
+    archived.mkdir(parents=True)
+    data = {"id": "deleted-chat", "messages": [{"role": "user", "content": "synthetic memory"}]}
+    source = archived / "revision.json"
+    source.write_text(json.dumps(data))
+    destination = tmp_path / "backup"
+    backup.create(destination, {"mlx-web": root})
+    restored = destination / "data/mlx-web/long-term-chat-memory/deleted-chat/revision.json"
+    assert restored.is_file()
+    assert json.loads(restored.read_text()) == data
+    assert restored.stat().st_mode & 0o777 == 0o600
+    assert backup.verify(destination)["verified"] is True
