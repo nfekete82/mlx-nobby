@@ -427,7 +427,7 @@ def attach_system_context(messages, extra):
             parts.append(content)
         lead += 1
     parts.append(extra)
-    combined = "\\n\\n".join(parts)
+    combined = "\n\n".join(parts)
     if lead:
         first = dict(copied[0])
         first["content"] = combined
