@@ -283,7 +283,8 @@ function sessionT(key, fallback = '', variables = {}) {
         if (clearingHistory || !serverReady || !validSession(session) ||
                 !state.sessions.includes(session) ||
                 pendingConflicts.has(session.id) ||
-                !session.messages.some(message => message?.role === 'user')) {
+                (!acknowledgedUpdated.has(session.id) &&
+                    !session.messages.some(message => message?.role === 'user'))) {
             return;
         }
 
