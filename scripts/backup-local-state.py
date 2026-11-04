@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Back up quiesced local chats and SQLite stores; never uploads anything.
+"""Back up private chats and online-safe SQLite snapshots; never uploads anything.
 
-Stop every application writer before --create. --verify independently checks
-hashes, SQLite integrity/counts and restore copies. Manifests stay private.
+SQLite databases are copied through the live backup API (including committed
+WAL pages); chat files must remain stable. --verify checks integrity/counts.
 """
 from __future__ import annotations
 
@@ -71,10 +71,14 @@ def inventory(roots):
     return files
 
 
-def fingerprint(files):
+def fingerprint(files, *, include_sqlite=True):
+    """Check file churn; for backups, ignore SQLite files handled by backup()."""
     values = {}
-    for label, path, relative, _ in files:
-        for target in [path, Path(str(path) + '-wal')]:
+    for _label, path, _relative, is_sqlite in files:
+        if is_sqlite and not include_sqlite:
+            continue
+        targets = (path, Path(str(path) + '-wal')) if is_sqlite else (path,)
+        for target in targets:
             if target.exists():
                 info = target.stat()
                 values[str(target)] = (info.st_size, info.st_mtime_ns)
@@ -114,7 +118,8 @@ def create(destination, roots):
            for root in roots.values()):
         raise ValueError('Backup destination must be outside the source data roots')
     files = inventory(roots)
-    before = fingerprint(files)
+    # Chat JSONs must remain unchanged. Live SQLite WAL churn is expected.
+    before = fingerprint(files, include_sqlite=False)
     destination.mkdir(parents=True, mode=0o700, exist_ok=False)
     os.chmod(destination, 0o700)
     manifest = {'format': 1, 'roots': {k: str(v.resolve()) for k, v in roots.items()}, 'files': []}
@@ -126,23 +131,26 @@ def create(destination, roots):
             reader = connect_readonly(source)
             writer = sqlite3.connect(target)
             try:
-                # An explicit read transaction gives counts and backup the same
-                # snapshot, including committed WAL pages.
-                reader.execute('BEGIN')
-                summary = database_summary(reader)
-                reader.backup(writer)
+                # SQLite online backup preserves a consistent source snapshot.
+                # Take counts and schema from that snapshot, not a moving source.
+                reader.backup(writer, pages=256, sleep=0.05)
             finally:
                 writer.close()
                 reader.close()
+            restored = connect_readonly(target)
+            try:
+                summary = database_summary(restored)
+            finally:
+                restored.close()
         else:
             shutil.copy2(source, target)
         os.chmod(target, 0o600)
         manifest['files'].append({'path': str(target.relative_to(destination)),
                                   'sha256': digest(target), 'sqlite': summary})
-    after = fingerprint(inventory(roots))
+    after = fingerprint(inventory(roots), include_sqlite=False)
     if before != after:
         changes = changed_sources(before, after)
-        raise RuntimeError('Source changed while backing up; stop all writers and retry. '
+        raise RuntimeError('Raw chat files changed while backing up; retry when chat writers are idle. '
                            + json.dumps(changes, ensure_ascii=False))
     manifest_path = destination / 'manifest.json'
     manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
