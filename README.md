@@ -4,7 +4,7 @@
 ![MLX](https://img.shields.io/badge/MLX-native-blue)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Release](https://img.shields.io/badge/release-v1.19.0-informational)
+![Release](https://img.shields.io/badge/release-v1.20.0-informational)
 
 
 **MLX nobby** is an open-source local AI assistant and control center for Apple Silicon, built around Apple's MLX ecosystem. It brings local LLM chat, model management, RAG, coding workflows, image generation, speech transcription, and AI agents together in a single browser-based interface for macOS.
@@ -33,7 +33,36 @@ image/video previews visually; it is **not** an access-control mechanism.
 
 The separate /eml-anonymizer screen imports EML messages into a persistent local processing queue and exports review-required text-only anonymized EML files as ZIP. No FAQ generation or original attachments are included. See [privacy and deployment details](docs/EML_ANONYMIZER.md).
 
-## Recent updates (v1.19.0)
+## Recent updates (v1.20.0)
+
+**v1.20.0** expands the local MLX Nobby workspace with Office/archive inspection
+and safe edited-copy downloads, Apple Silicon energy telemetry, a private
+image converter and a visual media-privacy mode. Image editing and person
+reference handling, Media Library workflows, native video/Talking Photo controls,
+chat reliability and guarded runtime experiments also receive updates.
+
+Key additions:
+
+- **Local Office and ZIP workspace:** inspect DOCX/XLSX/XLS/ZIP in chat and
+  download bounded edited copies for exact text replacements. XLS is read-only;
+  originals remain unchanged. Real document/formatting acceptance is still required.
+- **Apple Silicon energy dashboard:** opt-in macmon sampling with private
+  SQLite history, live internal watts and approximate recorded kWh/cost.
+  The reading is not a wall-power measurement or a per-model meter.
+- **Image workflows:** local image batch conversion, opt-in identity-aware
+  editing and improvements to existing Juggernaut XL / Qwen image pipelines.
+  Experimental model/runtime features remain disabled unless explicitly enabled.
+- **Privacy and media:** visual blur mode for image/video previews, more compact
+  Media Library controls and additional video editing/selection refinements.
+  Visual blur does not replace authorization.
+- **Robustness:** local-origin hardening, source handling, model coordination,
+  bounded tests and diagnostics without enabling experimental inference profiles
+  by default.
+
+See [the v1.20.0 changelog](CHANGELOG.md) for detailed implementation and
+compatibility notes.
+
+### Previous release: v1.19.0
 
 **v1.19.0** adds a local, prompt-driven image region editor with low-RAM mask cropping, natural feathered edges and zoom; adds selected-speaker Talking Photo for two-person photos with native LTX Distilled motion; and strengthens coordinated model handoffs across chat, images and video. Juggernaut XL Ragnarok has creator-aligned quality presets and user-editable sampling controls. The Talking Photo speaker selection is prompt-guided (not guaranteed face tracking); existing private media and the strict RAM/swap watchdog remain protected.
 
