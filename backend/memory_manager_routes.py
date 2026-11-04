@@ -17,7 +17,7 @@ PERSONAL_MEMORY_SCRIPT = (
     b'<script src="/assets/chat/personal-memory.js?v=20261104-private-knowledge-review3"></script>'
 )
 MEMORY_OVERVIEW_SCRIPT = (
-    b'<script src="/assets/chat/memory-overview.js?v=20261104-unified-memory-v1"></script>'
+    b'<script src="/assets/chat/memory-overview.js?v=20261104-smart-local-qwen-v1"></script>'
 )
 MEMORY_MANAGER_CONSOLIDATION_SCRIPT = (
     b'<script src="/assets/chat/memory-manager-consolidation.js?v=20260928-memory-manager-v12"></script>'
