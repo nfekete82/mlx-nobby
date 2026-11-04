@@ -6,6 +6,7 @@ prompts. It creates no database until explicitly enabled, and is not networked.
 """
 from __future__ import annotations
 
+from datetime import date
 import hashlib
 import re
 import threading
@@ -28,8 +29,77 @@ _RESOLVE_OLD = re.compile(
     r"(?:alte|bisherige|vorherige)\s+(?:datum|angabe|information|wert|termin)"
     r"(?:\s+stimmt|\s+ist\s+richtig)?[.!]?\s*$", re.I)
 _EXPLICIT_CHANGE = re.compile(
-    r"\b(?:verschoben|geändert|geaendert|korrigier(?:e|t)|"
-    r"jetzt doch|ab jetzt|neuer termin|neues datum)\b", re.I)
+    r"\b(?:verschoben|geändert|geaendert|korrigier(?:e|t|en)|"
+    r"jetzt doch|ab jetzt|neuer termin|neues datum|vertan|"
+    r"war falsch|ist falsch|richtig ist|stimmt nicht)\b", re.I)
+
+# Strict date matching prevents a bare unrelated date elsewhere in a message
+# from accidentally changing someone's birthday. Canonical stored field
+# remains 'geburtstag' for compatibility with Memory 2.0 data.
+_BIRTH_DATE = (
+    r"(?P<value>\d{1,2}[./-]\s*\d{1,2}(?:[./-]\s*\d{4})?"
+    r"|\d{1,2}\.\s*[A-Za-zÄÖÜäöüß]+(?:\s+\d{4})?)"
+)
+_BIRTH_CORRECTIONS = (
+    re.compile(
+        r"\b(?:korrigier(?:e|t)|änder(?:e|n)|berichtige)\s+"
+        r"(?:bitte\s+)?(?:mein(?:en|em)?\s+)?"
+        r"(?:geburtsdatum|geburtstag)\s+(?:auf|zu)\s+(?:den|dem|der|am)?\s*"
+        + _BIRTH_DATE, re.I,
+    ),
+    re.compile(
+        r"\b(?:geburtsdatum|geburtstag)\s+(?:war|ist)\s+(?:falsch|nicht richtig)"
+        r"[.!,:;\s]+(?:es\s+)?(?:ist|lautet|richtig\s+ist)\s+"
+        r"(?:der|den|am)?\s*" + _BIRTH_DATE, re.I,
+    ),
+    re.compile(
+        r"\b(?:bei\s+)?mein(?:em|en)?\s+"
+        r"(?:geburtsdatum|geburtstag)\s+vertan\b"
+        r"[^\n]{0,100}?\b(?:richtig\s+ist|es\s+ist|lautet)\s+"
+        r"(?:der|den|am)?\s*" + _BIRTH_DATE, re.I,
+    ),
+)
+_MONTHS = {
+    "januar": 1, "februar": 2, "märz": 3, "maerz": 3,
+    "april": 4, "mai": 5, "juni": 6, "juli": 7,
+    "august": 8, "september": 9, "oktober": 10,
+    "november": 11, "dezember": 12,
+}
+
+
+def _birthday_value(raw):
+    """Normalize German birthday dates, rejecting impossible full dates."""
+    text = re.sub(r"\s+", " ", str(raw)).strip(" .")
+    numeric = re.fullmatch(
+        r"(\d{1,2})[./-]\s*(\d{1,2})(?:[./-]\s*(\d{4}))?", text,
+    )
+    written = re.fullmatch(r"(\d{1,2})\.\s*([\wÄÖÜäöüß]+)(?:\s+(\d{4}))?", text)
+    if numeric:
+        day, month, year = numeric.groups()
+        month = int(month)
+    elif written:
+        day, month, year = written.groups()
+        month = _MONTHS.get(month.casefold())
+    else:
+        return None
+    day = int(day)
+    if not month or not 1 <= month <= 12 or not 1 <= day <= 31:
+        return None
+    if year:
+        year = int(year)
+        if not 1900 <= year <= 2100:
+            return None
+        try:
+            date(year, month, day)
+        except ValueError:
+            return None
+        return f"{day:02d}.{month:02d}.{year:04d}"
+    try:
+        date(2000, month, day)  # Accept Feb 29 without a specified year.
+    except ValueError:
+        return None
+    return f"{day:02d}.{month:02d}"
+
 _FORGET = re.compile(r"^\s*(?:bitte\s+)?(?:vergiss|forget)\b", re.I)
 _QUESTION = re.compile(r"[?]\s*$")
 
@@ -65,8 +135,12 @@ _RULES = [
         r"\bich\s+arbeite\s+als\s+(?P<value>[\wÄÖÜäöüß -]{3,80})"
         r"(?=[,.;!?]|$)", re.I), False),
     ("ich", "geburtstag", re.compile(
-        r"\bmein\s+geburtstag\s+ist\s+am\s+"
-        r"(?P<value>\d{1,2}\.\s*(?:\d{1,2}\.|[A-Za-zÄÖÜäöüß]+))\b", re.I), True),
+        r"\bmein\s+(?:geburtstag|geburtsdatum)\s+"
+        r"(?:ist|liegt)\s+(?:am|auf\s+dem|der)\s+"
+        + _BIRTH_DATE, re.I), True),
+    ("ich", "geburtstag", re.compile(
+        r"\bich\s+(?:bin|wurde)\s+am\s+" + _BIRTH_DATE
+        + r"\s+geboren\b", re.I), True),
     ("ich", "alter", re.compile(
         r"\bich\s+bin\s+(?P<value>\d{1,3})\s+jahre?\s+alt\b", re.I), False),
     ("ich", "termin.datum", re.compile(
@@ -206,10 +280,22 @@ def _extract(text):
     if _QUESTION.search(text) or _FORGET.search(text):
         return []
     entries = []
+    # Explicit "I gave the wrong date; correct it to ..." phrasing is not
+    # covered by ordinary factual patterns like "My birthday is on ...".
+    for correction in _BIRTH_CORRECTIONS:
+        match = correction.search(text)
+        if match:
+            value = _birthday_value(match.group("value"))
+            if value:
+                entries.append(("ich", "geburtstag", value, True))
+            break
     for subject, field, pattern, sensitive in _RULES:
         for match in pattern.finditer(text):
             try:
-                value = _value(match.group("value"))
+                value = (_birthday_value(match.group("value"))
+                         if field == "geburtstag" else _value(match.group("value")))
+                if not value:
+                    continue
             except ValueError:
                 continue
             if value.casefold() in {"nicht", "kein", "keine", "vielleicht",
@@ -224,6 +310,11 @@ def _extract(text):
             if field in {"vorliebe", "präferenz"}:
                 field = field + "." + hashlib.sha256(
                     value.casefold().encode()).hexdigest()[:12]
+            if subject == "ich" and field == "geburtstag" and any(
+                item[0] == subject and item[1] == field and item[2] == value
+                for item in entries
+            ):
+                continue
             entries.append((subject, field, value, sensitive))
     # Specific memories for named events e.g. "Mein Zahnarzttermin ist am ..."
     event = re.search(
