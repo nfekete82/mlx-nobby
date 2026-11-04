@@ -744,7 +744,8 @@ _MEMORY_OVERVIEW = re.compile(
 )
 # No health, finances, relationship or family details in universal identity
 # context. Those remain available for explicitly related requests.
-_IDENTITY_FIELDS = frozenset({"name", "beruf", "ausbildung", "technologie", "rolle"})
+_IDENTITY_PRIORITY = {"name": 0, "beruf": 1, "technologie": 2, "rolle": 3, "ausbildung": 4}
+_IDENTITY_FIELDS = frozenset(_IDENTITY_PRIORITY)
 _CONTEXT_STOPWORDS = frozenset({
     "ich", "mein", "meine", "mich", "mir", "wir", "uns", "was", "wer",
     "wie", "ist", "sind", "und", "das", "die", "der", "eine", "mit",
@@ -845,10 +846,15 @@ def context(query, *, limit=6):
         r"\b(?:familie|sohn|tochter|kind|kinder)\b", query, re.I))
     # Identity: a few stable facts help normal chat stay user-aware. All other
     # personal details require topical relevance.
-    identity = [
+    identity_candidates = [
         f for f in facts
         if f["subject"] == "ich" and f["field"].split(".", 1)[0] in _IDENTITY_FIELDS
-    ][:3]
+    ]
+    identity_candidates.sort(key=lambda fact: (
+        _IDENTITY_PRIORITY[fact["field"].split(".", 1)[0]],
+        -float(fact["updated_at"]),
+    ))
+    identity = identity_candidates[:3]
     remaining_slots = max(0, bounded - len(identity))
     scored = []
     for fact in facts:
