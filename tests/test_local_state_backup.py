@@ -126,3 +126,54 @@ def test_readonly_writer_diagnosis_is_non_destructive(tmp_path, monkeypatch):
     assert result["changed_count"] == 1
     assert result["changed_paths"] == [str(file)]
     assert file.read_text().endswith('true}')
+
+
+def test_live_sqlite_wal_updates_do_not_reject_consistent_snapshot(tmp_path, monkeypatch):
+    root = tmp_path / "source"
+    root.mkdir()
+    source = root / "memory.db"
+    writer = sqlite3.connect(source)
+    writer.execute("PRAGMA journal_mode=WAL")
+    writer.execute("CREATE TABLE facts (value TEXT)")
+    writer.execute("INSERT INTO facts VALUES ('original')")
+    writer.commit()
+    destination = tmp_path / "backup"
+    old_digest = backup.digest
+    updated = False
+
+    def update_source_during_snapshot_digest(path):
+        nonlocal updated
+        # Simulate an independent writer committing after SQLite backup()
+        # completed but before the raw-file-change comparison.
+        if not updated and path == destination / "data/mlx-web/memory.db":
+            writer.execute("INSERT INTO facts VALUES ('newer')")
+            writer.commit()
+            updated = True
+        return old_digest(path)
+
+    monkeypatch.setattr(backup, "digest", update_source_during_snapshot_digest)
+    try:
+        backup.create(destination, {"mlx-web": root})
+        assert updated
+        assert backup.verify(destination)["verified"] is True
+        with sqlite3.connect(destination / "data/mlx-web/memory.db") as restored:
+            assert restored.execute("SELECT value FROM facts").fetchall() == [("original",)]
+        assert writer.execute("SELECT count(*) FROM facts").fetchone()[0] == 2
+    finally:
+        writer.close()
+
+
+def test_fingerprint_keeps_chat_edits_guarded_but_ignores_sqlite_wal(tmp_path):
+    root = tmp_path / "source"
+    (root / "chats").mkdir(parents=True)
+    chat = root / "chats/source.json"
+    chat.write_text("{}")
+    db = root / "memory.sqlite3"
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE notes (content TEXT)")
+    files = backup.inventory({"mlx-web": root})
+    baseline = backup.fingerprint(files, include_sqlite=False)
+    db.write_bytes(db.read_bytes())  # SQLite file mtime changes without logical edits.
+    assert backup.fingerprint(backup.inventory({"mlx-web": root}), include_sqlite=False) == baseline
+    chat.write_text('{"changed": true}')
+    assert backup.fingerprint(backup.inventory({"mlx-web": root}), include_sqlite=False) != baseline
