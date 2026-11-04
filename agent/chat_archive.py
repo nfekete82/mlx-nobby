@@ -197,14 +197,10 @@ def rebuild(chats):
             current_ids.add(chat["id"])
             index_chat(chat)
             processed += 1
-    # Remove stale entries for chats deleted while the archive was disabled.
+    # Retain previously indexed source excerpts even if the chat was removed
+    # from the sidebar. Explicit Settings memory deletion is separate.
     with LOCK, _connect() as conn:
         _schema(conn)
-        stored = {row[0] for row in conn.execute(
-            "SELECT DISTINCT chat_id FROM archive_messages"
-        )}
-        for chat_id in stored - current_ids:
-            conn.execute("DELETE FROM archive_messages WHERE chat_id=?", (chat_id,))
         indexed = conn.execute("SELECT count(*) FROM archive_messages").fetchone()[0]
     return {"chats_checked": processed, "indexed_messages": indexed}
 
