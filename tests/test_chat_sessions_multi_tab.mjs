@@ -262,7 +262,7 @@ test('browser startup settings defaults do not fork an otherwise unchanged chat'
     client.sessions.loadSessions();
     await client.sessions.syncWithServer();
 
-    assert.deepEqual(client.state.sessions.map(s => s.id).sort(), ['chat-a', 'chat-b']);
+    assert.deepEqual(Array.from(client.state.sessions, s => s.id).sort(), ['chat-a', 'chat-b']);
     assert.deepEqual(server.writes.map(x => x.id), []);
     assert.equal(server.chats.get('chat-a').messages[0].content, 'Original A');
 
