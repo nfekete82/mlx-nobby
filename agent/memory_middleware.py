@@ -32,6 +32,11 @@ class MemoryChatMiddleware:
             thread_name_prefix="mlx-memory-chat",
         )
         self._memory_future = None
+        self._private_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="mlx-private-recall",
+        )
+        self._private_future = None
         self._request_guard = LocalRequestGuard(self._enrich_request)
 
     async def __call__(self, scope, receive, send):
@@ -113,7 +118,7 @@ class MemoryChatMiddleware:
         """
         current = self._memory_future
         if current is not None and not current.done():
-            return raw_messages
+            return await self._fast_personal(raw_messages)
 
         future = self._memory_executor.submit(
             memory_lifecycle.enrich_messages,
@@ -129,7 +134,28 @@ class MemoryChatMiddleware:
                 timeout=MEMORY_ENRICH_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
+            return await self._fast_personal(raw_messages)
+        except Exception:
+            return await self._fast_personal(raw_messages)
+
+    async def _fast_personal(self, raw_messages):
+        """Preserve private opt-in recall even when legacy embeddings time out.
+
+        Run in a separate bounded worker so a stuck legacy memory lookup cannot
+        starve the fast SQLite-only path. Strictly read-only and fail-open.
+        """
+        current = self._private_future
+        if current is not None and not current.done():
             return raw_messages
+        future = self._private_executor.submit(
+            memory_lifecycle.fast_personal_context, raw_messages,
+        )
+        self._private_future = future
+        try:
+            return await asyncio.wait_for(
+                asyncio.shield(asyncio.wrap_future(future)),
+                timeout=0.2,
+            )
         except Exception:
             return raw_messages
 
