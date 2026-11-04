@@ -259,6 +259,49 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
             )
 
 
+    # On-device chat archive, reached only through the normal same-origin web
+    # gateway and the local Agent. No third-party API or remote database.
+    if "/api/mlx/memory/archive/status" not in paths:
+        @app.get("/api/mlx/memory/archive/status")
+        def memory_archive_status():
+            return agent_json_request("GET", "/api/chat-archive/status", timeout=10)
+
+        @app.post("/api/mlx/memory/archive/config")
+        def memory_archive_config(payload: dict):
+            return agent_json_request(
+                "POST", "/api/chat-archive/config", payload=payload, timeout=120,
+            )
+
+        @app.post("/api/mlx/memory/archive/rebuild")
+        def memory_archive_rebuild():
+            return agent_json_request(
+                "POST", "/api/chat-archive/rebuild", payload={}, timeout=120,
+            )
+
+        @app.get("/api/mlx/memory/archive/search")
+        def memory_archive_search(query: str, limit: int = 6):
+            params = urllib.parse.urlencode({
+                "query": query, "limit": max(1, min(int(limit), 12)),
+            })
+            return agent_json_request(
+                "GET", "/api/chat-archive/search?" + params, timeout=15,
+            )
+
+        @app.post("/api/mlx/memory/archive/exclude/{chat_id}")
+        def memory_archive_exclude(chat_id: str):
+            return agent_json_request(
+                "POST", "/api/chat-archive/exclude/" +
+                urllib.parse.quote(chat_id, safe=""), payload={}, timeout=10,
+            )
+
+        @app.post("/api/mlx/memory/archive/include/{chat_id}")
+        def memory_archive_include(chat_id: str):
+            return agent_json_request(
+                "POST", "/api/chat-archive/include/" +
+                urllib.parse.quote(chat_id, safe=""), payload={}, timeout=10,
+            )
+
+
 __all__ = [
     "MemoryManagerUiMiddleware",
     "inject_memory_manager_script",
