@@ -68,7 +68,8 @@
     "desc": "Description",
     "date": "Date",
     "education": "Education",
-    "decision": "Decision"
+    "decision": "Decision",
+    "smartTitle": "Qwen · On-device"
   },
   "de": {
     "title": "Dein Gedächtnis",
@@ -139,6 +140,7 @@
     "desc": "Beschreibung",
     "date": "Termin",
     "education": "Ausbildung",
-    "decision": "Entscheidung"
+    "decision": "Entscheidung",
+    "smartTitle": "Qwen · Lokal"
   }
 }
