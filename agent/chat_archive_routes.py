@@ -20,7 +20,7 @@ def install_routes(app, chat_host):
             # Explicit opt-in triggers a local backfill of existing chats;
             # individual future PUTs are indexed incrementally.
             with chat_host.CHATS_LOCK:
-                result.update(chat_archive.rebuild(chat_host.list_chats()))
+                result.update(chat_archive.rebuild(list(chat_host.iter_memory_chats()) if hasattr(chat_host, "iter_memory_chats") else chat_host.list_chats()))
         return result
 
     @app.post("/api/chat-archive/rebuild")
@@ -28,7 +28,7 @@ def install_routes(app, chat_host):
         if not chat_archive.enabled():
             raise HTTPException(409, "Chat archive is disabled")
         with chat_host.CHATS_LOCK:
-            return chat_archive.rebuild(chat_host.list_chats())
+            return chat_archive.rebuild(list(chat_host.iter_memory_chats()) if hasattr(chat_host, "iter_memory_chats") else chat_host.list_chats())
 
     @app.get("/api/chat-archive/search")
     def archive_search(query: str, limit: int = 6):
