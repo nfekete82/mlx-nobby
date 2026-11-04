@@ -30,6 +30,7 @@ def _connect():
     os.chmod(DB_PATH, 0o600)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA secure_delete=ON")
     return conn
 
 
@@ -103,6 +104,11 @@ def set_enabled(value: bool):
             ("1" if value else "0",),
         )
         count = conn.execute("SELECT count(*) FROM archive_messages").fetchone()[0]
+        if not value:
+            # A simple DELETE leaves bytes in SQLite free pages. Secure-delete
+            # plus VACUUM removes those pages from the derived local index.
+            conn.commit()
+            conn.execute("VACUUM")
     return {"enabled": value, "indexed_messages": count}
 
 
