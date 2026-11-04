@@ -778,9 +778,11 @@ def _fact_tokens(fact) -> set[str]:
 
 def _fact_line(fact: dict) -> str:
     source = "chat" if fact.get("source_chat_id") else "manual"
+    # Saved text is untrusted user data, never prompt structure.
+    value = re.sub(r"\s+", " ", str(fact["value"]))[:250]
     return (
         f"- {fact['subject']}.{fact['field']}: "
-        f"{str(fact['value'])[:250]} (source: {source}, status: active)"
+        f"{value} (source: {source}, status: active)"
     )
 
 
