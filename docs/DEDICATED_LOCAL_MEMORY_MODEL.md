@@ -1,11 +1,11 @@
 # Independent local Memory model (opt-in)
 
 The chat model and the long-term-memory extraction model can now be separate.
-**Default is unchanged:** extraction uses the existing \`chat\` role, including
+**Default is unchanged:** extraction uses the existing `chat` role, including
 the same durable SQLite jobs, evidence rules, exclusions, and restart recovery.
 
 Dedicated mode sends ONLY extraction requests to a separately running,
-OpenAI-compatible model at \`http://127.0.0.1:8011\` (configurable port).
+OpenAI-compatible model at `http://127.0.0.1:8011` (configurable port).
 It never selects, unloads, or swaps the chat model on port 8000.
 Neither mode uploads private prompts to a cloud provider. The endpoint is
 built from the loopback address and a validated local port; redirects and
@@ -33,7 +33,7 @@ fall back to a different model or lose original chats.
 Use a local, cached model directory. The following is an example only:
 it requires the listed model to exist on disk. It does not download anything.
 
-\`\`\`bash
+```bash
 cd ~/mlx-web
 MODEL="$HOME/Models/router/Qwen3.5-4B-MLX-4bit"
 test -f "$MODEL/config.json" || { echo "Local model missing: $MODEL"; exit 1; }
@@ -44,19 +44,19 @@ test -z "$(lsof -tiTCP:8011 -sTCP:LISTEN)" || { echo "Port 8011 is in use"; exit
   --model "$MODEL" --host 127.0.0.1 --port 8011 \
   --prefill-step-size 512 --max-num-seqs 1
 # If it returns 'lm', use mlx_lm.server with the same model/host/port instead.
-\`\`\`
+```
 
 Use a second terminal to inspect exactly which model ID the server advertises:
 
-\`\`\`bash
+```bash
 curl -fsS http://127.0.0.1:8011/v1/models | python3 -m json.tool
-\`\`\`
+```
 
 After the existing production history processing has completed and you have
 checked free memory, enable the independent memory role via local API (the
-model must be online and the identifier must match \`/v1/models\`):
+model must be online and the identifier must match `/v1/models`):
 
-\`\`\`bash
+```bash
 python3 - <<'PY'
 import json
 import urllib.request
@@ -76,21 +76,21 @@ request = urllib.request.Request(
 with urllib.request.urlopen(request) as response:
     print(json.load(response))
 PY
-\`\`\`
+```
 
 Switching the normal chat model after this does not alter the stored memory
 model configuration. Read it any time with:
 
-\`\`\`bash
+```bash
 curl -fsS http://127.0.0.1:8010/api/smart-memory/model | python3 -m json.tool
-\`\`\`
+```
 
 To restore the original single-model behavior:
 
-\`\`\`bash
+```bash
 curl -fsS -X POST http://127.0.0.1:8010/api/smart-memory/model \
   -H 'Content-Type: application/json' -d '{"mode":"chat"}'
-\`\`\`
+```
 
 Configuration is held inside the **existing private personal-memory SQLite
 database** and is covered by the normal verified backup process. No second
