@@ -28,6 +28,11 @@ activity and can resume its SQLite checkpoints. If the dedicated endpoint
 fails, extraction errors remain visible and retryable; it does not silently
 fall back to a different model or lose original chats.
 
+For opt-in launchd management with RAM-aware preemption and automatic restart,
+see [Automatic Memory Supervisor](AUTOMATIC_MEMORY_SUPERVISOR.md). The manual
+start described below remains useful for testing, but must be stopped before
+installing the manager so port 8011 has only one owner.
+
 ## Start a local small model (manual, for acceptance)
 
 Use a local, cached model directory. The following is an example only:
@@ -132,7 +137,7 @@ locally installed model weights and **cannot be validated by GitHub CI**.
 Do not auto-enable, merge, or deploy before those gates pass.
 
 **Important resource constraint:** The independent `mlx_vlm` server is currently
-**manual and persistent**: it does not stop itself when images or video start.
+**manual and persistent unless the optional supervisor is installed**: a manually started 4B does not stop itself when images or video start.
 It can raise memory and swap usage alongside the chat and SDXL models. A 26/26
 synthetic extraction score demonstrates schema compliance on those fixtures,
 not an end-to-end production RAM-pressure test. Keep dedicated mode off while
