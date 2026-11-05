@@ -93,18 +93,18 @@ install_automation_routes(app)
 def _smart_local_complete(message_json: str) -> str:
     from agent import dedicated_memory_model
     messages = semantic_personal_memory.extraction_messages(message_json)
-    if dedicated_memory_model.settings()["mode"] == "dedicated":
-        # Dedicated loopback inference does not swap the foreground chat model.
-        # The existing durable worker handles retries when that service is down.
-        return dedicated_memory_model.complete(messages)
-    from agent.model_provider import ModelRequest
-    request = ModelRequest(
-        messages=messages, role="chat", max_tokens=3000, temperature=0,
-    )
-    result = gateway_host.agent_model_provider().complete(request)
-    if result.finish_reason == 'length':
-        raise ValueError('Truncated memory extraction')
-    return result.text
+    def foreground_complete(request_messages):
+        from agent.model_provider import ModelRequest
+        request = ModelRequest(
+            messages=request_messages, role="chat", max_tokens=3000, temperature=0,
+        )
+        result = gateway_host.agent_model_provider().complete(request)
+        if result.finish_reason == 'length':
+            raise ValueError('Truncated memory extraction')
+        return result.text
+
+    # No foreground model change in dedicated mode; fallback only when configured.
+    return dedicated_memory_model.extract(messages, foreground_complete)
 
 
 semantic_personal_memory.configure(
