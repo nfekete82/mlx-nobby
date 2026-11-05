@@ -236,3 +236,57 @@ def test_saving_chat_schedules_nonblocking_real_worker_with_mock_local_qwen():
     assert pm.list_facts()[0]["source_chat_id"] == "fictional-source"
     assert pm.list_facts()[0]["source_ordinal"] == 0
     assert smart.enqueue(chat) == 0
+
+
+
+def test_relationship_wishes_are_independent_preferences_not_state_changes():
+    pm.set_enabled(True)
+    smart.set_enabled(True)
+    first = "In meiner Partnerschaft wünsche ich mir mehr körperliche Nähe."
+    second = "In meiner Partnerschaft wünsche ich mir mehr gemeinsame Zeit."
+    smart.apply("wish-one", 0, first, fact(
+        first, subject="ich", field="beziehung", value="mehr körperliche Nähe"))
+    smart.apply("wish-two", 0, second, fact(
+        second, subject="ich", field="beziehung", value="mehr gemeinsame Zeit"))
+    saved = pm.list_facts()
+    assert len(saved) == 2
+    assert {r["value"] for r in saved} == {
+        "mehr körperliche Nähe", "mehr gemeinsame Zeit"}
+    assert all(r["field"].startswith("vorliebe.") for r in saved)
+    assert not pm.list_conflicts()
+
+
+def test_genuine_relationship_state_change_is_still_pending():
+    pm.set_enabled(True)
+    smart.set_enabled(True)
+    first = "Mein Beziehungsstatus ist Single."
+    second = "Mein Beziehungsstatus ist verheiratet."
+    smart.apply("state-one", 0, first, fact(
+        first, subject="ich", field="beziehung", value="Single"))
+    smart.apply("state-two", 0, second, fact(
+        second, subject="ich", field="beziehung", value="verheiratet"))
+    assert len(pm.list_conflicts()) == 1
+    assert pm.list_facts()[0]["value"] == "Single"
+
+
+def test_semantic_named_diagnoses_coexist_but_generic_health_states_conflict():
+    pm.set_enabled(True)
+    smart.set_enabled(True)
+    one = "Meine Partnerin hat die Diagnose Migräne."
+    two = "Meine Partnerin hat die Diagnose Asthma."
+    smart.apply("medical-one", 0, one, fact(
+        one, subject="partner", field="gesundheit", value="Migräne"))
+    smart.apply("medical-two", 0, two, fact(
+        two, subject="partner", field="gesundheit", value="Asthma"))
+    rows = pm.list_facts()
+    assert {r["value"] for r in rows} == {"Migräne", "Asthma"}
+    assert not pm.list_conflicts()
+
+    three = "Meine Partnerin ist gesund."
+    four = "Meine Partnerin ist krank."
+    smart.apply("medical-state-a", 0, three, fact(
+        three, subject="partner", field="gesundheit", value="gesund"))
+    smart.apply("medical-state-b", 0, four, fact(
+        four, subject="partner", field="gesundheit", value="krank"))
+    assert len(pm.list_conflicts()) == 1
+    assert pm.list_conflicts()[0]["field"] == "gesundheit"
