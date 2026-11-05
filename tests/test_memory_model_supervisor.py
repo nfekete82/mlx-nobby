@@ -93,3 +93,16 @@ def test_media_dispatch_waits_for_owned_model_to_release(monkeypatch):
     ctl._write(ctl.STATE, {"updated_at": time.time(), "owned": False,
                             "state": "suspended_media"})
     assert ctl.prepare_media_dispatch("video", timeout_seconds=0.2)
+
+
+
+def test_media_with_sufficient_headroom_does_not_block_memory_extraction():
+    ctl._write(ctl.STATE, {"updated_at": time.time(), "state": "running",
+                            "owned": True, "pause_extraction": False})
+    ctl._write(ctl.MEDIA_JOB_FILE, {
+        "a": {"kind": "image", "status": "running", "native_job_id": "fictional"}
+    })
+    assert ctl.active_media_kind() == "image"
+    assert ctl.requested_media_priority() is None
+    with ctl.inference_lease():
+        pass  # Healthy coexistence: no unnecessary memory starvation.
