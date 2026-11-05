@@ -37,10 +37,10 @@ def test_hypothetical_episode_is_rejected():
     assert _grounded({"episodes": [item]}, source) == []
 
 
-def test_negative_cases_require_empty_validated_memories():
+def test_speaker_attribution_remains_an_explicit_manual_review_limit():
     source = 'Meine Kollegin sagte: "Ich wohne in Prag."'
     item = {"theme": "work", "description": "Ich wohne in Prag.",
             "evidence": "Ich wohne in Prag."}
-    # The syntax-only episode validator is not a speaker attribution checker.
-    # Keep negative-case metrics subject to manual review.
-    assert _grounded({"episodes": [item]}, source) == []
+    # Literal grounding alone does not verify speaker identity. Do not claim
+    # the benchmark rules out all false-positive quoted-source episodes.
+    assert _grounded({"episodes": [item]}, source) == ["Ich wohne in Prag."]
