@@ -408,6 +408,8 @@
     "image_step_last": "Letzter gemeldeter Schritt: {current}/{total}",
     "image_elapsed": "Laufzeit: {duration}",
     "media_phase_waiting": "Warten",
+    "media_phase_waiting_for_resources": "Warte auf freie KI-Ressourcen / Chatmodell",
+    "media_phase_waiting_for_service": "Warte auf Bilddienst",
     "media_phase_loading": "Laden",
     "media_phase_encoding": "Encoding",
     "media_phase_editing": "Editing",
