@@ -41,6 +41,36 @@ non-sensitive label; unrecognized supervisor states are not echoed.
 No new macOS memory_pressure/sysctl calls are required per dashboard refresh:
 the existing cached queue memory snapshot is reused.
 
+## Measured model handoff timings
+
+The next-stage instrumentation adds **measured elapsed times** without changing
+scheduler policy, model load reserves, 90% hard admission or the safeguards
+around active jobs.
+
+- Native image jobs persist a bounded, allowlisted `runtime_handoff` record
+  with scheduler lease wait, wait for video, speech/MuseTalk release, chat
+  shutdown, preflight total and (once restoration finishes) chat restart.
+  The existing Performance Observatory aggregates these numbers into
+  sample counts, p50 and p95, and shows a new image handoff breakdown.
+  Missing stages remain **unmeasured**, not zero.
+- The optional 4B supervisor records API-ready after process start,
+  process-unload duration and post-media recovery duration. These are
+  bounded metrics held only in the supervisor's current-session state,
+  refreshed with its normal heartbeat; they are **not** evidence of actual
+  inference completion. The runtime card shows measured p50/p95 and
+  sample counts, not fabricated estimates.
+- The 4B sample window is at most 32 values per metric. It resets when
+  the supervisor restarts, unlike the durable image/video job history.
+
+### Why no aggressive automatic keep-warm yet?
+
+Most native image jobs deliberately ask for exclusive models and chat
+shutdown. This is a safety constraint on an Apple unified-memory machine.
+Removing it based on an estimated amount of free RAM risks swap growth and
+failed SDXL/Qwen-Edit generation. Handoff and model-readiness timing should
+first be measured on real workloads; only then should a targeted opt-in
+optimization be benchmarked against the existing reliable baseline.
+
 ## Deployment
 
 A PR merge updates GitHub only. The **web frontend must be rebuilt** and
