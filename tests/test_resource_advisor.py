@@ -10,9 +10,9 @@ from agent import performance_observatory_routes as performance
 class ResourceAdvisorTests(unittest.TestCase):
     def setUp(self):
         self.budget = {
-            "total_gb": 48.0, "free_percent": 48.0,
-            "headroom_gb": 17.0, "pressure": "normal",
-            "used_estimate_gb": 25.0,
+            "total_gb": 48.0, "free_percent": 65.0,
+            "headroom_gb": 25.0, "pressure": "normal",
+            "used_estimate_gb": 16.8,
         }
 
     def test_running_supervisor_visible_with_no_private_model_path(self):
