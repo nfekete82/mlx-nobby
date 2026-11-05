@@ -10,6 +10,7 @@ import image_service
 import runtime_coordinator as rc
 from agent import memory_model_coordination as ctl
 from agent import memory_model_supervisor as sup
+from agent import performance_observatory_routes as perf
 
 
 class ImageRuntimeProfilingTests(unittest.TestCase):
@@ -91,6 +92,33 @@ class ImageRuntimeProfilingTests(unittest.TestCase):
         self.assertNotIn("/Users/private", json.dumps(result))
         self.assertNotIn("PRIVATE IMAGE PROMPT", json.dumps(result))
         self.assertIsNone(image_service._image_handoff_measurement(None))
+
+
+class ObservatoryAggregationTests(unittest.TestCase):
+    def test_image_phase_breakdown_aggregates_into_existing_observatory(self):
+        job = {
+            "id": "a" * 24, "kind": "image", "status": "completed",
+            "phase": "completed", "created_at": 1000.0,
+            "started_at": 1001.0, "finished_at": 1005.0,
+            "runtime_handoff": {
+                "version": 4, "duration_ms": 1200,
+                "timings_ms": {
+                    "lease_wait": 100, "video_wait": 75,
+                    "speech_release": 250, "musetalk_release": 150,
+                    "chat_stop": 300, "chat_restore": 1100,
+                },
+                "chat_released": True,
+            },
+        }
+        result = perf.media_performance_snapshot(
+            {"jobs": [job], "active_count": 0, "waiting_count": 0},
+            limit=10,
+        )
+        summary = result["summary"]["image"]
+        self.assertEqual(summary["handoff_ms"]["p50"], 1200)
+        self.assertEqual(summary["handoff_stages_ms"]["chat_restore"]["p50"], 1100)
+        self.assertEqual(summary["handoff_stages_ms"]["video_wait"]["p50"], 75)
+        self.assertEqual(summary["chat_releases"], 1)
 
 
 class SupervisorTimingTests(unittest.TestCase):
