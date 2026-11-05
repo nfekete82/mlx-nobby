@@ -165,6 +165,14 @@ def complete(messages):
     return output.strip()
 
 
+
+def extract(messages, fallback):
+    """Select exactly one inference backend; never silently switch on failure."""
+    if settings()["mode"] == "dedicated":
+        return complete(messages)
+    return fallback(messages)
+
+
 def status():
     """No network calls for normal UI polling."""
     return settings()
