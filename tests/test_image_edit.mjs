@@ -1382,6 +1382,22 @@ assert.equal(noStep.title, 'Image is being processed …');
 assert.match(noStep.details, /Phase: Generating/);
 assert.match(noStep.details, /Elapsed: 00:37/);
 
+const resourceWait = imageJobPresentation({
+    status: 'queued',
+    phase: 'waiting_for_resources',
+    created_at: 1000,
+}, 1030);
+assert.equal(resourceWait.title, 'Image job waiting …');
+assert.match(resourceWait.details, /Waiting for runtime resources/);
+assert.match(resourceWait.details, /Elapsed: 00:30/);
+
+const serviceWait = imageJobPresentation({
+    status: 'queued',
+    phase: 'waiting_for_service',
+    created_at: 1000,
+}, 1030);
+assert.match(serviceWait.details, /Waiting for image service/);
+
 const loading = imageJobPresentation({
     status: 'loading',
     created_at: 1000,
