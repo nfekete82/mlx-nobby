@@ -1,12 +1,29 @@
 """Explicit opt-in controls for locally run Qwen personal-memory extraction."""
 from fastapi import HTTPException
 from agent import semantic_personal_memory as smart
+from agent import dedicated_memory_model
 
 
 def install_routes(app, chat_host):
     @app.get("/api/smart-memory/status")
     def smart_status():
         return smart.status()
+
+    @app.get("/api/smart-memory/model")
+    def memory_model_status():
+        try:
+            return dedicated_memory_model.status()
+        except dedicated_memory_model.MemoryModelError as exc:
+            raise HTTPException(500, str(exc)) from exc
+
+    @app.post("/api/smart-memory/model")
+    def memory_model_config(payload: dict):
+        try:
+            return dedicated_memory_model.configure(payload)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except dedicated_memory_model.MemoryModelError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.post("/api/smart-memory/config")
     def smart_config(payload: dict):
