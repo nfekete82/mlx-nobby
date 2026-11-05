@@ -66,12 +66,18 @@ def note_media_demand(kind):
     _write(DEMAND, {"kind": kind, "until": time.time() + DEMAND_SECONDS})
 
 
-def active_media_kind():
+def requested_media_priority():
     marker = _read(DEMAND)
     if (marker.get("kind") in ("image", "video")
             and type(marker.get("until")) in (float, int)
             and marker["until"] > time.time()):
         return marker["kind"]
+    return None
+
+
+def active_media_kind():
+    if (kind := requested_media_priority()):
+        return kind
     jobs = _read(MEDIA_JOB_FILE)
     active = [
         job.get("kind")
@@ -92,8 +98,8 @@ def inference_lease():
     try:
         fcntl.flock(fd, fcntl.LOCK_SH)
         state = supervisor_state()
-        if state and active_media_kind():
-            raise DeferredMemoryInference("Memory extraction deferred for media")
+        if state and requested_media_priority():
+            raise DeferredMemoryInference("Memory extraction deferred for RAM preemption")
         if state.get("pause_extraction"):
             raise DeferredMemoryInference("Memory extraction deferred for RAM")
         yield
