@@ -664,6 +664,9 @@ def process_message(chat_id, ordinal, digest):
                 if result['action'] == 'processed':
                     with _STATE_LOCK: _STATUS['processed'] += 1
         except Exception as error:
+            from agent.memory_model_coordination import DeferredMemoryInference
+            if isinstance(error, DeferredMemoryInference):
+                return  # RAM/media yield: preserve the pending SQLite checkpoint
             with pm.LOCK, pm._connect() as conn:
                 pm._schema(conn); km.checkpoint(conn, job, 'error', type(error).__name__)
             km.diagnose('extraction', error)
