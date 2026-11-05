@@ -5022,6 +5022,62 @@ function scheduleImageJobPoll(
     }, delayMs);
 }
 
+/**
+ * Reconcile one visibly stale image card against the authoritative Agent job.
+ * Unlike a background watcher, this can be triggered manually even when a
+ * watcher was lost or the browser restored an old queued card.
+ * It never starts a new generation or edits a chat unrelated to this session.
+ */
+async function refreshImageJobStatus(session, message) {
+    if (!session || MLXChatSessions.currentSession() !== session ||
+        !session.messages.includes(message)) {
+        return false;
+    }
+    const jobId = String(message?.image_job?.id || '');
+    const currentStatus = message?.image_job?.status;
+    const missingArtifact = currentStatus === 'completed' &&
+        !message.tool_result?.artifacts?.some(item => item?.image_id);
+    if (!IMAGE_JOB_ID_PATTERN.test(jobId) ||
+        (!ACTIVE_IMAGE_JOB_STATUSES.has(currentStatus) && !missingArtifact) ||
+        !IMAGE_JOB_TOOLS.has(message?.tool_result?.tool)) {
+        return false;
+    }
+
+    const response = await fetch(
+        '/api/mlx/image-jobs/' + encodeURIComponent(jobId),
+        {cache: 'no-store'}
+    );
+    let toolResult;
+    if (response.status === 404) {
+        toolResult = unavailableImageJobResult(message);
+    } else {
+        if (!response.ok) throw new Error('Bildjob-Status HTTP ' + response.status);
+        toolResult = await response.json();
+        if (toolResult?.data?.job?.id !== jobId) {
+            throw new Error('Bildjob-Status enthält eine andere Job-ID');
+        }
+    }
+
+    if (MLXChatSessions.currentSession() !== session ||
+        !session.messages.includes(message) ||
+        message.image_job?.id !== jobId ||
+        (!ACTIVE_IMAGE_JOB_STATUSES.has(message.image_job?.status) &&
+         !(message.image_job?.status === 'completed' &&
+           !message.tool_result?.artifacts?.some(item => item?.image_id)))) {
+        return false;
+    }
+
+    const terminal = updateImageJobMessage(session, message, toolResult);
+    const watcher = imageJobWatchers.get(jobId);
+    if (terminal && watcher) stopImageJobWatcher(watcher);
+    MLXChatSessions.saveSessions();
+    MLXChatRendering.renderMessages({contentUpdated: true});
+    if (!terminal && !imageJobWatchers.has(jobId)) {
+        watchImageJob(session, message);
+    }
+    return true;
+}
+
 function unavailableImageJobResult(message) {
     const error = gt(
         'image_job_unavailable',
@@ -5599,6 +5655,7 @@ function watchBatchJob(session, jobId) {
         createImageUpscaleMenu: createImageUpscaleMenu,
         approveAgentAction: approveAgentAction,
         updateImageJobMessage: updateImageJobMessage,
+        refreshImageJobStatus: refreshImageJobStatus,
         updateVideoJobMessage: updateVideoJobMessage,
         updateShortsJobMessage: updateShortsJobMessage,
         isWatchingImageJob: isWatchingImageJob,
@@ -5626,6 +5683,7 @@ resetSessionRuntime: resetSessionRuntime,
             imageUpscalePresets: imageUpscalePresets,
             isImageJobTool: isImageJobTool,
             updateImageJobMessage: updateImageJobMessage,
+            refreshImageJobStatus: refreshImageJobStatus,
             isWatchingImageJob: isWatchingImageJob,
             resumeImageJobsForSession: resumeImageJobsForSession,
             resumeVideoJobsForSession: resumeVideoJobsForSession,
