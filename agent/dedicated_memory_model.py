@@ -12,6 +12,7 @@ import urllib.error
 import urllib.request
 
 from agent import personal_memory as pm
+from agent import memory_model_coordination as coordination
 
 SETTING = "memory_extraction_backend"
 DEFAULT_PORT = 8011
@@ -139,8 +140,9 @@ def complete(messages):
         and isinstance(m.get("content"), str) for m in messages
     ):
         raise ValueError("Invalid memory extraction messages")
-    result = _request(
-        config["port"], "/v1/chat/completions",
+    with coordination.inference_lease():
+        result = _request(
+            config["port"], "/v1/chat/completions",
         payload={
             "model": config["model"],
             "messages": messages,
@@ -149,8 +151,8 @@ def complete(messages):
             "stream": False,
             "chat_template_kwargs": {"enable_thinking": False},
         },
-        timeout=MAX_TIMEOUT_SECONDS,
-    )
+            timeout=MAX_TIMEOUT_SECONDS,
+        )
     try:
         choice = result["choices"][0]
         message = choice["message"]
