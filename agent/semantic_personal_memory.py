@@ -377,6 +377,22 @@ def parse_facts(output: str, original: str, *, context_text='') -> list[dict]:
             alias = re.search(r'(?:nennen mich|nennt mich|spitzname|nickname|call me)\s*[:(]?\s*(.*)', evidence, re.I)
             if alias and value.casefold() in alias[1].casefold():
                 field = 'spitzname'
+        # A wish inside a relationship is the speaker's preference, not an
+        # assertion that the relationship has changed state. For example
+        # "I want more closeness" must not conflict with "I want more time".
+        if field == "beziehung" and re.search(
+            r"\b(?:wünsch\w*|möcht\w*|bevorzug\w*|brauche|need|wish|prefer)\b",
+            evidence, re.I,
+        ):
+            field = "vorliebe"
+        # Independent named diagnoses can coexist. Keep genuine relationship
+        # states, generic health states, ages and identity attributes subject
+        # to normal conflict review; we cannot infer they are compatible.
+        if field == "gesundheit" and re.search(
+            r"\b(?:diagnos\w*|erkrank\w*|leide\w*|krankheit)\b",
+            evidence, re.I,
+        ):
+            field += "." + hashlib.sha256(value.casefold().encode()).hexdigest()[:12]
         # A set-valued preference must not overwrite independent preferences.
         if field in ("vorliebe", "hobby", "ausbildung", "abschluss", "sprache",
                      "technologie", "ziel", "beschreibung", "entscheidung",
