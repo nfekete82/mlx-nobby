@@ -92,7 +92,10 @@ install_automation_routes(app)
 # opt-in. Save requests enqueue work; the daemon does not block chat latency.
 def _smart_local_complete(message_json: str) -> str:
     from agent import dedicated_memory_model
-    messages = semantic_personal_memory.extraction_messages(message_json)
+    mode = dedicated_memory_model.settings()["mode"]
+    messages = semantic_personal_memory.extraction_messages(
+        message_json, profile="compact" if mode == "dedicated" else "standard",
+    )
     def foreground_complete(request_messages):
         from agent.model_provider import ModelRequest
         request = ModelRequest(
