@@ -108,6 +108,11 @@ assert.equal(test.statusText('completed'), 'Completed');
 assert.equal(test.budgetText({ state: 'headroom_ok' }), 'Headroom adequate (estimate)');
 assert.equal(test.budgetText({ state: 'release_required' }), 'Release other models first');
 assert.equal(test.budgetText({ state: 'unknown' }), 'Admission cannot be estimated');
+assert.equal(test.memoryActivity({supervisor_state:'running',managed:true}), 'Automatic extraction ready');
+assert.equal(test.memoryActivity({supervisor_state:'suspended_media'}), 'Paused for image/video');
+assert.equal(test.memoryActivity({supervisor_state:'waiting_for_memory'}), 'Waiting for free RAM');
+assert.equal(test.memoryActivity({supervisor_state:'external'}), 'External model (not supervised)');
+assert.equal(test.memoryActivity({supervisor_state:'not_installed'}), 'Memory supervisor unavailable');
 
 const breakdown = test.handoffMetrics({
     handoff_ms: { count: 2, p50: 200 },
