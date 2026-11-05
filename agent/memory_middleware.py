@@ -43,6 +43,7 @@ class MemoryChatMiddleware:
         self._overview_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="mlx-explicit-memory-overview",
         )
+        self._overview_future = None
         self._request_guard = LocalRequestGuard(self._enrich_request)
 
     async def __call__(self, scope, receive, send):
@@ -139,7 +140,7 @@ class MemoryChatMiddleware:
         # route can time out and silently drop exactly this user's data.
         try:
             from agent import memory, personal_memory
-            if personal_memory.overview_requested(memory.recall_query(raw_messages)):
+            if personal_memory.recall_requested(memory.recall_query(raw_messages)):
                 return await self._explicit_overview(raw_messages)
         except Exception:
             pass
@@ -171,16 +172,23 @@ class MemoryChatMiddleware:
         This is read-only and never invokes Qwen, embeddings or external APIs;
         the normal chat model still composes its reply using the grounded facts.
         """
+        current = self._overview_future
+        if current is not None and not current.done():
+            return await self._fast_personal(raw_messages)
         future = self._overview_executor.submit(
             memory_lifecycle.fast_personal_context, raw_messages,
         )
+        self._overview_future = future
         try:
             return await asyncio.wait_for(
                 asyncio.shield(asyncio.wrap_future(future)),
                 timeout=3.0,
             )
         except Exception:
-            return raw_messages
+            from agent import memory
+            return memory.attach_system_context(raw_messages,
+                'LOCAL MEMORY RETRIEVAL UNAVAILABLE. Explain the temporary retrieval failure. '
+                'Do not claim there are no stored memories or invent personal facts.')
 
     async def _fast_personal(self, raw_messages):
         """Preserve private opt-in recall even when legacy embeddings time out.

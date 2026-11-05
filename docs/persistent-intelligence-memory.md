@@ -3,7 +3,9 @@
 Development continuation of draft PR #421, based on `8757c8ce`. This change is
 additive to the existing local archive and personal-memory system. No service
 restart, production data migration, merge or deployment is part of development.
-All acceptance data is fictional. See [validation](validation/persistent-memory-20261104.md).
+The original acceptance used fictional data. See [initial validation](validation/persistent-memory-20261104.md).
+The subsequent private-history investigation and its **WIP release limits** are recorded in
+[the PR #424 validation report](validation/pr424-memory-history-20261105.md).
 
 ## Architecture review and decisions
 

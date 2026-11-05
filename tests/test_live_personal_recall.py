@@ -29,7 +29,7 @@ def test_off_does_not_create_private_database_or_inject_facts():
     assert not pm.DB_PATH.exists()
 
 
-def test_regular_chat_gets_small_stable_identity_but_no_unrelated_private_data():
+def test_regular_chat_gets_only_topically_relevant_facts():
     pm.set_enabled(True)
     _put("ich", "beruf", "Informatiker")
     _put("ich", "technologie", "PHP")
@@ -37,8 +37,9 @@ def test_regular_chat_gets_small_stable_identity_but_no_unrelated_private_data()
     _put("ich", "gesundheit", "Erfundener Gesundheitszustand")
     _put("partner", "gesundheit", "Erfundene Partnerdiagnose")
     regular = pm.context("Wie optimiere ich mein CSS?")
-    assert "Informatiker" in regular
-    assert "PHP" in regular
+    assert regular == ''
+    technical = pm.context('Wie verbessere ich meinen PHP-Code?')
+    assert 'PHP' in technical
     assert "Musterstadt" not in regular
     assert "Erfundener Gesundheitszustand" not in regular
     assert "Erfundene Partnerdiagnose" not in regular
@@ -51,11 +52,11 @@ def test_name_and_profession_survive_recent_identity_updates():
     _put("ich", "ausbildung", "Informatik")
     _put("ich", "rolle", "Softwareentwicklung")
     _put("ich", "technologie", "PHP")
-    content = pm.context("Erkläre eine HTTP-Antwort.")
+    content = pm.context("Was weißt du über mich?")
     assert "Testname" in content
     assert "Informatiker" in content
     assert "PHP" in content
-    assert "Softwareentwicklung" not in content
+    assert "Softwareentwicklung" in content
 
 
 def test_project_and_family_recall_is_topic_aware():
@@ -201,7 +202,8 @@ def test_normal_chat_recalls_prior_messages_and_action_status(monkeypatch):
     enriched = memory_lifecycle.enrich_messages(messages, observe=False)
     assert enriched[0]["role"] == "system"
     assert "sandforge-work" in enriched[0]["content"]
-    assert "coding_agent completed" in enriched[0]["content"]
+    assert "coding_agent" in enriched[0]["content"]
+    assert "status=completed" in enriched[0]["content"]
     assert enriched[-1] == messages[-1]
 
 

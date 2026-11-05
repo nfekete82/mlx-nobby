@@ -140,6 +140,9 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory
     if not last_user:
         return copied
 
+    if personal_memory.recall_requested(memory.recall_query(copied)):
+        return fast_personal_context(copied)
+
     if observe:
         observe_user_message(last_user, source_chat_id=source_chat_id)
 
@@ -186,16 +189,25 @@ def fast_personal_context(messages):
         from agent import knowledge_memory
         # Include the old durable-memory inventory for explicit user overviews.
         # Unlike ordinary lexical recall, this does not require embeddings.
-        parts = [
+        explicit = personal_memory.recall_requested(query)
+        parts = ([knowledge_memory.context(query, budget=18000)] if explicit else [
             personal_memory.context(query, limit=6),
             knowledge_memory.context(query, budget=3000),
-        ]
-        if personal_memory.overview_requested(query):
-            parts.append(memory.context(query))
+        ])
+        if explicit:
+            from agent import chat_archive
+            parts.append(chat_archive.context(query, limit=8))
+            parts.append(memory.explicit_context(query))
         private_context = "\n\n".join(filter(None, parts))
         if private_context:
             return memory.attach_system_context(copied, private_context)
-    except Exception:
+    except Exception as error:
+        from agent import knowledge_memory
+        knowledge_memory.diagnose('recall', error)
+        if personal_memory.recall_requested(query):
+            return memory.attach_system_context(copied,
+                'LOCAL MEMORY RETRIEVAL UNAVAILABLE. Explain the temporary retrieval failure. '
+                'Do not claim there are no stored memories or invent personal facts.')
         return copied
     return copied
 

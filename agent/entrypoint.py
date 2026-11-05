@@ -93,19 +93,21 @@ install_automation_routes(app)
 def _smart_local_complete(message_json: str) -> str:
     from agent.model_provider import ModelRequest
     request = ModelRequest(
-        messages=[
-            {"role": "system", "content": semantic_personal_memory._SYSTEM},
-            {"role": "user", "content": message_json},
-        ],
-        role="chat", max_tokens=1200, temperature=0,
+        messages=semantic_personal_memory.extraction_messages(message_json),
+        role="chat", max_tokens=3000, temperature=0,
     )
-    return gateway_host.agent_model_provider().complete(request).text
+    result = gateway_host.agent_model_provider().complete(request)
+    if result.finish_reason == 'length':
+        raise ValueError('Truncated memory extraction')
+    return result.text
 
 
 semantic_personal_memory.configure(
     chat_reader=gateway_host.memory_chat_reader,
     chat_lock=gateway_host.CHATS_LOCK,
     model_complete=_smart_local_complete,
+    revision_reader=gateway_host.memory_chat_reader,
+    history_reader=gateway_host.iter_memory_chats,
 )
 
 __all__ = ["app"]

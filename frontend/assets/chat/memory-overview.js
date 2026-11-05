@@ -96,6 +96,11 @@
         smartFailed: 'Failed',
         smartStarted: 'Older chat analysis scheduled. Progress appears here.',
         smartFullProgress: 'Full history',
+        smartSegments: 'Completed segments',
+        smartExcluded: 'Excluded',
+        smartRetrying: 'Waiting for automatic retry',
+        smartIncomplete: 'Incomplete — resume analysis to retry',
+        smartComplete: 'Historical analysis complete',
         activityTitle: 'Media and work history',
         activityLoad: 'Load activity',
         activityMore: 'More activity',
@@ -545,6 +550,18 @@
             $('memorySmartProgress').textContent += ' · ' + t('smartFullProgress') +
                 ': ' + (full.examined || 0) + '/' + full.total +
                 (full.active ? ' …' : '');
+        }
+        if (flag && full.total_segments) {
+            $('memorySmartProgress').textContent += ' · ' + t('smartSegments') + ': ' +
+                (full.completed_segments || 0) + '/' + full.total_segments +
+                ' · ' + t('smartExcluded') + ': ' + (full.excluded_segments || 0) +
+                ' · ' + t('smartFailed') + ': ' + (full.failed_segments || 0);
+        }
+        if (flag && (full.error_code || full.failed_segments || full.phase === 'interrupted')) {
+            $('memorySmartProgress').textContent += ' · ' + t(full.retrying_segments ? 'smartRetrying' : 'smartIncomplete') +
+                (full.error_code ? ' (' + full.error_code + ')' : '');
+        } else if (flag && full.complete) {
+            $('memorySmartProgress').textContent += ' · ' + t('smartComplete');
         }
     }
     async function smartToggle() {

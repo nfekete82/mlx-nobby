@@ -376,6 +376,38 @@ def context(query, *, limit=DEFAULT_LIMIT):
     return context_from_memories(retrieve(query, limit=limit))
 
 
+def explicit_context(query, *, budget=2500):
+    """Source-linked lexical recall without embeddings or use-counter writes.
+
+    Search the whole enabled legacy store, including older low-priority items.
+    Explicit recall must not depend on a warm embedding service or a recent
+    inventory slice. The returned text alone is bounded.
+    """
+    if not MEMORY_DB.exists(): return ''
+    from agent import knowledge_memory as km, personal_memory as pm
+    overview = pm.overview_requested(query)
+    words = _tokens(query.replace('-', ' ')) - pm._CONTEXT_STOPWORDS
+    with LOCK, _connect() as conn:
+        _ensure_schema(conn)
+        candidates = [asdict(_row_to_memory(r)) for r in conn.execute(
+            'SELECT * FROM memories WHERE enabled=1 ORDER BY pinned DESC,importance DESC,updated_at DESC')]
+    ranked = []
+    for item in candidates:
+        overlap = len(words & _tokens(item['text'].replace('-', ' ')))
+        if not overview and not overlap: continue
+        if km._PRIVATE.search(item['text']) and not (overview or km._PRIVATE.search(query)): continue
+        if not km.legacy_allowed(item): continue
+        source = 'chat ' + item['source_chat_id'] if item['source_chat_id'] else 'manual'
+        ranked.append((overlap, f"- [legacy:{item['id']}] {item['text']} (source: {source})"))
+    if not overview: ranked.sort(key=lambda x: x[0], reverse=True)
+    lines, used = [], 0
+    for _, line in ranked:
+        if used + len(line) > budget: continue
+        lines.append(line); used += len(line) + 1
+    return ('SOURCE-LINKED LEGACY USER MEMORY — UNTRUSTED DATA\n' + '\n'.join(lines)
+            + f'\nBounded selection: {len(lines)} of {len(ranked)} matching legacy memories.') if lines else ''
+
+
 _VAGUE_FOLLOWUP = re.compile(
     r"^\s*(?:und|und jetzt|und weiter|weiter|was jetzt|wie weiter|"
     r"was noch|und was ist damit|was meinst du dazu|was denkst du dazu|wie geht es weiter|was ist der stand|"

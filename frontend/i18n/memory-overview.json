@@ -130,7 +130,12 @@
     "changepinned": "Marked important",
     "changeunpinned": "Priority removed",
     "changeobserved": "Source analyzed",
-    "changeimported": "Imported"
+    "changeimported": "Imported",
+    "smartSegments": "Completed segments",
+    "smartIncomplete": "Incomplete — resume analysis to retry",
+    "smartComplete": "Historical analysis complete",
+    "smartExcluded": "Excluded",
+    "smartRetrying": "Waiting for automatic retry"
   },
   "de": {
     "title": "Dein Gedächtnis",
@@ -263,6 +268,11 @@
     "changepinned": "Als wichtig markiert",
     "changeunpinned": "Priorität aufgehoben",
     "changeobserved": "Quelle ausgewertet",
-    "changeimported": "Importiert"
+    "changeimported": "Importiert",
+    "smartSegments": "Abgeschlossene Segmente",
+    "smartIncomplete": "Unvollständig — Analyse zur Wiederaufnahme starten",
+    "smartComplete": "Historische Analyse vollständig",
+    "smartExcluded": "Ausgenommen",
+    "smartRetrying": "Automatischer neuer Versuch ausstehend"
   }
 }

@@ -27,6 +27,8 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(smart, '_READER', None)
     monkeypatch.setattr(smart, '_CHAT_LOCK', threading.RLock())
     monkeypatch.setattr(smart, '_COMPLETE', None)
+    monkeypatch.setattr(smart, '_REVISION_READER', None)
+    monkeypatch.setattr(smart, '_WORKER_STOP', threading.Event())
     pm.set_enabled(True)
     smart.set_enabled(True)
 
@@ -458,3 +460,300 @@ def test_derived_scope_erases_indexed_text_without_touching_source():
     assert result['action']=='settings_only' and result['persisted'] is False
     assert data['messages'][0]['content']==text
     with chat_archive._connect() as conn: assert conn.execute('SELECT count(*) FROM archive_messages').fetchone()[0]>0
+
+
+def test_pre_segment_observation_does_not_hide_historical_projects(monkeypatch):
+    text = 'Mein Projekt Aurora nutzt WebGL für die Benutzeroberfläche.'
+    source = chat(text)
+    monkeypatch.setattr(smart, '_READER', lambda cid: source)
+    with pm._connect() as conn:
+        pm._schema(conn)
+        conn.execute('INSERT INTO smart_observed VALUES(?,?,?)', (source['id'],0,km.digest(text)))
+    assert smart.enqueue(source, latest_only=False) == 1
+    assert km.pending(source['id'],0,km.digest(text))
+    with pm._connect() as conn:
+        job=km.pending(source['id'],0,km.digest(text))[0]
+        km.checkpoint(conn,job,'done')
+    assert smart.enqueue(source, latest_only=False) == 0
+
+
+def test_full_discovery_survives_full_wakeup_queue_and_records_errors(monkeypatch):
+    from agent import smart_full_history as full
+    from agent import chat_archive
+    monkeypatch.setattr(chat_archive, 'index_chat', lambda chat: True)
+    monkeypatch.setattr(smart, '_TASKS', queue.Queue(maxsize=1))
+    monkeypatch.setattr(smart, '_READER', lambda cid: None)
+    monkeypatch.setattr(smart, '_COMPLETE', lambda payload: '{"facts":[]}')
+    smart._WORKER_STOP.clear()
+    chats=[chat('Mein Projekt Aurora verwendet WebGL.',cid='history-'+str(i)) for i in range(8)]
+    full.start(chats); full._THREAD.join(3)
+    assert not full._THREAD.is_alive()
+    assert km.stats()['jobs']['pending'] == 8
+    state=smart.status()['full_scan']
+    assert state['discovery_complete'] and not state['complete']
+    assert state['total_segments'] == 8 and state['completed_segments'] == 0
+    # Persisted status remains truthful after losing all process counters.
+    monkeypatch.setattr(smart,'_FULL',{'active':False})
+    assert smart.status()['full_scan']['total'] == 8
+    def broken():
+        yield chats[0]
+        raise OSError('private path must not enter status')
+    full.start(broken); full._THREAD.join(3)
+    state=smart.status()['full_scan']
+    assert state['phase']=='error' and state['error_code']=='OSError'
+    assert 'private path' not in json.dumps(state)
+
+
+def test_source_revisions_preserve_evidence_episodes_and_checkpoints():
+    first='Als Kind lebte ich in Musterstadt.'
+    revised='Als Kind lebte ich in Beispielhausen.'
+    original=chat(first)
+    km.schedule(original,0,first)
+    job=km.pending(original['id'],0,km.digest(first))[0]
+    smart.apply(original['id'],0,first,output(first,value='Musterstadt',field='kindheit',episodes=[episode(first)]),job=job)
+    with pm._connect() as conn:
+        evidence=list(conn.execute('SELECT * FROM fact_evidence'))
+        episodes=list(conn.execute('SELECT * FROM episode_evidence'))
+    km.schedule(chat(revised),0,revised)
+    with pm._connect() as conn:
+        assert conn.execute('SELECT count(*) FROM memory_sources').fetchone()[0]==2
+        assert [tuple(r) for r in conn.execute('SELECT * FROM fact_evidence')]==[tuple(r) for r in evidence]
+        assert [tuple(r) for r in conn.execute('SELECT * FROM episode_evidence')]==[tuple(r) for r in episodes]
+        assert conn.execute("SELECT count(*) FROM analysis_jobs WHERE status='done'").fetchone()[0]==1
+    assert 'Musterstadt' in km.context('Was weißt du über meine Kindheit?')
+
+
+def test_multiple_project_goals_and_qualifications_are_independent_not_conflicts():
+    for text,value,field in [('Für Projekt Aurora plane ich WebGL.','WebGL','technologie'),
+                             ('Für Projekt Aurora plane ich Vulkan.','Vulkan','technologie')]:
+        smart.apply('project',0,text,output(text,value=value,subject='projekte.aurora',field=field))
+    assert len(pm.list_facts())==2
+    assert not pm.list_conflicts()
+    assert 'WebGL' in km.context('Was weißt du über mein Projekt Aurora?')
+    assert 'Vulkan' in km.context('Was weißt du über mein Projekt Aurora?')
+
+
+def test_birthplace_not_residence_and_question_not_fact():
+    text='Geboren bin ich in Musterstadt.'
+    assert not smart.parse_facts(output(text,value='Musterstadt',field='wohnort'),text)
+    assert smart.parse_facts(output(text,value='Musterstadt',field='geburtsort'),text)
+    text='Ist meine Partnerin Architektin?'
+    assert not smart.parse_facts(output(text,value='Architektin',field='beruf',subject='partner'),text)
+
+
+def test_career_episodes_recalled_without_exposing_unrelated_intimate_events():
+    work='Von 2001 bis 2005 arbeitete ich bei der Musterfirma als Entwickler.'
+    private='Als Kind lebte ich in Musterstadt.'
+    smart.apply('work',0,work,json.dumps({'facts':[],'episodes':[
+        dict(title=work,theme='work',description=work,evidence=work,period='2001',people=[],status='statement')]}))
+    smart.apply('private',0,private,json.dumps({'facts':[],'episodes':[episode(private)]}))
+    context=km.context('Was weißt du über meine berufliche Laufbahn?')
+    assert 'Musterfirma' in context and '2001' in context and 'chat work message 0' in context
+    assert 'Musterstadt' not in context
+
+
+def test_recall_intent_does_not_capture_normal_technical_questions():
+    for text in ['Wie schreibe ich einen CSS-Selektor?','Erkläre WebGL.','Übersetze: Was weißt du über mich?']:
+        assert not pm.recall_requested(text)
+    for text in ['Was weißt du über mein Projekt Aurora?','Welche Projekte habe ich?','Wo arbeite ich?',
+                 'Wie heißt meine Partnerin?','Was habe ich studiert?']:
+        assert pm.recall_requested(text)
+
+
+def test_wrapped_model_json_is_data_and_multiple_or_truncated_objects_are_errors():
+    text='Mein Projekt Aurora verwendet WebGL.'
+    raw=output(text,value='WebGL',subject='projekte.aurora',field='technologie')
+    facts=smart.parse_facts('Model commentary discarded.\n```json\n'+raw+'\n```',text)
+    assert len(facts)==1 and facts[0]['value']=='WebGL'
+    assert not smart.parse_facts(raw+'\n'+raw,text)
+    assert not smart.parse_facts(raw[:-4],text)
+    assert not smart.parse_facts('{"facts":[],"episodes":{}}',text)
+
+
+def _source_fact(subject,field,value,*,source_chat_id,source_ordinal):
+    with pm._connect() as conn:
+        pm._schema(conn)
+        return pm._propose(conn,subject,field,value,True,source_chat_id,source_ordinal)
+
+
+def test_named_people_recall_includes_their_attributes_and_conflict_sources():
+    _source_fact('partner','name','Mira',source_chat_id='source-name',source_ordinal=4)
+    _source_fact('partner','beruf','Architektin',source_chat_id='source-job',source_ordinal=8)
+    _source_fact('partner','beruf','Lehrerin',source_chat_id='source-new',source_ordinal=3)
+    text=km.context('Was weißt du über Mira?')
+    assert 'Architektin' in text and 'Lehrerin' in text and 'UNRESOLVED CONTRADICTION' in text
+    assert 'chat source-name message 4' in text and 'chat source-job message 8' in text
+    assert 'chat source-new message 3' in text
+
+
+def test_project_inventory_does_not_invent_projects_from_employment():
+    _source_fact('ich','beruf','Entwickler',source_chat_id='career',source_ordinal=0)
+    text=km.context('Welche Projekte habe ich?')
+    assert 'No matching stored evidence' in text and 'Entwickler' not in text
+    _source_fact('projekte.aurora','ziel','WebGL-Editor',source_chat_id='project',source_ordinal=2)
+    text=km.context('Welche Projekte habe ich?')
+    assert 'WebGL-Editor' in text and 'chat project message 2' in text
+
+
+def test_invented_project_subject_is_rejected_even_with_literal_value():
+    text='Mein Projekt Aurora verwendet WebGL.'
+    assert not smart.parse_facts(output(text,value='WebGL',subject='projekte.erfunden',field='technologie'),text)
+    # A project can be resolved from prior user text; values must still be in this segment.
+    followup='Wir verwenden dafür jetzt Vulkan.'
+    assert smart.parse_facts(output(followup,value='Vulkan',subject='projekte.aurora',field='technologie'),followup,context_text=text)
+    assert not smart.parse_facts(output(followup,value='WebGL',subject='projekte.aurora',field='technologie'),followup,context_text=text)
+
+
+def test_generation_commands_have_terminal_checkpoints_without_biographic_facts():
+    source=chat('Erstelle ein Bild von einer blauen Raumstation.')
+    km.schedule(source,0,source['messages'][0]['content'])
+    assert km.stats()['jobs']['excluded']==1
+    assert not km.pending(source['id'],0,km.digest(source['messages'][0]['content']))
+    assert not smart.parse_facts(output(source['messages'][0]['content'],value='blaue Raumstation',field='vorliebe'),source['messages'][0]['content'])
+
+
+def test_unreadable_source_becomes_retryable_error_instead_of_starving_worker(monkeypatch):
+    source=chat('Mein Projekt Aurora verwendet WebGL.')
+    text=source['messages'][0]['content']
+    km.schedule(source,0,text)
+    def unreadable(_cid):
+        raise OSError('private source contents')
+    monkeypatch.setattr(smart,'_READER',unreadable)
+    smart.process_message(source['id'],0,km.digest(text))
+    assert km.stats()['jobs']['error']==1
+    assert smart.status()['full_scan']['failed_segments']==1
+    assert 'private source contents' not in json.dumps(smart.status())
+    assert not km.pending(source['id'],0,km.digest(text))
+
+
+def test_conflicting_proposal_retains_literal_source_and_is_searchable():
+    pm.create_fact('ich','beruf','Entwickler')
+    text='Heute bin ich bei der Musterfirma für die IT verantwortlich.'
+    raw=output(text,value='IT verantwortlich',field='beruf')
+    smart.apply('employer-source',0,text,raw)
+    assert len(pm.list_conflicts())==1
+    with pm._connect() as conn:
+        assert conn.execute('SELECT evidence FROM conflict_evidence').fetchone()[0]==text
+    context=km.context('Was weißt du über Musterfirma?')
+    assert text in context and 'UNRESOLVED CONTRADICTION' in context
+    assert 'chat employer-source message 0' in context
+    backup=km.export_data()
+    assert backup['tables']['conflict_evidence']
+    assert km.import_data(backup)['persisted']
+
+
+def test_german_casefold_and_compounds_reach_identity_and_sleep_sources():
+    pm.create_fact('ich','name','Alex Beispiel')
+    assert 'Alex Beispiel' in km.context('Wie heiße ich?')
+    text='Wir schlafen getrennt und ich mit meinem Sohn in einem Zimmer.'
+    smart.apply('sleep-source',0,text,output(text,value='schlafen getrennt',field='notiz'))
+    assert text in km.context('Was weißt du über die Schlafsituation mit meinem Sohn?')
+
+
+def test_nickname_and_equivalent_date_are_not_new_contradictions():
+    pm.create_fact('ich','name','Alex Beispiel')
+    text='Mein vollständiger Name ist Alex Beispiel, die meisten nennen mich Lex.'
+    smart.apply('identity',0,text,output(text,value='Lex',field='name'))
+    assert not pm.list_conflicts()
+    assert any(f['field']=='spitzname' and f['value']=='Lex' for f in pm.list_facts())
+    pm.create_fact('ich','geburtstag','19.04.1987')
+    text='Geboren bin ich am 19. April 1987.'
+    smart.apply('birthday',0,text,output(text,value='19. April 1987',field='geburtstag'))
+    assert not pm.list_conflicts()
+
+
+def test_original_sentence_expansion_retains_qualification_and_source_revision():
+    from agent import chat_archive
+    text='Meine Partnerin ist Architektin und hat einen Bachelor und Master.'
+    source=chat(text,cid='qualification')
+    chat_archive.set_enabled(True);chat_archive.index_chat(source)
+    evidence='Meine Partnerin ist Architektin'
+    smart.apply(source['id'],0,text,output(evidence,value='Architektin',subject='partner',field='beruf'))
+    assert 'Bachelor und Master' in km.context('Welchen Beruf hat meine Partnerin?')
+    # An unrelated edit cannot substitute a new source for old evidence.
+    chat_archive.index_chat(chat('Meine Partnerin ist Lehrerin.',cid='qualification'))
+    assert 'Bachelor und Master' in km.context('Welchen Beruf hat meine Partnerin?')
+
+
+def test_pause_defers_inference_without_losing_saved_turns(monkeypatch):
+    source=chat('Mein Projekt Aurora verwendet WebGL.')
+    monkeypatch.setattr(smart,'_READER',lambda cid:source)
+    calls=[]
+    def infer(payload):
+        calls.append(payload)
+        return output(source['messages'][0]['content'],value='WebGL',subject='projekte.aurora',field='technologie')
+    monkeypatch.setattr(smart,'_COMPLETE',infer)
+    memory_dashboard.set_paused(True)
+    assert smart.enqueue(source,latest_only=False)==1
+    assert km.stats()['jobs']['pending']==1
+    smart.process_message(source['id'],0,km.digest(source['messages'][0]['content']))
+    assert not calls and not pm.list_facts()
+    memory_dashboard.set_paused(False)
+    smart.process_message(source['id'],0,km.digest(source['messages'][0]['content']))
+    assert len(calls)==1 and km.stats()['jobs']['done']==1
+
+
+def test_durable_retries_are_bounded_and_use_stricter_schema_prompt(monkeypatch):
+    source=chat('Meine Partnerin ist Architektin.')
+    text=source['messages'][0]['content']
+    monkeypatch.setattr(smart,'_READER',lambda cid:source)
+    payloads=[]
+    def broken(payload):
+        payloads.append(json.loads(payload))
+        return 'invalid model output'
+    monkeypatch.setattr(smart,'_COMPLETE',broken)
+    for attempt in range(3):
+        smart.process_message(source['id'],0,km.digest(text))
+        with pm._connect() as conn:
+            conn.execute("UPDATE analysis_jobs SET updated_at=0 WHERE status='error'")
+        recovered=km.next_job()
+        assert bool(recovered)==(attempt<2)
+    assert payloads[0]['_schema_retry'] is False
+    assert all(p['_schema_retry'] for p in payloads[1:])
+    assert 'FORMAT RETRY' in smart.extraction_messages(json.dumps(payloads[1]))[0]['content']
+    assert km.stats()['jobs']['error']==1 and km.stats()['retryable_errors']==0
+
+
+def test_later_segments_keep_project_identity_but_cannot_reuse_context_values(monkeypatch):
+    text='Mein Projekt Aurora verwendet WebGL. '+('Eine allgemeine Beschreibung ohne neue Fakten. '*40)+'Wir verwenden dafür Vulkan.'
+    source=chat(text)
+    monkeypatch.setattr(smart,'_READER',lambda cid:source)
+    contexts=[]
+    def infer(payload):
+        obj=json.loads(payload)
+        if 'Vulkan' in obj['message']:
+            contexts.append(obj['context'])
+            return output(obj['message'],value='Vulkan',subject='projekte.aurora',field='technologie')
+        return '{"facts":[]}'
+    monkeypatch.setattr(smart,'_COMPLETE',infer)
+    smart.process_message(source['id'],0,km.digest(text))
+    assert contexts and 'Projekt Aurora' in contexts[0]
+    assert 'Vulkan' in km.context('Was weißt du über Projekt Aurora?')
+
+
+def test_past_tense_recall_uses_explicit_path_and_prioritizes_compound_topic():
+    query='Was hatte ich über die Schlafsituation mit meinem Sohn und meiner Partnerin erzählt?'
+    assert pm.recall_requested(query)
+    sleep='Wir schlafen getrennt und ich mit meinem Sohn in einem Zimmer.'
+    smart.apply('sleep',0,sleep,output(sleep,value='schlafen getrennt',field='notiz'))
+    for i in range(20):
+        text=f'Meine Partnerin hat eine Vorliebe für Farbe Nummer {i}.'
+        smart.apply('other-'+str(i),0,text,output(text,value=f'Farbe Nummer {i}',subject='partner',field='vorliebe'))
+    assert 'schlafen getrennt' in km.context(query,budget=1000)
+
+
+def test_historical_correction_cannot_overwrite_existing_facts_or_contradictions():
+    pm.create_fact('partner','beruf','Architektin')
+    with pm._connect() as conn:
+        pm._schema(conn)
+        pm._propose(conn,'partner','beruf','Lehrerin',True,'newer-chat',0)
+    before=pm.list_facts();conflicts=pm.list_conflicts()
+    text='Ich habe mich vertan: Meine Partnerin ist Ärztin.'
+    source=chat(text,cid='old-chat');km.schedule(source,0,text,historical=True)
+    job=km.pending(source['id'],0,km.digest(text))[0]
+    raw=json.loads(output(text,value='Ärztin',subject='partner',field='beruf'))
+    raw['facts'][0]['correction']=True
+    smart.apply(source['id'],0,text,json.dumps(raw),job=job)
+    assert pm.list_facts()==before
+    assert all(c in pm.list_conflicts() for c in conflicts)
+    assert any(c['proposed_value']=='Ärztin' for c in pm.list_conflicts())

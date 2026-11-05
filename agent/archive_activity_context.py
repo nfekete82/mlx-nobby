@@ -59,7 +59,7 @@ def context(query, *, limit=6):
             if include
         )
     else:
-        kinds = ("image", "video")
+        kinds = ("image", "video", "agent", "tool")
     filters = ",".join("?" for _ in kinds)
     with chat_archive.LOCK, chat_archive._connect() as conn:
         chat_archive._schema(conn)

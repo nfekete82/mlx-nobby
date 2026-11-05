@@ -474,47 +474,58 @@ def status():
         }
 
 
-def search(query, *, limit=4):
+def search(query, *, limit=4, personal_scope=True):
     """Local, bounded lexical retrieval. Never returns arbitrary raw SQL."""
     if not enabled():
         return []
+    from agent import knowledge_memory as km
     tokens = []
-    for word in _QUERY_WORDS.findall(str(query).lower()):
+    for word in km.query_terms(str(query)):
         if word in _STOPWORDS or len(word) > 50 or word in tokens:
             continue
         tokens.append(word)
-        if len(tokens) >= 10:
+        if len(tokens) >= 40:
             break
     if not tokens:
         return []
     # Quoted tokens avoid FTS operator/query injection; OR supports projects
     # containing multiple independent topics.
-    expression = " OR ".join('"' + word.replace('"', '""') + '"' for word in tokens)
+    expression = km.fts_expression(tokens)
     bounded = max(1, min(int(limit), MAX_RESULTS))
     with LOCK, _connect() as conn:
         _schema(conn)
         active = conn.execute("SELECT value FROM archive_meta WHERE key='enabled'").fetchone()
         if not active or active["value"] != "1":
             return []
+        from agent import personal_memory
+        user_only = " AND m.role='user'" if personal_memory.recall_requested(query) else ''
         rows = conn.execute(
             "SELECT m.chat_id,m.ordinal,m.role,m.content,"
             "snippet(archive_fts,0,'','', ' … ',96) AS matched_excerpt,"
             "bm25(archive_fts) AS rank "
             "FROM archive_fts JOIN archive_messages m ON m.id=archive_fts.rowid "
-            "WHERE archive_fts MATCH ? ORDER BY rank LIMIT ?",
+            "WHERE archive_fts MATCH ?" + user_only + " ORDER BY rank LIMIT ?",
             (expression, bounded * 3),
         ).fetchall()
     results = []
     seen = set()
+    named = False
+    if personal_scope:
+        from agent import knowledge_memory as km, personal_memory
+        if personal_memory.DB_PATH.exists():
+            with personal_memory.LOCK, personal_memory._connect() as conn:
+                personal_memory._schema(conn)
+                named = bool(km.named_subjects(conn, query))
     for row in rows:
         from agent import knowledge_memory as km, personal_memory
+        if km.extraction_skip_reason(row['content']) == 'restricted_source': continue
         if km.source_excluded(row['chat_id'], row['ordinal']): continue
         if row['role'] == 'assistant':
             with LOCK, _connect() as source_conn:
                 previous = source_conn.execute("SELECT ordinal FROM archive_messages WHERE chat_id=? AND ordinal<? AND role='user' ORDER BY ordinal DESC LIMIT 1", (row['chat_id'], row['ordinal'])).fetchone()
             if previous and km.source_excluded(row['chat_id'], previous[0]): continue
         if re.search(r'(?:password|passwort|api[ _-]?key|access[ _-]?token|bearer|private[ _-]?key)\s*[:=]|\bsk-[A-Za-z0-9_-]{12,}', row['content'], re.I): continue
-        if km._PRIVATE.search(row['content']) and not (personal_memory.overview_requested(query) or km._PRIVATE.search(query)):
+        if km._PRIVATE.search(row['matched_excerpt']) and not (named or personal_memory.overview_requested(query) or km._PRIVATE.search(query)):
             continue
         key = (row["chat_id"], row["ordinal"])
         if key in seen:
@@ -529,9 +540,36 @@ def search(query, *, limit=4):
     return results
 
 
+def source_quote(source, *, limit=700):
+    """Expand verified evidence to its original sentence, retaining qualifiers.
+
+    A model's short value can omit qualifications, dates or the employer.
+    Fetch the referenced source revision rather than trusting a different
+    current message at the same ordinal. Never expand assistant content.
+    """
+    evidence = source.get('evidence', '')
+    if not evidence or not source.get('digest') or not enabled(): return ''
+    with LOCK, _connect() as conn:
+        _schema(conn)
+        row = conn.execute("SELECT content FROM archive_messages WHERE chat_id=? AND ordinal=? AND role='user'",
+                           (source['chat_id'],source['ordinal'])).fetchone()
+        text = row[0] if row and hashlib.sha256(row[0].encode()).hexdigest()==source['digest'] else ''
+        if not text:
+            row = conn.execute("SELECT content FROM archive_revisions WHERE chat_id=? AND ordinal=? AND digest=? AND role='user'",
+                               (source['chat_id'],source['ordinal'],source['digest'])).fetchone()
+            text = row[0] if row else ''
+    clean = lambda value: re.sub(r'\s+', ' ',value).strip().casefold()
+    needle = clean(evidence)
+    for sentence in re.split(r'(?<=[.!?])\s+|\n+',text):
+        if needle in clean(sentence) and len(sentence)<=limit:
+            return sentence.strip()
+    return evidence if needle in clean(text) else ''
+
+
 def context(query, *, limit=3):
     from agent import archive_activity_context
-    matches = search(query, limit=limit)
+    from agent import personal_memory
+    matches = search(query, limit=limit, personal_scope=personal_memory.recall_requested(query))
     summary = archive_activity_context.context(query, limit=limit)
     if not matches:
         return summary

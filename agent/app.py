@@ -436,12 +436,12 @@ def write_chat(chat):
                 logger.warning("Private personal memory indexing failed: %s", type(memory_error).__name__)
                 from agent import knowledge_memory
                 knowledge_memory.diagnose("indexing", memory_error)
-            try:
-                # Fire-and-forget: the local Qwen worker must never delay a
-                # chat save or write model output into the authoritative chat.
-                semantic_personal_memory.enqueue(chat)
-            except Exception:
-                logger.warning("Local semantic memory scheduling failed")
+        try:
+            # Persist work during pause too; inference still waits for resume.
+            # A save may contain multiple previously unseen user turns.
+            semantic_personal_memory.enqueue(chat, latest_only=False)
+        except Exception:
+            logger.warning("Local semantic memory scheduling failed")
     except Exception as exc:
         raise HTTPException(
             status_code=500,
@@ -458,30 +458,51 @@ def archived_memory_chat(chat_id):
     The archive is a memory source, never a restored active session. Explicit
     memory tombstones are still enforced by smart/knowledge extraction.
     """
+    return next(iter_archived_memory_chats(chat_id, newest_first=True), None)
+
+
+def iter_archived_memory_chats(chat_id, *, newest_first=False):
+    """Read every retained source revision; never restore it into the sidebar."""
     validate_chat_id(chat_id)
     vault = CHAT_DIRECTORY.parent / "long-term-chat-memory"
     if vault.is_symlink():
         raise ValueError("Unsafe long-term memory root")
-    folder = vault / chat_id
-    if folder.is_symlink():
-        raise ValueError("Unsafe archived chat directory")
-    if not folder.is_dir():
-        return None
-    paths = (p for p in folder.glob("*.json") if p.is_file() and not p.is_symlink())
-    for source in sorted(paths, key=lambda p: p.stat().st_mtime_ns, reverse=True):
+    revisions = CHAT_DIRECTORY / '.revisions'
+    if revisions.is_symlink():
+        raise ValueError('Unsafe chat revision root')
+    paths = []
+    for root in (vault, revisions):
+        folder = root / chat_id
+        if folder.is_symlink():
+            raise ValueError("Unsafe archived chat directory")
+        if folder.is_dir():
+            paths.extend(p for p in folder.glob('*.json') if p.is_file() and not p.is_symlink())
+    for source in sorted(paths, key=lambda p: p.stat().st_mtime_ns, reverse=newest_first):
         try:
             chat = normalize_chat(json.loads(source.read_text(encoding="utf-8")), expected_id=chat_id)
         except (OSError, UnicodeError, ValueError, TypeError):
             logger.warning("Invalid private memory archive for chat %s", chat_id)
-            continue
+            raise ValueError('Unreadable historical chat source') from None
         if chat is not None:
-            return chat
-    return None
+            yield chat
+        else:
+            raise ValueError('Invalid historical chat source')
 
 
-def memory_chat_reader(chat_id):
+def memory_chat_reader(chat_id, *, ordinal=None, digest=None):
     """Smart-Qwen source lookup: active first, archival fallback after UI delete."""
-    return read_chat(chat_id) or archived_memory_chat(chat_id)
+    current = read_chat(chat_id)
+    if digest is None:
+        return current or archived_memory_chat(chat_id)
+    from agent.knowledge_memory import digest as source_digest
+    def matches(chat):
+        messages = chat.get('messages', []) if chat else []
+        return (isinstance(ordinal, int) and 0 <= ordinal < len(messages)
+                and source_digest(messages[ordinal].get('content', '')) == digest)
+    if matches(current):
+        return current
+    return next((chat for chat in iter_archived_memory_chats(chat_id, newest_first=True)
+                 if matches(chat)), None)
 
 
 def iter_memory_chats():
@@ -489,12 +510,16 @@ def iter_memory_chats():
     vault = CHAT_DIRECTORY.parent / "long-term-chat-memory"
     if vault.is_symlink():
         raise ValueError("Unsafe long-term memory root")
-    if vault.is_dir():
-        for folder in sorted(vault.iterdir()):
-            if folder.is_symlink() or not folder.is_dir() or not CHAT_ID_PATTERN.fullmatch(folder.name):
-                continue
-            if (archived := archived_memory_chat(folder.name)) is not None:
-                yield archived
+    revisions = CHAT_DIRECTORY / '.revisions'
+    if revisions.is_symlink():
+        raise ValueError('Unsafe chat revision root')
+    ids = set()
+    for root in (vault, revisions):
+        if root.is_dir():
+            ids.update(folder.name for folder in root.iterdir()
+                       if folder.is_dir() and not folder.is_symlink() and CHAT_ID_PATTERN.fullmatch(folder.name))
+    for chat_id in sorted(ids):
+        yield from iter_archived_memory_chats(chat_id)
     paths = sorted(CHAT_DIRECTORY.glob("*.json"), key=lambda path: path.stat().st_mtime)
     for path in paths:
         if path.is_symlink() or not CHAT_ID_PATTERN.fullmatch(path.stem):

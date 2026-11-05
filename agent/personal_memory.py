@@ -358,6 +358,14 @@ def _fact_for(conn, subject, field):
     ).fetchone()
 
 
+def equivalent_value(field, left, right):
+    from agent import knowledge_memory as km
+    if field.split('.')[0] == 'geburtstag':
+        a,b = _birthday_value(left),_birthday_value(right)
+        if a and b: return a == b
+    return km.normalized(left) == km.normalized(right)
+
+
 def _propose(conn, subject, field, value, sensitive=False,
              source_chat_id=None, source_ordinal=None, explicit=False, lineage_id=None):
     from agent import knowledge_memory as km
@@ -373,7 +381,7 @@ def _propose(conn, subject, field, value, sensitive=False,
         return {'action':'unchanged','fact_id':equivalent['id']}
     active = _fact_for(conn, subject, field)
     now = time.time()
-    if active and km.normalized(active["value"]) == km.normalized(value):
+    if active and equivalent_value(field, active['value'], value):
         km.annotate(conn, active['id'], subject=subject, field=field)
         return {"action": "unchanged", "fact_id": active["id"]}
     if active and not explicit:
@@ -782,6 +790,12 @@ _CONTEXT_STOPWORDS = frozenset({
     "wie", "ist", "sind", "und", "das", "die", "der", "eine", "mit",
     "über", "von", "für", "bitte", "jetzt", "noch", "wissen", "weißt",
     "weisst", "kennst", "the", "and", "you", "your", "about", "know",
+    "welche", "welcher", "welchen", "welches", "meinen", "meinem", "meiner",
+    "habe", "hast", "haben", "hat", "hatte", "hatten", "wurde", "war", "waren",
+    "wann", "woher", "weiß", "erinnerst", "erinnern", "gespeichert", "alles",
+    "erzählt", "gesagt", "berichtet", "gesprochen", "erwähnt", "genannt",
+    "angabe", "angaben", "informationen", "information", "letzten", "zuletzt",
+    "vollständig", "explizit",
 })
 
 
@@ -800,6 +814,21 @@ def overview_requested(query: str) -> bool:
         r"“[^”]{1,240}”)", " ", text,
     )
     return bool(_MEMORY_OVERVIEW.search(without_quotes))
+
+
+def recall_requested(query: str) -> bool:
+    """Direct requests for historical evidence deserve a larger local budget."""
+    text = str(query or '')[:1000].strip()
+    if re.match(r'^(?:bitte\s+)?(?:übersetz\w*|translate|zitiere|quote|rewrite|formuliere|korrigiere)\b', text, re.I):
+        return False
+    text = re.sub(r'"[^"\n]*"|„[^“\n]*“', ' ', text)
+    return overview_requested(text) or bool(re.search(
+        r'\b(?:was (?:weißt|weisst|kennst)|erinnerst du|erinnerungen|'
+        r'(?:was|worüber) (?:habe|hatte|haben|hatten) (?:ich|wir)|'
+        r'welche\w* .{0,50}(?:mein\w*|habe ich)|'
+        r'(?:wann|wo|wer|woher) .{0,45}(?:ich|mein\w*)|'
+        r'wie (?:heiße|heißt|hieß|alt|viele|lange) .{0,35}(?:ich|mein\w*)|'
+        r'what do you (?:know|remember)|what did (?:i|we))\b', text, re.I))
 
 
 def _fact_tokens(fact) -> set[str]:
@@ -878,7 +907,7 @@ def context(query, *, limit=6):
             + "\nRespect the user's explicit request for an overview."
         )
 
-    tokens = set(w.casefold() for w in _WORDS.findall(query))
+    tokens = set(w.casefold() for w in _WORDS.findall(query.replace('-', ' ')))
     tokens -= _CONTEXT_STOPWORDS
     partner_topic = bool(re.search(
         r"\b(?:partnerin?|freundin|freund|beziehung|ehe)\b", query, re.I))
@@ -894,7 +923,7 @@ def context(query, *, limit=6):
         _IDENTITY_PRIORITY[fact["field"].split(".", 1)[0]],
         -float(fact["updated_at"]),
     ))
-    identity = identity_candidates[:3]
+    identity = [f for f in identity_candidates if tokens & _fact_tokens(f)][:3]
     remaining_slots = max(0, bounded - len(identity))
     scored = []
     for fact in facts:

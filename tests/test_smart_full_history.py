@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import queue
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +19,8 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(memory_dashboard, "STATE_PATH", tmp_path / "pause.json")
     monkeypatch.setattr(smart, "_TASKS", queue.Queue(maxsize=10))
     monkeypatch.setattr(smart, "_ENQUEUED", set())
+    monkeypatch.setattr(smart, '_WORKER_STOP', threading.Event())
+    monkeypatch.setattr(smart_full_history, '_THREAD', None)
     monkeypatch.setattr(
         smart, "_FULL",
         {"active": False, "total": 0, "examined": 0, "queued": 0, "skipped": 0},

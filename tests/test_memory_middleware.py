@@ -134,7 +134,7 @@ def test_slow_memory_enrichment_fails_open_without_blocking_chat(client, monkeyp
 
 
 
-def test_slow_semantic_recall_still_supplies_safe_private_identity(client, monkeypatch):
+def test_slow_semantic_recall_does_not_inject_unrelated_private_identity(client, monkeypatch):
     pm.set_enabled(True)
     pm.create_fact("ich", "beruf", "Informatiker", sensitive=True)
     pm.create_fact("partner", "gesundheit", "Beispieldiagnose", sensitive=True)
@@ -153,10 +153,7 @@ def test_slow_semantic_recall_still_supplies_safe_private_identity(client, monke
         })
         assert started.wait(timeout=0.2)
         assert response.status_code == 200
-        assert response.json()["messages"][0]["role"] == "system"
-        system = response.json()["messages"][0]["content"]
-        assert "Informatiker" in system
-        assert "Beispieldiagnose" not in system
+        assert response.json()["messages"] == [{"role": "user", "content": "Erkläre CSS."}]
     finally:
         release.set()
 

@@ -199,3 +199,19 @@ def test_memory_archived_chat_does_not_reappear_in_sidebar(local_chats):
         assert agent.memory_chat_reader("archived-offscreen")
         assert client.get("/api/chats").json()["chats"] == []
         assert client.get("/api/chats/archived-offscreen").status_code == 404
+
+
+def test_all_saved_edit_revisions_are_available_for_qwen(local_chats):
+    import hashlib
+    original=chat('source-revisions','Mein Projekt Aurora verwendet WebGL.')
+    current=chat('source-revisions','Mein Projekt Aurora verwendet Vulkan.')
+    local_chats.mkdir(parents=True,exist_ok=True)
+    path=local_chats/'source-revisions.json'
+    path.write_text(json.dumps(original))
+    agent.chat_retention.preserve_before_overwrite(path,current)
+    path.write_text(json.dumps(current))
+    values={c['messages'][0]['content'] for c in agent.iter_memory_chats()}
+    assert values=={original['messages'][0]['content'],current['messages'][0]['content']}
+    old_digest=hashlib.sha256(original['messages'][0]['content'].encode()).hexdigest()
+    assert agent.memory_chat_reader('source-revisions',ordinal=0,digest=old_digest)['messages']==original['messages']
+    assert agent.read_chat('source-revisions')['messages']==current['messages']
