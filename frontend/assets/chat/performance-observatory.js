@@ -31,6 +31,20 @@
         average: 'Average',
         samples: '{count} samples',
         runtime_title: 'Runtime state',
+        memory4b: 'Memory 4B',
+        memory_ready: 'Automatic extraction ready',
+        memory_starting: 'Starting memory model',
+        memory_draining: 'Finishing current extraction',
+        memory_media: 'Paused for image/video',
+        memory_pressure: 'Waiting for free RAM',
+        memory_disabled: 'Dedicated memory disabled',
+        memory_unavailable: 'Memory supervisor unavailable',
+        memory_unmanaged: 'External model (not supervised)',
+        image_budget: 'Image memory budget',
+        video_budget: 'Video memory budget',
+        budget_ok: 'Headroom adequate (estimate)',
+        budget_release: 'Release other models first',
+        budget_unknown: 'Admission cannot be estimated',
         runtime_start: 'Runtime start',
         chat: 'Chat',
         image: 'Image',
@@ -367,6 +381,20 @@
         return t('pressure_' + value) || value;
     }
 
+    function memoryActivity(runtime) {
+        switch (runtime?.supervisor_state) {
+            case 'running': return runtime.managed ? t('memory_ready') : t('memory_unavailable');
+            case 'starting': return t('memory_starting');
+            case 'draining': return t('memory_draining');
+            case 'suspended_media': return t('memory_media');
+            case 'suspended_pressure':
+            case 'waiting_for_memory': return t('memory_pressure');
+            case 'disabled': return t('memory_disabled');
+            case 'external': return t('memory_unmanaged');
+            default: return t('memory_unavailable');
+        }
+    }
+
     function runtimeCard(name, runtime) {
         runtime = runtime || {};
         const state = String(runtime.state || 'unavailable').toLowerCase();
@@ -382,10 +410,13 @@
             'performance-observatory-runtime-model',
             runtime.model || '—'
         ));
+        const activity = runtime.role === 'memory'
+            ? memoryActivity(runtime)
+            : runtime.active ? t('active') : t('idle');
         card.append(el(
             'span',
             'performance-observatory-runtime-activity',
-            runtime.active ? t('active') : t('idle')
+            activity
         ));
         return card;
     }
@@ -399,13 +430,22 @@
         return item;
     }
 
+    function budgetText(value) {
+        switch (value?.state) {
+            case 'headroom_ok': return t('budget_ok');
+            case 'release_required': return t('budget_release');
+            default: return t('budget_unknown');
+        }
+    }
+
     function renderRuntimeAndMemory(snapshot) {
         const runtimes = snapshot?.system?.runtimes || {};
         const runtimeTarget = root.querySelector('[data-performance-runtimes]');
         runtimeTarget.replaceChildren(
             runtimeCard(t('chat'), runtimes.chat),
             runtimeCard(t('image'), runtimes.image),
-            runtimeCard(t('video'), runtimes.video)
+            runtimeCard(t('video'), runtimes.video),
+            runtimeCard(t('memory4b'), runtimes.memory4b)
         );
 
         const memory = snapshot?.system?.memory || {};
@@ -417,7 +457,9 @@
             memoryField(t('headroom'), formatGb(memory.headroom_gb)),
             memoryField(t('free'), formatPercent(memory.free_percent)),
             memoryField(t('reserve'), formatGb(memory.reserve_gb)),
-            memoryField(t('swap'), formatGb(memory.swap_used_gb))
+            memoryField(t('swap'), formatGb(memory.swap_used_gb)),
+            memoryField(t('image_budget'), budgetText(snapshot?.system?.admission?.image)),
+            memoryField(t('video_budget'), budgetText(snapshot?.system?.admission?.video))
         );
     }
 
@@ -649,7 +691,9 @@
             handoffMetrics,
             pressureText,
             stateText,
-            statusText
+            statusText,
+            budgetText,
+            memoryActivity
         }
     };
 

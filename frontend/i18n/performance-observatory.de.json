@@ -67,5 +67,20 @@
   "live_note": "Warm/kalt zeigt den aktuell geladenen Zustand. Videojobs speichern zusätzlich historische Warm-/Kaltstarts. Die Modellhistorie beginnt mit dem aktuellen Agent-Prozess; die Medienhistorie bleibt dauerhaft erhalten.",
   "checked": "Aktualisiert {time}",
   "estimate": "geschätzt",
-  "upstream": "gemessen"
+  "upstream": "gemessen",
+  "memory4b": "Gedächtnis 4B",
+  "memory_ready": "Automatische Extraktion bereit",
+  "memory_paused": "Extraktion wegen Ressourcen pausiert",
+  "memory_unmanaged": "Externes Modell (nicht verwaltet)",
+  "image_budget": "Bild-RAM-Budget",
+  "video_budget": "Video-RAM-Budget",
+  "budget_ok": "Genügend Reserve (Schätzung)",
+  "budget_release": "Zuerst andere Modelle entladen",
+  "budget_unknown": "RAM-Zulassung nicht einschätzbar",
+  "memory_starting": "Gedächtnismodell startet",
+  "memory_draining": "Aktuelle Extraktion wird abgeschlossen",
+  "memory_media": "Für Bild/Video pausiert",
+  "memory_pressure": "Wartet auf freien RAM",
+  "memory_disabled": "Dediziertes Gedächtnis deaktiviert",
+  "memory_unavailable": "Memory-Supervisor nicht verfügbar"
 }

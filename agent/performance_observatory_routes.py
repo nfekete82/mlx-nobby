@@ -12,7 +12,7 @@ import urllib.parse
 
 from fastapi import FastAPI
 
-from agent import media_queue
+from agent import media_queue, resource_advisor
 from backend import observability
 import runtime_coordinator
 
@@ -521,6 +521,10 @@ def build_performance_snapshot(status_provider=None, limit=DEFAULT_LIMIT):
     if not isinstance(memory, dict):
         memory = runtime_coordinator.memory_budget_snapshot()
 
+    resources = resource_advisor.snapshot(memory)
+    runtimes = _normalize_runtime_states(runtime_snapshot(status_provider))
+    runtimes["memory4b"] = resources["memory4b"]
+
     return {
         "ok": True,
         "version": 2,
@@ -529,7 +533,8 @@ def build_performance_snapshot(status_provider=None, limit=DEFAULT_LIMIT):
         "media": media_performance_snapshot(queue_snapshot, limit),
         "system": {
             "memory": memory,
-            "runtimes": _normalize_runtime_states(runtime_snapshot(status_provider)),
+            "runtimes": runtimes,
+            "admission": resources["admission"],
             "runtime_lease": queue_snapshot.get("runtime") or {},
         },
         "notes": {

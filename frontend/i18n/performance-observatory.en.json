@@ -67,5 +67,20 @@
   "live_note": "Warm/cold cards show the current loaded state. Video jobs also record historical warm/cold runtime reuse. Model-call history starts with the current Agent process; media history is durable.",
   "checked": "Updated {time}",
   "estimate": "estimated",
-  "upstream": "measured"
+  "upstream": "measured",
+  "memory4b": "Memory 4B",
+  "memory_ready": "Automatic extraction ready",
+  "memory_paused": "Extraction paused for resources",
+  "memory_unmanaged": "External model (not supervised)",
+  "image_budget": "Image memory budget",
+  "video_budget": "Video memory budget",
+  "budget_ok": "Headroom adequate (estimate)",
+  "budget_release": "Release other models first",
+  "budget_unknown": "Admission cannot be estimated",
+  "memory_starting": "Starting memory model",
+  "memory_draining": "Finishing current extraction",
+  "memory_media": "Paused for image/video",
+  "memory_pressure": "Waiting for free RAM",
+  "memory_disabled": "Dedicated memory disabled",
+  "memory_unavailable": "Memory supervisor unavailable"
 }
