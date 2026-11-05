@@ -313,6 +313,13 @@ def _extract(text):
             prefix = text[max(0, match.start() - 16):match.start()].lower()
             if re.search(r"\b(?:nicht|wenn|falls|vielleicht)\s*$", prefix):
                 continue
+            # Distinct *named diagnoses* are independent health observations,
+            # not replacements for each other. Do not generalize this to
+            # changing conditions, symptoms or generic health/status values.
+            # Keep the same stable value key used by semantic extraction.
+            if field == "gesundheit":
+                field = "gesundheit." + hashlib.sha256(
+                    value.casefold().encode()).hexdigest()[:12]
             # Preferences are sets, not single-valued attributes. Liking
             # running and coffee is not a contradiction.
             if field in {"vorliebe", "präferenz"}:
