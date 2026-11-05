@@ -9,9 +9,14 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+# Make direct execution (`python scripts/benchmark-memory-model-local.py`) work.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agent import semantic_personal_memory as smart
 
