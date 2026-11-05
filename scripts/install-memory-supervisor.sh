@@ -22,7 +22,7 @@ fi
 
 mkdir -p "$HOME/Library/LaunchAgents" "$CONFIG"
 chmod 700 "$CONFIG"
-CANDIDATE="$(mktemp "$HOME/Library/LaunchAgents/.$LABEL.XXXXXXXX.plist")"
+CANDIDATE="$(mktemp "$HOME/Library/LaunchAgents/.$LABEL.XXXXXXXX")"
 trap 'rm -f "$CANDIDATE"' EXIT
 sed -e "s|__PROJECT_DIR__|$ROOT|g" \
     -e "s|__CONFIG_DIR__|$CONFIG|g" "$TEMPLATE" >"$CANDIDATE"
