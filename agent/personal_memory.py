@@ -107,7 +107,8 @@ _QUESTION = re.compile(r"[?]\s*$")
 # full chat archive, not automatically asserted as durable personal facts.
 _RULES = [
     ("partner", "name", re.compile(
-        r"\bmeine\s+(?:freundin|partnerin)\s+(?:heißt|heisst|trägt den namen)\s+"
+        r"\b(?:meine\s+(?:freundin|partnerin)|mein\s+partner)\s+"
+        r"(?:heißt|heisst|trägt den namen)\s+"
         r"(?P<value>[\wÄÖÜäöüß-]{2,80})\b", re.I), True),
     ("partner", "beruf", re.compile(
         r"\bmeine\s+(?:freundin|partnerin)\s+(?:ist|arbeitet als)\s+"

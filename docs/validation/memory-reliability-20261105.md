@@ -1,8 +1,45 @@
-# Memory reliability: measured partial improvement, acceptance incomplete
+# Memory reliability: partner correction passes the fixed replay
 
 Date: 2026-11-05. Base: `f96d0b05` (PR #428). Development is an independent
 Git checkout, not the production installation. No production chat, SQLite file,
 memory setting, container, process or existing conflict was changed or reprocessed.
+
+## Partner-only follow-up: deterministic validation correction
+
+The separately authorized follow-up changes no prompt, acceptance input or recorded
+model response. Exactly one replay of the existing `final.json` now passes:
+**16/16 validated, persisted (including one real conflict) and retrieved with the
+originating source; zero false conflicts or active values without literal support.**
+Raw correctly assigned model extractions remain 14/16: the additional two targets
+come from deterministic source normalization, not improved model output.
+
+For an explicit, unquoted source clause starting with `Meine Partnerin heißt ...`
+or `Mein Partner heißt ...` (also `heisst` / `trägt den Namen`), the existing regex
+name extractor supplies the missing literal `partner.name`. An already grounded
+`personen.<that-name>` candidate is remapped to `partner` only when its evidence
+and value belong to that partner clause. A coordinated new subject ends the
+eligible clause. A matching name elsewhere, a colleague or a friend is not enough.
+The shared legacy name rule additionally accepts masculine `mein Partner`.
+
+Both the synthesized name and remapped properties pass the existing literal,
+confidence, privacy, negation, scope, conflict, source and deletion checks. There
+is no production migration or change to existing stored memories.
+
+The single live attempt stopped at the local model catalog probe because port
+8011 refused the connection. **No inference ran**, no service was started and no
+retry was made. Live-model confirmation of this follow-up is therefore unavailable.
+Afterwards, **20 directly affected regression cases passed**, including source
+provenance, masculine/feminine partner formulations, other named people, a colleague
+with the same name in another clause, unsafe statements, confidence/grounding,
+conflicts, pause and deletion guards. No general benchmark or suite was repeated.
+
+Evidence: [partner replay and live-attempt record](memory-reliability-20261105/partner-replay.json).
+The earlier three-round results below remain historical evidence, including the
+previous identity regression. The original `final.json` is deliberately unchanged.
+
+Limitations: the repair recognizes the narrow explicit naming forms above. It does
+not infer partner identity from bare names, previous conversations, arbitrary
+paraphrases or cross-sentence pronouns, and it does not invent omitted properties.
 
 ## Fixed acceptance set and measurements
 
@@ -84,7 +121,7 @@ failed because both profiles now include shared claim rules. Round 3: **102 pass
 across claim identity, semantic memory, persistent knowledge and dedicated-model
 checks. No browser suite or full regression suite was run.
 
-**The end-to-end acceptance command still exits 1.** Round 3 regressed partner
+**Before the partner-only follow-up, the acceptance command exited 1.** Round 3 regressed partner
 identity: it emits `personen.elara.beruf=Lehrerin`, omits a separate name fact,
 and does not retain the required `partner` identity. The strict counter therefore
 credits neither partner target, even though the source quote contains both words.
@@ -99,19 +136,19 @@ undated past assertions remain in one past slot, overlapping intervals and named
 entities/relationships are not resolved by a general timeline/entity system.
 Existing 45 production conflicts remain untouched and were not privately inspected.
 
-The three-round limit was honored. The remaining identity regression needs a
-separately authorized evaluation budget before further implementation claims.
-This draft is a measured partial improvement, not a production deployment request.
+The original three-round limit was honored. The separately authorized partner-only
+follow-up above resolves that recorded regression in replay. This draft is not a
+production deployment request; current live-model confirmation remains unavailable.
 
 ## Local reproduction
 
 From this checkout, use the captured real-model responses to reproduce the final
-14/16 result with fresh temporary SQLite storage, without any running service:
+16/16 result with fresh temporary SQLite storage, without any running service:
 
 ```sh
 python3 scripts/accept-memory-reliability.py --replay docs/validation/memory-reliability-20261105/final.json --report /tmp/nobby-memory-review.json --check
 ```
 
-Expected exit status: **1**, because full acceptance is intentionally still unmet.
+Expected exit status: **0**, with 16/16 source-backed retrieved targets.
 For another real-model evaluation, replace `--replay ...` with `--live --model
 /absolute/path/to/already-running-4B-model`; do not launch a model for this script.

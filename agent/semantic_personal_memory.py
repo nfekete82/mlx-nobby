@@ -371,6 +371,32 @@ def extraction_messages(payload, *, profile="standard"):
             {'role':'user','content':json.dumps(obj,ensure_ascii=False)}]
 
 
+
+def _explicit_partner_names(original):
+    """Literal current-source partner anchors, never a name-only inference.
+
+    Reuse the legacy name extractor, restricted to an unquoted declarative
+    partner clause. Stop before a coordinated new subject, so even a colleague
+    with the same name cannot inherit the partner's identity.
+    """
+    anchors = []
+    for sentence in re.split(r'(?<=[.!?;])\s+|\n+', original):
+        if (not re.match(r'^\s*(?:meine\s+partnerin|mein\s+partner)\s+'
+                         r'(?:heißt|heisst|trägt den namen)\s+', sentence, re.I)
+                or sentence.rstrip().endswith('?')
+                or re.search(r'["„“”«»]|\b(?:nicht|kein|keine|nie|niemals)\b', sentence, re.I)
+                or _BAD.search(sentence) or _HYPOTHETICAL.search(sentence)):
+            continue
+        clause = re.split(
+            r'\s+(?:und|aber|während)\s+(?!(?:arbeitet|wohnt|lebt|ist|hat|mag|liebt)\b)',
+            sentence, maxsplit=1, flags=re.I,
+        )[0].strip()
+        for subject, field, value, _ in pm._extract(clause):
+            if subject == 'partner' and field == 'name':
+                anchors.append((value, clause))
+    return anchors
+
+
 def parse_facts(output: str, original: str, *, context_text='') -> list[dict]:
     """Untrusted model output must be literal-grounded before persistence."""
     original = str(original or "")
@@ -385,7 +411,12 @@ def parse_facts(output: str, original: str, *, context_text='') -> list[dict]:
     facts = []
     seen = set()
     source = _clean(original).casefold()
-    for item in obj["facts"][:MAX_FACTS]:
+    partner_names = _explicit_partner_names(original)
+    # Supplement only explicit names. All candidates, including these rule
+    # matches, still pass the same grounding, privacy and persistence checks.
+    names = [dict(subject='partner', field='name', value=name, evidence=clause,
+                  confidence=1.0, correction=False) for name, clause in partner_names]
+    for item in (names + obj["facts"])[:MAX_FACTS]:
         if not isinstance(item, dict):
             continue
         subject, field = _subject(item.get("subject")), _field(item.get("field"))
@@ -425,6 +456,13 @@ def parse_facts(output: str, original: str, *, context_text='') -> list[dict]:
             item.get("correction") is True and _CORRECT.search(original)
         ):
             continue
+        if subject.startswith('personen.'):
+            aliases = [(name, clause) for name, clause in partner_names
+                       if subject == 'personen.' + name.casefold()
+                       and evidence.casefold() in _clean(clause).casefold()
+                       and value.casefold() in _clean(clause).casefold()]
+            if aliases:
+                subject = 'partner'
         correction = item.get("correction") is True and bool(_CORRECT.search(original))
         if field == 'name':
             alias = re.search(r'(?:nennen mich|nennt mich|spitzname|nickname|call me)\s*[:(]?\s*(.*)', evidence, re.I)
