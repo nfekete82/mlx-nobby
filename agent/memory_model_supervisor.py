@@ -143,9 +143,10 @@ class Supervisor:
             self.child = None
             self.retry_at = time.monotonic() + BACKOFF_SECONDS
         if not valid_settings():
-            if self.child and not self.stop():
+            if self.child:
                 self.publish("draining", pause=True)
-                return
+                if not self.stop():
+                    return
             self.publish("disabled")
             return
         if not self.child and probe_port():
@@ -156,6 +157,7 @@ class Supervisor:
         kind = ctl.active_media_kind()
         if self.child:
             if should_unload(snap, kind):
+                self.publish("draining", pause=True)
                 if self.stop():
                     self.publish("suspended_media" if kind else "suspended_pressure", pause=True)
                 else:
