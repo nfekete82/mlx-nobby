@@ -82,5 +82,11 @@
   "memory_media": "Paused for image/video",
   "memory_pressure": "Waiting for free RAM",
   "memory_disabled": "Dedicated memory disabled",
-  "memory_unavailable": "Memory supervisor unavailable"
+  "memory_unavailable": "Memory supervisor unavailable",
+  "image_handoff_title": "Image handoff breakdown",
+  "video_wait": "Wait for video runtime",
+  "chat_restore": "Restore chat model",
+  "memory_api_ready": "4B API ready",
+  "memory_unload": "4B unload",
+  "memory_resume": "4B media recovery"
 }
