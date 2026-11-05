@@ -62,9 +62,15 @@ import json
 import urllib.request
 
 base = "http://127.0.0.1:8010"
+from pathlib import Path
+
+# The model catalog can list OTHER installed models: index 0 may be a 27B!
+# Select ONLY the exact 4B path used to start the dedicated 8011 server.
+model = str(Path.home() / "Models/router/Qwen3.5-4B-MLX-4bit")
 with urllib.request.urlopen("http://127.0.0.1:8011/v1/models") as response:
-    models = json.load(response)["data"]
-model = models[0]["id"]
+    advertised = {item.get("id") for item in json.load(response)["data"]}
+if model not in advertised:
+    raise SystemExit("Dedicated 4B model ID not advertised; no settings changed")
 payload = json.dumps({
     "mode": "dedicated", "model": model, "port": 8011
 }).encode()
@@ -124,3 +130,16 @@ The implementation has isolated HTTP/schema/regression tests. A complete real
 4B-vs-27B quality benchmark and RAM-pressure acceptance require the user's
 locally installed model weights and **cannot be validated by GitHub CI**.
 Do not auto-enable, merge, or deploy before those gates pass.
+
+**Important resource constraint:** The independent `mlx_vlm` server is currently
+**manual and persistent**: it does not stop itself when images or video start.
+It can raise memory and swap usage alongside the chat and SDXL models. A 26/26
+synthetic extraction score demonstrates schema compliance on those fixtures,
+not an end-to-end production RAM-pressure test. Keep dedicated mode off while
+benchmarking imaging under memory pressure; never start it during a media job.
+If you stop port 8011 with dedicated mode enabled, durable memory extraction
+will retry rather than silently changing to the large chat model.
+
+For a non-destructive synthetic acceptance test, from this repository run:
+`python3 scripts/benchmark-memory-model-local.py --port 8011 --model "$HOME/Models/router/Qwen3.5-4B-MLX-4bit" --prompt-profile compact --suite all`
+This command writes no private memory database and does not reprocess chat history.
