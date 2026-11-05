@@ -152,3 +152,33 @@ def test_adult_preference_is_eligible_for_grounded_fact_extraction():
     assert facts[0]["value"] == "offene Gespräche über Sex"
     assert facts[0]["sensitive"] is True
     assert "Adult intimate" in smart._SYSTEM
+
+
+def test_dispatch_uses_chat_role_only_until_explicit_opt_in(local_server):
+    port, received, behavior = local_server
+    messages = [{"role": "user", "content": "synthetic preference"}]
+    calls = []
+
+    def chat_backend(incoming):
+        calls.append(incoming)
+        return '{"facts":[],"episodes":[]}'
+
+    assert mm.extract(messages, chat_backend) == '{"facts":[],"episodes":[]}'
+    assert calls == [messages]
+    assert received == []
+
+    mm.configure({"mode": "dedicated", "port": port,
+                  "model": "Qwen-local-memory-4B"})
+    assert mm.extract(messages, chat_backend) == '{"facts":[],"episodes":[]}'
+    assert calls == [messages]
+    assert len(received) == 1
+
+    behavior["finish_reason"] = "length"
+    with pytest.raises(mm.MemoryModelError):
+        mm.extract(messages, chat_backend)
+    # Fail closed; never silently send private extraction to a different model.
+    assert calls == [messages]
+
+    mm.configure({"mode": "chat"})
+    assert mm.extract(messages, chat_backend) == '{"facts":[],"episodes":[]}'
+    assert calls == [messages, messages]
