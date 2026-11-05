@@ -18,6 +18,9 @@ assert.match(source, /metricValue\(vision\.first_content_ms, formatDuration\)/);
 assert.match(source, /metricValue\(vision\.tokens_per_second, formatRate\)/);
 assert.match(source, /headroom_gb/);
 assert.match(source, /swap_used_gb/);
+assert.match(source, /runtimes\.memory4b/);
+assert.match(source, /system\?\.admission\?\.image/);
+assert.match(source, /system\?\.admission\?\.video/);
 assert.match(source, /performance-observatory-runtime state-/);
 assert.match(source, /runtime_start/);
 assert.match(source, /warm_starts/);
@@ -102,6 +105,9 @@ assert.equal(test.stateText('warm'), 'Warm');
 assert.equal(test.stateText('cold'), 'Cold');
 assert.equal(test.pressureText('critical'), 'Critical');
 assert.equal(test.statusText('completed'), 'Completed');
+assert.equal(test.budgetText({ state: 'headroom_ok' }), 'Headroom adequate (estimate)');
+assert.equal(test.budgetText({ state: 'release_required' }), 'Release other models first');
+assert.equal(test.budgetText({ state: 'unknown' }), 'Admission cannot be estimated');
 
 const breakdown = test.handoffMetrics({
     handoff_ms: { count: 2, p50: 200 },
