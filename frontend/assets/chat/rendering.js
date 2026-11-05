@@ -198,6 +198,8 @@
             : String(job?.phase || status).toLowerCase();
         const labels = {
             queued: rt('media_phase_waiting', 'Waiting'),
+            waiting_for_resources: rt('media_phase_waiting_for_resources', 'Waiting for runtime resources'),
+            waiting_for_service: rt('media_phase_waiting_for_service', 'Waiting for image service'),
             starting: rt('media_phase_loading', 'Loading'),
             loading: rt('media_phase_loading', 'Loading'),
             loading_model: rt('media_phase_loading', 'Loading'),
