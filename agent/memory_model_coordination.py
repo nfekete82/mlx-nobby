@@ -112,9 +112,12 @@ def prepare_media_dispatch(kind, timeout_seconds=20):
     if not state or state.get("state") in ("external", "disabled") or not state.get("owned"):
         return True
     import runtime_coordinator as rc
-    snapshot = rc.memory_budget_snapshot()
-    reserve = rc.model_load_reserve_gb(kind)
-    target_headroom = rc.VIDEO_MIN_HEADROOM_GB if kind == "video" else rc.MEDIA_MIN_HEADROOM_GB
+    try:
+        snapshot = rc.memory_budget_snapshot()
+        reserve = rc.model_load_reserve_gb(kind)
+        target_headroom = rc.VIDEO_MIN_HEADROOM_GB if kind == "video" else rc.MEDIA_MIN_HEADROOM_GB
+    except (OSError, RuntimeError, ValueError):
+        return True  # Native media admission is authoritative if probe fails.
     if not (rc.memory_relief_needed(snapshot, min_headroom_gb=target_headroom)
             or rc.projected_memory_hard_limit_reached(snapshot, reserve)):
         return True
