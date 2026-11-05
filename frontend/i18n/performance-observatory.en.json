@@ -76,5 +76,11 @@
   "video_budget": "Video memory budget",
   "budget_ok": "Headroom adequate (estimate)",
   "budget_release": "Release other models first",
-  "budget_unknown": "Admission cannot be estimated"
+  "budget_unknown": "Admission cannot be estimated",
+  "memory_starting": "Starting memory model",
+  "memory_draining": "Finishing current extraction",
+  "memory_media": "Paused for image/video",
+  "memory_pressure": "Waiting for free RAM",
+  "memory_disabled": "Dedicated memory disabled",
+  "memory_unavailable": "Memory supervisor unavailable"
 }
