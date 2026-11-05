@@ -143,3 +143,18 @@ will retry rather than silently changing to the large chat model.
 For a non-destructive synthetic acceptance test, from this repository run:
 `python3 scripts/benchmark-memory-model-local.py --port 8011 --model "$HOME/Models/router/Qwen3.5-4B-MLX-4bit" --prompt-profile compact --suite all`
 This command writes no private memory database and does not reprocess chat history.
+
+To exercise the **actual Agent dispatch and opt-in configuration** against the
+real local 4B without changing production settings, run:
+
+```bash
+python3 scripts/smoke-dedicated-memory-local.py \
+  --port 8011 \
+  --model "$HOME/Models/router/Qwen3.5-4B-MLX-4bit"
+```
+
+The smoke creates an isolated temporary personal-memory SQLite database,
+verifies `chat -> dedicated -> chat` settings and the no-fallback inference
+path, tests seven fictional user statements, then deletes the temporary DB.
+It does **not** access the production personal-memory SQLite or the saved
+chat archive. The Agent on port 8010 remains unchanged during this test.
