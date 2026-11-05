@@ -77,6 +77,12 @@
         chat_releases: 'Chat unloaded',
         image_preserves: 'Image kept loaded',
         handoff_title: 'Video handoff breakdown',
+        image_handoff_title: 'Image handoff breakdown',
+        video_wait: 'Wait for video runtime',
+        chat_restore: 'Restore chat model',
+        memory_api_ready: '4B API ready',
+        memory_unload: '4B unload',
+        memory_resume: '4B media recovery',
         lease_wait: 'Lock wait',
         image_release: 'Release image model',
         speech_release: 'Release speech model',
@@ -351,6 +357,36 @@
         ];
     }
 
+    function imageHandoffMetrics(summary) {
+        const stages = summary?.handoff_stages_ms || {};
+        return [
+            { key: 'handoff', metric: summary?.handoff_ms },
+            { key: 'lease_wait', metric: stages.lease_wait },
+            { key: 'video_wait', metric: stages.video_wait },
+            { key: 'speech_release', metric: stages.speech_release },
+            { key: 'musetalk_release', metric: stages.musetalk_release },
+            { key: 'chat_stop', metric: stages.chat_stop },
+            { key: 'chat_restore', metric: stages.chat_restore }
+        ];
+    }
+
+    function renderImageHandoff(snapshot) {
+        const summary = snapshot?.media?.summary?.image || {};
+        const block = root.querySelector('[data-performance-image-handoff-block]');
+        const metrics = imageHandoffMetrics(summary);
+        block.hidden = !metrics.some(({ metric }) => Number(metric?.count || 0) > 0);
+        if (block.hidden) return;
+        root.querySelector('[data-performance-image-handoff]').replaceChildren(
+            ...metrics.filter(({ metric }) => Number(metric?.count || 0) > 0)
+                .map(({ key, metric }) => kpiCard(
+                    t(key),
+                    metricValue(metric, formatDuration),
+                    metricDetail(metric, formatDuration),
+                    'metric-image'
+                ))
+        );
+    }
+
     function renderHandoff(snapshot) {
         const summary = snapshot?.media?.summary?.video || {};
         const block = root.querySelector('[data-performance-handoff-block]');
@@ -418,6 +454,22 @@
             'performance-observatory-runtime-activity',
             activity
         ));
+        if (runtime.role === 'memory') {
+            for (const [label, metric] of [
+                [t('memory_api_ready'), runtime.performance?.model_api_ready_ms],
+                [t('memory_unload'), runtime.performance?.model_unload_ms],
+                [t('memory_resume'), runtime.performance?.media_resume_ms]
+            ]) {
+                if (Number(metric?.count || 0) > 0) {
+                    card.append(el(
+                        'span', 'performance-observatory-runtime-activity',
+                        label + ' · p50 ' + formatDuration(metric.p50) +
+                        ' · p95 ' + formatDuration(metric.p95) +
+                        ' · n=' + metric.count
+                    ));
+                }
+            }
+        }
         return card;
     }
 
@@ -552,6 +604,7 @@
     function render(snapshot) {
         renderKpis(snapshot);
         renderRuntimeAndMemory(snapshot);
+        renderImageHandoff(snapshot);
         renderHandoff(snapshot);
         renderModelCalls(snapshot);
         renderMediaJobs(snapshot);
@@ -625,6 +678,13 @@
         memoryBlock.appendChild(memory);
         live.append(runtimeBlock, memoryBlock);
 
+        const imageHandoffBlock = sectionBlock(t('image_handoff_title'));
+        imageHandoffBlock.dataset.performanceImageHandoffBlock = '1';
+        const imageHandoffGrid = el('div', 'performance-observatory-kpis');
+        imageHandoffGrid.dataset.performanceImageHandoff = '1';
+        imageHandoffBlock.appendChild(imageHandoffGrid);
+        imageHandoffBlock.hidden = true;
+
         const handoffBlock = sectionBlock(t('handoff_title'));
         handoffBlock.dataset.performanceHandoffBlock = '1';
         const handoffGrid = el('div', 'performance-observatory-kpis');
@@ -655,7 +715,7 @@
         );
         footer.lastChild.dataset.performanceChecked = '1';
 
-        section.append(header, notice, kpis, live, handoffBlock, modelBlock, mediaBlock, footer);
+        section.append(header, notice, kpis, live, imageHandoffBlock, handoffBlock, modelBlock, mediaBlock, footer);
         return section;
     }
 
@@ -693,7 +753,8 @@
             stateText,
             statusText,
             budgetText,
-            memoryActivity
+            memoryActivity,
+            imageHandoffMetrics
         }
     };
 

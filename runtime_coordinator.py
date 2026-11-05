@@ -1175,14 +1175,22 @@ def image_runtime(
     chat_loaded = chat_loaded or _default_chat_loaded
     chat_command = chat_command or _default_chat_command
     memory_snapshot = memory_snapshot or memory_budget_snapshot
+    lease_started = time.monotonic()
 
     with runtime_lease(
         cancel_event,
         lock_path=lock_path,
         workload="image",
     ):
+        timings_ms = {
+            "lease_wait": round((time.monotonic() - lease_started) * 1000, 2),
+        }
+        video_wait_started = time.monotonic()
         wait_for_idle(VIDEO_URL, "Video", cancel_event, requester=requester)
         _check_cancelled(cancel_event)
+        timings_ms["video_wait"] = round(
+            (time.monotonic() - video_wait_started) * 1000, 2
+        )
         before = memory_snapshot()
         image_reserve_gb = model_load_reserve_gb("image")
         relief_needed = (
@@ -1196,9 +1204,13 @@ def image_runtime(
         speech_health = {"available": None, "released": False}
         after_speech = before
         if relief_needed or exclusive_models:
+            speech_release_started = time.monotonic()
             speech_health = release_idle_speech_runtime(
                 cancel_event,
                 requester=requester,
+            )
+            timings_ms["speech_release"] = round(
+                (time.monotonic() - speech_release_started) * 1000, 2
             )
             if speech_health.get("released"):
                 after_speech = memory_snapshot()
@@ -1213,9 +1225,13 @@ def image_runtime(
         musetalk_health = {"available": None, "released": False}
         after_musetalk = after_speech
         if relief_needed or exclusive_models:
+            musetalk_release_started = time.monotonic()
             musetalk_health = release_idle_musetalk_runtime(
                 cancel_event,
                 requester=requester,
+            )
+            timings_ms["musetalk_release"] = round(
+                (time.monotonic() - musetalk_release_started) * 1000, 2
             )
             if musetalk_health.get("released"):
                 after_musetalk = memory_snapshot()
@@ -1229,7 +1245,11 @@ def image_runtime(
 
         restore_chat = bool((relief_needed or force_chat_unload or exclusive_models) and chat_loaded())
         if restore_chat:
+            chat_stop_started = time.monotonic()
             chat_command("stop")
+            timings_ms["chat_stop"] = round(
+                (time.monotonic() - chat_stop_started) * 1000, 2
+            )
 
         admission = memory_snapshot() if restore_chat else after_musetalk
         # macOS may account for recently unloaded unified-memory pages with a
@@ -1253,9 +1273,13 @@ def image_runtime(
                 time.sleep(1.0)
                 admission = memory_snapshot()
                 memory_settle_attempts += 1
+        timings_ms["total"] = round(
+            (time.monotonic() - lease_started) * 1000, 2
+        )
         preflight = {
             "workload": "image",
             "exclusive_models": bool(exclusive_models),
+            "handoff_timings_ms": timings_ms,
             "memory_settle_attempts": memory_settle_attempts,
             "memory_before": before,
             "memory_after_speech_release": after_speech,
@@ -1298,12 +1322,17 @@ def image_runtime(
                         flush=True,
                     )
                 else:
+                    chat_restore_started = time.monotonic()
                     try:
                         chat_command("start")
                     except Exception as exc:
                         if restore_error is None:
                             raise
                         restore_error(exc)
+                    finally:
+                        timings_ms["chat_restore"] = round(
+                            (time.monotonic() - chat_restore_started) * 1000, 2
+                        )
 
 
 def prepare_chat_runtime(*, requester=request_json, lock_path=LOCK_PATH):

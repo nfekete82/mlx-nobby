@@ -30,6 +30,23 @@ def _memory4b_runtime():
     raw = raw if raw in KNOWN_SUPERVISOR_STATES else "not_installed"
     managed = state.get("owned") is True
     pause = state.get("pause_extraction") is True
+    raw_metrics = state.get("performance")
+    raw_metrics = raw_metrics if isinstance(raw_metrics, dict) else {}
+    performance = {}
+    for key in ("model_api_ready_ms", "model_unload_ms", "media_resume_ms"):
+        sample = raw_metrics.get(key)
+        sample = sample if isinstance(sample, dict) else {}
+        count = sample.get("count")
+        count = count if type(count) is int and 0 <= count <= 32 else 0
+        performance[key] = {
+            "count": count,
+            **{
+                metric: (round(sample[metric], 2)
+                         if _finite(sample.get(metric))
+                         and 0 <= sample[metric] <= 3_600_000 else None)
+                for metric in ("latest", "p50", "p95")
+            },
+        }
     # A supervisor heartbeat is not proof of a currently loaded MLX model:
     # report its self-declared state separately from an actual inference.
     return {
@@ -44,6 +61,7 @@ def _memory4b_runtime():
         "loaded": raw == "running" and managed,
         "active": False,  # no source-grounded instantaneous inference counter
         "role": "memory",
+        "performance": performance,
     }
 
 

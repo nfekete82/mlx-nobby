@@ -20,8 +20,8 @@ import runtime_coordinator
 DEFAULT_LIMIT = 40
 MAX_LIMIT = 100
 HANDOFF_STAGE_KEYS = (
-    "lease_wait", "image_release", "speech_release",
-    "musetalk_release", "chat_stop",
+    "lease_wait", "image_release", "video_wait",
+    "speech_release", "musetalk_release", "chat_stop", "chat_restore",
 )
 LTX_URL = os.environ.get("LTX_URL", "http://127.0.0.1:18060").rstrip("/")
 

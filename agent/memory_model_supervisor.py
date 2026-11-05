@@ -5,8 +5,10 @@ model settings, and existing SQLite memories remain under their own owners.
 """
 from __future__ import annotations
 
+from collections import deque
 import fcntl
 import json
+import math
 import os
 from pathlib import Path
 import signal
@@ -86,6 +88,40 @@ class Supervisor:
         self.started_at = 0.0
         self.retry_at = 0.0
         self.stopping = False
+        self.ready_reported = False
+        self.media_pause_started = None
+        # Session-only bounded numeric metrics. No checkpoint paths or prompts.
+        self.samples = {
+            key: deque(maxlen=32)
+            for key in ("model_api_ready_ms", "model_unload_ms", "media_resume_ms")
+        }
+
+    def record(self, key, duration_ms):
+        if (key in self.samples and type(duration_ms) in (float, int)
+                and math.isfinite(duration_ms) and 0 <= duration_ms <= 3_600_000):
+            self.samples[key].append(round(duration_ms, 2))
+
+    def performance(self):
+        result = {}
+        for key, window in self.samples.items():
+            values = sorted(window)
+            if not values:
+                result[key] = {"count": 0, "latest": None, "p50": None, "p95": None}
+                continue
+
+            def percentile(fraction):
+                pos = (len(values) - 1) * fraction
+                low = int(pos)
+                high = min(len(values) - 1, low + 1)
+                return round(values[low] + (values[high] - values[low]) * (pos - low), 2)
+
+            result[key] = {
+                "count": len(values),
+                "latest": round(window[-1], 2),
+                "p50": percentile(0.5),
+                "p95": percentile(0.95),
+            }
+        return result
 
     def publish(self, state, *, pause=False):
         ctl._write(ctl.STATE, {
@@ -93,6 +129,7 @@ class Supervisor:
             "owned": bool(self.child and self.child.poll() is None),
             "pause_extraction": bool(pause),
             "updated_at": time.time(),
+            "performance": self.performance(),
         })
 
     def start(self):
@@ -110,6 +147,7 @@ class Supervisor:
                 start_new_session=True, close_fds=True,
             )
             self.started_at = time.monotonic()
+            self.ready_reported = False
             self.publish("starting", pause=True)
         finally:
             os.close(fd)
@@ -125,13 +163,17 @@ class Supervisor:
             except BlockingIOError:
                 return False
             if self.child.poll() is None:
+                unload_started = time.monotonic()
                 self.child.terminate()
                 try:
                     self.child.wait(timeout=12)
                 except subprocess.TimeoutExpired:
                     self.child.kill()
                     self.child.wait(timeout=5)
+                self.record("model_unload_ms",
+                            (time.monotonic() - unload_started) * 1000)
             self.child = None
+            self.ready_reported = False
             self.retry_at = time.monotonic() + BACKOFF_SECONDS
             return True
         finally:
@@ -141,6 +183,7 @@ class Supervisor:
     def tick(self):
         if self.child and self.child.poll() is not None:
             self.child = None
+            self.ready_reported = False
             self.retry_at = time.monotonic() + BACKOFF_SECONDS
         if not valid_settings():
             if self.child:
@@ -159,6 +202,7 @@ class Supervisor:
             if should_unload(snap, kind):
                 self.publish("draining", pause=True)
                 if self.stop():
+                    self.media_pause_started = time.monotonic() if kind else None
                     self.publish("suspended_media" if kind else "suspended_pressure", pause=True)
                 else:
                     self.publish("draining", pause=True)
@@ -168,6 +212,14 @@ class Supervisor:
                     self.publish("startup_failed", pause=True)
                     return
             ready = model_ready()
+            if ready and not self.ready_reported:
+                self.record("model_api_ready_ms",
+                            (time.monotonic() - self.started_at) * 1000)
+                if self.media_pause_started is not None:
+                    self.record("media_resume_ms",
+                                (time.monotonic() - self.media_pause_started) * 1000)
+                    self.media_pause_started = None
+                self.ready_reported = True
             self.publish("running" if ready else "starting", pause=not ready)
             return
         if should_load(snap, kind):

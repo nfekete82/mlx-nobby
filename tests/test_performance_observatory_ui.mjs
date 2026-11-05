@@ -31,6 +31,10 @@ assert.match(source, /image_preserves/);
 assert.match(source, /image_preserve_samples/);
 assert.match(source, /handoff_stages_ms/);
 assert.match(source, /performanceHandoffBlock/);
+assert.match(source, /performanceImageHandoffBlock/);
+assert.match(source, /memory_api_ready/);
+assert.match(source, /memory_resume/);
+assert.match(source, /chat_restore/);
 assert.match(source, /handoff_release_summary/);
 assert.match(source, /t\('handoff'\)/);
 assert.match(source, /recent_calls/);
@@ -129,5 +133,20 @@ assert.equal(breakdown[1].metric.p50, 30);
 assert.equal(breakdown[5].key, 'chat_stop');
 assert.equal(breakdown[5].metric.count, 1);
 assert.equal(breakdown[2].metric, undefined);
+
+const imageStages = test.imageHandoffMetrics({
+    handoff_ms: { count: 1, p50: 1300 },
+    handoff_stages_ms: {
+        video_wait: { count: 1, p50: 35 },
+        chat_restore: { count: 1, p50: 900 }
+    }
+});
+assert.equal(imageStages.length, 7);
+assert.equal(imageStages[0].metric.p50, 1300);
+assert.equal(imageStages[2].key, 'video_wait');
+assert.equal(imageStages[2].metric.p50, 35);
+assert.equal(imageStages[6].key, 'chat_restore');
+assert.equal(imageStages[6].metric.p50, 900);
+
 
 console.log('performance observatory ui tests passed');
