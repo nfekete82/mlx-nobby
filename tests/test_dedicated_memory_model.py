@@ -182,3 +182,53 @@ def test_dispatch_uses_chat_role_only_until_explicit_opt_in(local_server):
     mm.configure({"mode": "chat"})
     assert mm.extract(messages, chat_backend) == '{"facts":[],"episodes":[]}'
     assert calls == [messages, messages]
+
+
+def test_compact_profile_targets_small_model_without_changing_chat_prompt():
+    payload = json.dumps({"message": "Ich entwickle beruflich mit PHP.",
+                          "context": ""}, ensure_ascii=False)
+    standard = smart.extraction_messages(payload)
+    assert standard == smart.extraction_messages(payload, profile="standard")
+    assert standard[0]["content"] == smart._SYSTEM
+    dedicated = smart.extraction_messages(payload, profile="compact")
+    assert dedicated[0]["content"] == smart._SYSTEM_COMPACT
+    assert dedicated[1] == standard[1]
+    assert 'VERBOTEN als subject' in dedicated[0]["content"]
+    assert 'value ein EXAKTER' in dedicated[0]["content"]
+    assert 'intime/sexuelle Vorlieben' in dedicated[0]["content"]
+    assert dedicated[0]["content"] != standard[0]["content"]
+    with pytest.raises(ValueError, match="Unknown memory"):
+        smart.extraction_messages(payload, profile="untrusted")
+
+
+@pytest.mark.parametrize(("message", "subject", "field", "value"), [
+    ("Ich arbeite als Fachinformatiker.", "ich", "beruf", "Fachinformatiker"),
+    ("Ich bin in Wien geboren.", "ich", "geburtsort", "Wien"),
+    ("Ich trainiere mit Kettlebells.", "ich", "hobby", "Kettlebells"),
+    ("Meine sexuelle Vorliebe ist offene Kommunikation über Wünsche.",
+     "ich", "vorliebe", "offene Kommunikation über Wünsche"),
+    ("Mein Projekt NebulaBoard verwendet PostgreSQL.",
+     "projekte.nebulaboard", "technologie", "PostgreSQL"),
+])
+def test_small_model_schema_examples_pass_existing_grounding(message, subject, field, value):
+    output = json.dumps({"facts": [{
+        "subject": subject, "field": field, "value": value,
+        "evidence": message, "confidence": .99, "correction": False,
+    }], "episodes": []}, ensure_ascii=False)
+    facts = smart.parse_facts(output, message)
+    assert len(facts) == 1
+    assert facts[0]["value"] == value
+
+
+def test_invalid_model_placeholders_and_invented_paraphrases_still_rejected():
+    message = "Ich entwickle beruflich mit PHP und JavaScript."
+    for subject, value in [
+        ("personen.slug", "PHP"),
+        ("geburtsort", "PHP"),
+        ("ich", "PHP und JavaScript Entwickler"),
+    ]:
+        output = json.dumps({"facts": [{
+            "subject": subject, "field": "technologie", "value": value,
+            "evidence": message, "confidence": 1.0, "correction": False,
+        }], "episodes": []}, ensure_ascii=False)
+        assert smart.parse_facts(output, message) == []
