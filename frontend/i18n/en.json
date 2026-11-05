@@ -408,6 +408,8 @@
     "image_step_last": "Last reported step: {current}/{total}",
     "image_elapsed": "Elapsed: {duration}",
     "media_phase_waiting": "Waiting",
+    "media_phase_waiting_for_resources": "Waiting for AI runtime resources / chat model",
+    "media_phase_waiting_for_service": "Waiting for image service",
     "media_phase_loading": "Loading",
     "media_phase_encoding": "Encoding",
     "media_phase_editing": "Editing",
