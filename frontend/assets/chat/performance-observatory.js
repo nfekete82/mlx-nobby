@@ -33,7 +33,12 @@
         runtime_title: 'Runtime state',
         memory4b: 'Memory 4B',
         memory_ready: 'Automatic extraction ready',
-        memory_paused: 'Extraction paused for resources',
+        memory_starting: 'Starting memory model',
+        memory_draining: 'Finishing current extraction',
+        memory_media: 'Paused for image/video',
+        memory_pressure: 'Waiting for free RAM',
+        memory_disabled: 'Dedicated memory disabled',
+        memory_unavailable: 'Memory supervisor unavailable',
         memory_unmanaged: 'External model (not supervised)',
         image_budget: 'Image memory budget',
         video_budget: 'Video memory budget',
@@ -376,6 +381,20 @@
         return t('pressure_' + value) || value;
     }
 
+    function memoryActivity(runtime) {
+        switch (runtime?.supervisor_state) {
+            case 'running': return runtime.managed ? t('memory_ready') : t('memory_unavailable');
+            case 'starting': return t('memory_starting');
+            case 'draining': return t('memory_draining');
+            case 'suspended_media': return t('memory_media');
+            case 'suspended_pressure':
+            case 'waiting_for_memory': return t('memory_pressure');
+            case 'disabled': return t('memory_disabled');
+            case 'external': return t('memory_unmanaged');
+            default: return t('memory_unavailable');
+        }
+    }
+
     function runtimeCard(name, runtime) {
         runtime = runtime || {};
         const state = String(runtime.state || 'unavailable').toLowerCase();
@@ -392,9 +411,7 @@
             runtime.model || '—'
         ));
         const activity = runtime.role === 'memory'
-            ? (runtime.supervisor_state === 'external'
-                ? t('memory_unmanaged')
-                : runtime.paused ? t('memory_paused') : t('memory_ready'))
+            ? memoryActivity(runtime)
             : runtime.active ? t('active') : t('idle');
         card.append(el(
             'span',
@@ -675,7 +692,8 @@
             pressureText,
             stateText,
             statusText,
-            budgetText
+            budgetText,
+            memoryActivity
         }
     };
 
