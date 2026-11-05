@@ -51,8 +51,11 @@ OPENER = urllib.request.build_opener(
 )
 
 
-def inference(port: int, model: str, message: str, timeout: int) -> tuple[str, float, str]:
-    messages = smart.extraction_messages(json.dumps({"message": message, "context": ""}, ensure_ascii=False))
+def inference(port: int, model: str, message: str, timeout: int, profile="standard") -> tuple[str, float, str]:
+    messages = smart.extraction_messages(
+        json.dumps({"message": message, "context": ""}, ensure_ascii=False),
+        profile=profile,
+    )
     body = json.dumps({
         "model": model, "messages": messages, "temperature": 0,
         "max_tokens": 3000, "stream": False,
@@ -109,13 +112,13 @@ def grounded_episode_texts(structure, original):
     return valid
 
 
-def run(port, model, timeout, *, selected=None, diagnose=False):
+def run(port, model, timeout, *, selected=None, diagnose=False, profile="standard"):
     results = []
-    print(f"\n=== MODELL-TEST — Port {port} ===", flush=True)
+    print(f"\n=== MODELL-TEST — Port {port}, Profil {profile} ===", flush=True)
     for name, prompt, expected, negative in CASES:
         if selected is not None and name not in selected:
             continue
-        output, elapsed, reason = inference(port, model, prompt, timeout)
+        output, elapsed, reason = inference(port, model, prompt, timeout, profile)
         try:
             structure = smart.decode_output(output)
             schema_ok = True
@@ -179,6 +182,10 @@ def main():
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--compare-port", type=int)
     parser.add_argument("--compare-model")
+    parser.add_argument("--prompt-profile", choices=("standard", "compact"),
+                        default="standard", help="Extraction instructions to test")
+    parser.add_argument("--compare-prompt-profile", choices=("standard", "compact"),
+                        default="standard", help="Compare-model extraction instructions")
     parser.add_argument("--diagnose", action="store_true",
                         help="Print synthetic raw output and validated results for misses")
     parser.add_argument("--cases", nargs="+",
@@ -196,10 +203,11 @@ def main():
         parser.error("Unknown test case: " + ", ".join(sorted(set(args.cases) - valid_names)))
     selected = set(args.cases) if args.cases else None
     run(args.port, args.model, args.timeout,
-        selected=selected, diagnose=args.diagnose)
+        selected=selected, diagnose=args.diagnose, profile=args.prompt_profile)
     if args.compare_port:
         run(args.compare_port, args.compare_model, args.timeout,
-            selected=selected, diagnose=args.diagnose)
+            selected=selected, diagnose=args.diagnose,
+            profile=args.compare_prompt_profile)
     print("\nHinweis: Falsche Ablehnungen oder False Positives brauchen zusätzlich eine"
           " manuelle Qualitätsprüfung. Dieser Test schreibt keine Chats oder Fakten.")
 
