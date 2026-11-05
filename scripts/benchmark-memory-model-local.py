@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agent import semantic_personal_memory as smart
+from agent import knowledge_memory as km
 
 CASES = (
     ("partner_name", "Meine Freundin heißt Mira.", ("Mira",), False),
@@ -80,10 +81,40 @@ def inference(port: int, model: str, message: str, timeout: int) -> tuple[str, f
         return "", time.monotonic() - started, "transport_or_schema_error"
 
 
-def run(port, model, timeout):
+def grounded_episode_texts(structure, original):
+    """Mirror source/evidence checks of episode persistence, without a DB."""
+    valid = []
+    if km.extraction_skip_reason(original):
+        return valid
+    for item in (structure.get("episodes") or [])[:5]:
+        if not isinstance(item, dict):
+            continue
+        desc, evidence = item.get("description"), item.get("evidence")
+        theme = str(item.get("theme", "")).strip().casefold()
+        kind = item.get("status", "statement")
+        if (not isinstance(desc, str) or not isinstance(evidence, str)
+                or not 12 <= len(desc) <= 1200
+                or not 12 <= len(evidence) <= 1500
+                or desc not in original or evidence not in original
+                or desc not in evidence
+                or theme not in ("childhood", "family", "relationship",
+                                 "work", "experience", "goal")
+                or kind not in ("statement", "plan")
+                or km._SECRET.search(evidence)
+                or km._NO_LEARN.search(original)
+                or smart._BAD.search(desc)
+                or smart._HYPOTHETICAL.search(desc)):
+            continue
+        valid.append(desc)
+    return valid
+
+
+def run(port, model, timeout, *, selected=None, diagnose=False):
     results = []
     print(f"\n=== MODELL-TEST — Port {port} ===", flush=True)
     for name, prompt, expected, negative in CASES:
+        if selected is not None and name not in selected:
+            continue
         output, elapsed, reason = inference(port, model, prompt, timeout)
         try:
             structure = smart.decode_output(output)
@@ -91,12 +122,9 @@ def run(port, model, timeout):
         except (ValueError, TypeError):
             structure, schema_ok = {}, False
         facts = smart.parse_facts(output, prompt) if schema_ok else []
-        episodes = structure.get("episodes", [])
-        if not isinstance(episodes, list):
-            episodes = []
-        # The persisted facts must pass the same literal evidence validator
-        # used by real history processing. Episode scoring is advisory only.
-        values = " ".join(str(f["value"]) for f in facts).casefold()
+        episodes = grounded_episode_texts(structure, prompt)
+        # Both validated facts and validated episodes become retrievable memory.
+        values = " ".join([str(f["value"]) for f in facts] + episodes).casefold()
         required = [token for token in expected if token.casefold() not in values]
         nonempty = bool(facts or episodes)
         passed = schema_ok and reason != "length" and (
@@ -119,6 +147,17 @@ def run(port, model, timeout):
             (f" finish={reason}" if reason not in ("stop", "") else ""),
             flush=True,
         )
+        if diagnose and not passed:
+            # Safe only because CASES contains synthetic prompts, never private chats.
+            print("  ROH-EXTRAKTION (nur fiktive Testdaten):",
+                  json.dumps({
+                      "facts": structure.get("facts", []),
+                      "episodes": structure.get("episodes", []),
+                      "raw_if_invalid": output[:1800] if not schema_ok else "",
+                  }, ensure_ascii=False)[:2400], flush=True)
+            print("  NACH VALIDIERUNG:",
+                  json.dumps({"facts": facts, "episodes": episodes},
+                             ensure_ascii=False)[:2400], flush=True)
     passed = sum(item["ok"] for item in results)
     valid_schema = sum(item["schema_ok"] for item in results)
     times = [item["seconds"] for item in results]
@@ -140,6 +179,10 @@ def main():
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--compare-port", type=int)
     parser.add_argument("--compare-model")
+    parser.add_argument("--diagnose", action="store_true",
+                        help="Print synthetic raw output and validated results for misses")
+    parser.add_argument("--cases", nargs="+",
+                        help="Evaluate only these named synthetic cases")
     args = parser.parse_args()
     ports = [args.port] + ([args.compare_port] if args.compare_port else [])
     if not all(1024 <= p <= 65535 for p in ports):
@@ -148,9 +191,15 @@ def main():
         parser.error("timeout must be between 10 and 900 seconds")
     if bool(args.compare_port) != bool(args.compare_model):
         parser.error("--compare-port and --compare-model must be provided together")
-    run(args.port, args.model, args.timeout)
+    valid_names = {case[0] for case in CASES}
+    if args.cases and not set(args.cases) <= valid_names:
+        parser.error("Unknown test case: " + ", ".join(sorted(set(args.cases) - valid_names)))
+    selected = set(args.cases) if args.cases else None
+    run(args.port, args.model, args.timeout,
+        selected=selected, diagnose=args.diagnose)
     if args.compare_port:
-        run(args.compare_port, args.compare_model, args.timeout)
+        run(args.compare_port, args.compare_model, args.timeout,
+            selected=selected, diagnose=args.diagnose)
     print("\nHinweis: Falsche Ablehnungen oder False Positives brauchen zusätzlich eine"
           " manuelle Qualitätsprüfung. Dieser Test schreibt keine Chats oder Fakten.")
 
