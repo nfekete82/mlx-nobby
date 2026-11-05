@@ -76,5 +76,11 @@
   "video_budget": "Video-RAM-Budget",
   "budget_ok": "Genügend Reserve (Schätzung)",
   "budget_release": "Zuerst andere Modelle entladen",
-  "budget_unknown": "RAM-Zulassung nicht einschätzbar"
+  "budget_unknown": "RAM-Zulassung nicht einschätzbar",
+  "memory_starting": "Gedächtnismodell startet",
+  "memory_draining": "Aktuelle Extraktion wird abgeschlossen",
+  "memory_media": "Für Bild/Video pausiert",
+  "memory_pressure": "Wartet auf freien RAM",
+  "memory_disabled": "Dediziertes Gedächtnis deaktiviert",
+  "memory_unavailable": "Memory-Supervisor nicht verfügbar"
 }
