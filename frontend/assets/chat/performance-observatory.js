@@ -31,6 +31,15 @@
         average: 'Average',
         samples: '{count} samples',
         runtime_title: 'Runtime state',
+        memory4b: 'Memory 4B',
+        memory_ready: 'Automatic extraction ready',
+        memory_paused: 'Extraction paused for resources',
+        memory_unmanaged: 'External model (not supervised)',
+        image_budget: 'Image memory budget',
+        video_budget: 'Video memory budget',
+        budget_ok: 'Headroom adequate (estimate)',
+        budget_release: 'Release other models first',
+        budget_unknown: 'Admission cannot be estimated',
         runtime_start: 'Runtime start',
         chat: 'Chat',
         image: 'Image',
@@ -382,10 +391,15 @@
             'performance-observatory-runtime-model',
             runtime.model || '—'
         ));
+        const activity = runtime.role === 'memory'
+            ? (runtime.supervisor_state === 'external'
+                ? t('memory_unmanaged')
+                : runtime.paused ? t('memory_paused') : t('memory_ready'))
+            : runtime.active ? t('active') : t('idle');
         card.append(el(
             'span',
             'performance-observatory-runtime-activity',
-            runtime.active ? t('active') : t('idle')
+            activity
         ));
         return card;
     }
@@ -399,13 +413,22 @@
         return item;
     }
 
+    function budgetText(value) {
+        switch (value?.state) {
+            case 'headroom_ok': return t('budget_ok');
+            case 'release_required': return t('budget_release');
+            default: return t('budget_unknown');
+        }
+    }
+
     function renderRuntimeAndMemory(snapshot) {
         const runtimes = snapshot?.system?.runtimes || {};
         const runtimeTarget = root.querySelector('[data-performance-runtimes]');
         runtimeTarget.replaceChildren(
             runtimeCard(t('chat'), runtimes.chat),
             runtimeCard(t('image'), runtimes.image),
-            runtimeCard(t('video'), runtimes.video)
+            runtimeCard(t('video'), runtimes.video),
+            runtimeCard(t('memory4b'), runtimes.memory4b)
         );
 
         const memory = snapshot?.system?.memory || {};
@@ -417,7 +440,9 @@
             memoryField(t('headroom'), formatGb(memory.headroom_gb)),
             memoryField(t('free'), formatPercent(memory.free_percent)),
             memoryField(t('reserve'), formatGb(memory.reserve_gb)),
-            memoryField(t('swap'), formatGb(memory.swap_used_gb))
+            memoryField(t('swap'), formatGb(memory.swap_used_gb)),
+            memoryField(t('image_budget'), budgetText(snapshot?.system?.admission?.image)),
+            memoryField(t('video_budget'), budgetText(snapshot?.system?.admission?.video))
         );
     }
 
