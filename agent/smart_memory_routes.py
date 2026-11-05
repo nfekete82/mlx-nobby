@@ -16,6 +16,16 @@ def install_routes(app, chat_host):
         except dedicated_memory_model.MemoryModelError as exc:
             raise HTTPException(500, str(exc)) from exc
 
+    @app.get("/api/smart-memory/supervisor")
+    def memory_supervisor_status():
+        from agent import memory_model_coordination as coordination
+        data = coordination.supervisor_state()
+        return {
+            "state": data.get("state", "not_installed"),
+            "managed": bool(data.get("owned", False)),
+            "extraction_paused_for_resources": bool(data.get("pause_extraction", False)),
+        }
+
     @app.post("/api/smart-memory/model")
     def memory_model_config(payload: dict):
         try:
