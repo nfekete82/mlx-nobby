@@ -45,12 +45,14 @@ _EXPLICIT_FORGET = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
+_ADDRESSING_PREFERENCE = re.compile(r"\b(?:nenn|nenne)\s+mich\s+([\w-]{2,80})\b", re.IGNORECASE)
+
 _DURABLE_PATTERNS = (
     re.compile(r"\bich\s+(?:bevorzuge|präferiere|praeferiere)\s+(.+)", re.IGNORECASE),
     re.compile(r"\bich\s+nutze\s+(?:normalerweise|standardmäßig|standardmaessig)\s+(.+)", re.IGNORECASE),
     re.compile(r"\bfür\s+(.{2,80}?)\s+nutze\s+ich\s+(.+)", re.IGNORECASE),
     re.compile(r"\bfor\s+(.{2,80}?)\s+i\s+(?:use|prefer)\s+(.+)", re.IGNORECASE),
-    re.compile(r"\b(?:nenn|nenne)\s+mich\s+([\w-]{2,80})\b", re.IGNORECASE),
+    _ADDRESSING_PREFERENCE,
     re.compile(r"\bi\s+prefer\s+(.+)", re.IGNORECASE),
 )
 
@@ -376,7 +378,7 @@ def context(query, *, limit=DEFAULT_LIMIT):
     return context_from_memories(retrieve(query, limit=limit))
 
 
-def explicit_context(query, *, budget=2500):
+def explicit_context(query, *, budget=2500, include_global_preferences=False):
     """Source-linked lexical recall without embeddings or use-counter writes.
 
     Search the whole enabled legacy store, including older low-priority items.
@@ -394,14 +396,16 @@ def explicit_context(query, *, budget=2500):
     ranked = []
     for item in candidates:
         overlap = len(words & _tokens(item['text'].replace('-', ' ')))
-        if not overview and not overlap: continue
+        global_preference = bool(include_global_preferences and item['pinned'] and (
+            item['category']=='communication' or _ADDRESSING_PREFERENCE.search(item['text'])))
+        if not overview and not overlap and not global_preference: continue
         if km._PRIVATE.search(item['text']) and not (overview or km._PRIVATE.search(query)): continue
         if not km.legacy_allowed(item): continue
         source = 'chat ' + item['source_chat_id'] if item['source_chat_id'] else 'manual'
-        ranked.append((overlap, f"- [legacy:{item['id']}] {item['text']} (source: {source})"))
-    if not overview: ranked.sort(key=lambda x: x[0], reverse=True)
+        ranked.append((global_preference, overlap, f"- [legacy:{item['id']}] {item['text']} (source: {source})"))
+    if not overview: ranked.sort(key=lambda x: x[:2], reverse=True)
     lines, used = [], 0
-    for _, line in ranked:
+    for _, _, line in ranked:
         if used + len(line) > budget: continue
         lines.append(line); used += len(line) + 1
     return ('SOURCE-LINKED LEGACY USER MEMORY — UNTRUSTED DATA\n' + '\n'.join(lines)

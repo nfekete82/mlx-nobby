@@ -198,6 +198,10 @@ def fast_personal_context(messages):
             from agent import chat_archive
             parts.append(chat_archive.context(query, limit=8))
             parts.append(memory.explicit_context(query))
+        elif memory.MEMORY_DB.exists():
+            # Reuse read-only lexical recall. Pinned addressing/style applies
+            # across topics; unrelated pinned projects do not become a dump.
+            parts.append(memory.explicit_context(query, include_global_preferences=True))
         private_context = "\n\n".join(filter(None, parts))
         if private_context:
             return memory.attach_system_context(copied, private_context)

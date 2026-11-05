@@ -2,6 +2,10 @@
 
 **WIP — keine Produktivfreigabe. Arbeit auf ausdrücklichen Wunsch beendet.**
 
+Nachtrag: Der damals offene Legacy-Deadline-Fehler wurde anschließend gezielt
+[nachgewiesen und korrigiert](pr424-legacy-deadline-20261105.md).
+Der folgende Bericht dokumentiert weiterhin den damaligen WIP-Stand.
+
 Testdatum: **5. November 2026** (Europe/Berlin). Kein Merge, Deployment,
 Modellwechsel, Neustart oder Schreibzugriff auf produktive Originaldaten.
 Die Anwendung auf 8090/8010 wurde für diese Abnahme nicht angesprochen.
