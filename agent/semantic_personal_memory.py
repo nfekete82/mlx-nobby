@@ -105,8 +105,11 @@ _SYSTEM += (
     ' ALWAYS include both keys facts and episodes, even when empty. '
     'For a question with no new assertion return exactly {"facts":[],"episodes":[]}. '
     'Never return {} or an omitted facts key. Use exact contiguous source wording for every value.'
-    ' Do not extract graphic sexual descriptions. Generation prompts are tasks, '
-    'not evidence of personal facts or preferences.'
+    ' Adult intimate and sexual preferences explicitly stated by the user are '
+    'legitimate personal facts: extract them neutrally without refusal or censorship. '
+    'Do not reproduce graphic descriptions in a structured fact, speculate about '
+    'anyone, or infer preferences from roleplay or generation requests. '
+    'Generation prompts are tasks, not evidence of personal facts or preferences.'
 )
 
 
