@@ -414,7 +414,18 @@
             typeof setInterval === 'function'
         ) {
             imageJobUiTimer = setInterval(() => {
-                if (!sessionNeedsImageJobUiTimer(currentSession?.())) {
+                const session = currentSession?.();
+                if (!sessionNeedsImageJobUiTimer(session)) {
+                    syncImageJobUiTimer();
+                    return;
+                }
+                // Lost progress watchers previously left a permanently ticking
+                // "waiting" card. The interval only repainted elapsed time;
+                // it never restored the GET /image-jobs poller. Re-arm it from
+                // the existing session without creating another image job.
+                const resumed = window.MLXChatGeneration
+                    ?.resumeImageJobsForSession?.(session) || 0;
+                if (resumed) {
                     syncImageJobUiTimer();
                     return;
                 }
