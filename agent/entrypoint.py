@@ -52,7 +52,7 @@ from agent.voice_manager_routes import install_routes as install_voice_manager_r
 # Standard browser text chat streams directly through agent.app instead of the
 # ModelProvider. Enrich that path at the ASGI boundary while leaving strict
 # helper/model calls untouched. Explicit media downloads promote temp assets.
-app.add_middleware(MemoryChatMiddleware)
+app.add_middleware(MemoryChatMiddleware, chat_host=gateway_host)
 app.add_middleware(MediaLifecycleDownloadMiddleware)
 
 install_openai_gateway(app, host=gateway_host)
@@ -65,6 +65,8 @@ install_media_lifecycle_routes(app)
 install_media_library_routes(app)
 install_memory_routes(app)
 install_memory_dashboard_routes(app)
+from agent.knowledge_memory_routes import install_routes as install_knowledge_memory_routes
+install_knowledge_memory_routes(app, chat_host=gateway_host)
 install_chat_archive_routes(app, gateway_host)
 install_personal_memory_routes(app, gateway_host)
 install_smart_memory_routes(app, gateway_host)
@@ -89,21 +91,31 @@ install_automation_routes(app)
 # Local Qwen extraction runs only on the native host and only after explicit
 # opt-in. Save requests enqueue work; the daemon does not block chat latency.
 def _smart_local_complete(message_json: str) -> str:
-    from agent.model_provider import ModelRequest
-    request = ModelRequest(
-        messages=[
-            {"role": "system", "content": semantic_personal_memory._SYSTEM},
-            {"role": "user", "content": message_json},
-        ],
-        role="agent", max_tokens=460, temperature=0,
+    from agent import dedicated_memory_model
+    mode = dedicated_memory_model.settings()["mode"]
+    messages = semantic_personal_memory.extraction_messages(
+        message_json, profile="compact" if mode == "dedicated" else "standard",
     )
-    return gateway_host.agent_model_provider().complete(request).text
+    def foreground_complete(request_messages):
+        from agent.model_provider import ModelRequest
+        request = ModelRequest(
+            messages=request_messages, role="chat", max_tokens=3000, temperature=0,
+        )
+        result = gateway_host.agent_model_provider().complete(request)
+        if result.finish_reason == 'length':
+            raise ValueError('Truncated memory extraction')
+        return result.text
+
+    # No foreground model change in dedicated mode; fallback only when configured.
+    return dedicated_memory_model.extract(messages, foreground_complete)
 
 
 semantic_personal_memory.configure(
-    chat_reader=gateway_host.read_chat,
+    chat_reader=gateway_host.memory_chat_reader,
     chat_lock=gateway_host.CHATS_LOCK,
     model_complete=_smart_local_complete,
+    revision_reader=gateway_host.memory_chat_reader,
+    history_reader=gateway_host.iter_memory_chats,
 )
 
 __all__ = ["app"]

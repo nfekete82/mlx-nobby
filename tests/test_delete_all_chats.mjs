@@ -21,7 +21,7 @@ function fixture() {
     vm.runInNewContext(source, {
         window, console: { warn() {} }, crypto: { randomUUID: () => 'new-empty' },
         localStorage: { getItem: key => cache.get(key), setItem: (key, value) => cache.set(key, value), removeItem: key => cache.delete(key) },
-        MLXCommon: { jsonRequest: (method, body) => ({ method, body }), fetchJson: (url, options) => { requests.push({ url, options }); return responder(url, options); } },
+        MLXCommon: { jsonRequest: (method, body) => ({ method, body }), fetchJson: (url, options) => { requests.push({ url, options }); if (url === '/api/mlx/chats/delete-intent') return Promise.resolve({ response: { ok: true }, data: { deletion_token: 'synthetic-test-permit' } }); return responder(url, options); } },
     });
     const api = window.MLXChatSessions;
     api.configure({ state, renderAll() {}, renderSidebar() {}, isGenerating: () => false, createSessionSettings: () => ({}), onSessionSelected() {} });
@@ -33,21 +33,24 @@ const ok = data => ({ response: { ok: true }, data });
 const deferred = () => { let resolve; const promise = new Promise(done => resolve = done); return { promise, resolve }; };
 
 test('cancel preserves history, cache, settings and running jobs', async () => {
-    const f = fixture(); f.confirm = false;
+    const f = fixture(); await f.api.syncWithServer(); f.confirm = false;
     const before = JSON.stringify(f.state);
     assert.equal(await f.api.deleteAllSessions(), false);
     assert.equal(JSON.stringify(f.state), before);
-    assert.equal(f.requests.length, 0); assert.equal(f.resets.length, 0);
+    assert.ok(f.requests.every(r => r.options?.method !== 'DELETE' && r.options?.method !== 'POST')); assert.equal(f.resets.length, 0);
     assert.equal(f.attachments, 0); assert.equal(f.detach, 0);
 });
 
 test('bulk deletion stops every session, clears only chat data and creates one empty chat', async () => {
-    const f = fixture(); const old = [...f.state.sessions];
+    const f = fixture(); await f.api.syncWithServer(); const old = [...f.state.sessions];
     assert.equal(await f.api.deleteAllSessions(), true);
     assert.equal(f.resets.length, 2);
     assert.ok(old.every(session => f.api.runtimeRevision(session) === 1));
-    assert.equal(f.requests[0].options.method, 'DELETE');
-    assert.deepEqual(Array.from(f.requests[0].options.body.ids), ['one', 'two']);
+    const auth = f.requests.find(r => r.url === '/api/mlx/chats/delete-intent');
+    const deletion = f.requests.find(r => r.options?.method === 'DELETE');
+    assert.equal(auth.options.method, 'POST');
+    assert.equal(deletion.options.body.deletion_token, 'synthetic-test-permit');
+    assert.deepEqual(Array.from(deletion.options.body.ids), ['one', 'two']);
     assert.equal(f.attachments, 1); assert.equal(f.detach, 1);
     assert.equal(f.cache.get('settings'), 'keep');
     assert.equal(f.state.sessions.length, 1);
@@ -61,7 +64,7 @@ test('bulk deletion stops every session, clears only chat data and creates one e
 });
 
 test('unreachable server retains local history and shows a failure dialog', async () => {
-    const f = fixture(); f.respond = async () => { throw new Error('offline'); };
+    const f = fixture(); await f.api.syncWithServer(); f.respond = async () => { throw new Error('offline'); };
     assert.equal(await f.api.deleteAllSessions(), false);
     assert.deepEqual(Array.from(f.state.sessions, chat => chat.id), ['one', 'two']);
     assert.equal(f.attachments, 0); assert.equal(f.detach, 0);
@@ -71,7 +74,7 @@ test('unreachable server retains local history and shows a failure dialog', asyn
 });
 
 test('late sync response cannot restore chats after deletion', async () => {
-    const f = fixture(); const sync = deferred();
+    const f = fixture(); await f.api.syncWithServer(); const sync = deferred();
     f.respond = (url, options) => options?.method === 'DELETE' ? Promise.resolve(ok({ ok: true })) : sync.promise;
     const pending = f.api.syncWithServer();
     await f.api.deleteAllSessions();

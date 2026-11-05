@@ -69,6 +69,23 @@ for line in sys.stdin:
 '''
 
 
+# Legacy media lifecycle tests request destructive actions explicitly, just as
+# the new Settings panel does. Unapproved deletion is tested separately.
+def approved_reset_chat(chat_id):
+    from agent import app as chat_agent
+    token = chat_agent.chat_delete_intent.issue(
+        scope="reset", chat_id=chat_id, confirmation="LÖSCHEN")
+    return chat_agent.reset_chat(chat_id, {"deletion_token": token})
+
+
+def approved_delete_chat(chat_id):
+    from agent import app as chat_agent
+    token = chat_agent.chat_delete_intent.issue(
+        scope="one", chat_id=chat_id, confirmation="LÖSCHEN")
+    return chat_agent.delete_chat(chat_id, {"deletion_token": token})
+
+
+
 class ImageRuntimeTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -1060,7 +1077,7 @@ class ImageRuntimeTests(unittest.TestCase):
                 "cancelled_count": 0,
             },
         ) as cancel_jobs:
-            result = agent.reset_chat(
+            result = approved_reset_chat(
                 "revision-reset-chat"
             )
 
@@ -3881,7 +3898,7 @@ class ImageRuntimeTests(unittest.TestCase):
             side_effect=failing_write_chat,
         ):
             with self.assertRaises(agent.HTTPException):
-                agent.reset_chat(chat_id)
+                approved_reset_chat(chat_id)
 
         self.assertTrue(
             image_path.exists(),
@@ -3928,7 +3945,7 @@ class ImageRuntimeTests(unittest.TestCase):
                 "cancelled_count": 0,
             },
         ) as cancel_jobs:
-            result = agent.delete_chat(chat_id)
+            result = approved_delete_chat(chat_id)
 
         cancel_jobs.assert_called_once_with(
             chat_id,
@@ -3999,7 +4016,7 @@ class ImageRuntimeTests(unittest.TestCase):
             failing_unlink,
         ):
             with self.assertRaises(agent.HTTPException):
-                agent.delete_chat(chat_id)
+                approved_delete_chat(chat_id)
 
         self.assertTrue(
             chat_file.exists(),
@@ -4150,7 +4167,7 @@ class ImageRuntimeTests(unittest.TestCase):
             path_mock.exists.return_value = True
             chat_path.return_value = path_mock
 
-            result = agent.reset_chat(chat_id)
+            result = approved_reset_chat(chat_id)
 
         write_chat.assert_called_once()
         cancel_jobs.assert_called_once_with(
@@ -4204,6 +4221,11 @@ class ImageRuntimeTests(unittest.TestCase):
                 ),
             ) as cancel_jobs,
             patch.object(
+                agent.chat_retention,
+                "preserve_deleted_chat",
+                return_value=self.root / "archived.json",
+            ) as preserve_memory,
+            patch.object(
                 agent,
                 "delete_chat_images",
                 return_value=([], []),
@@ -4213,14 +4235,15 @@ class ImageRuntimeTests(unittest.TestCase):
             path_mock.exists.return_value = True
             chat_path.return_value = path_mock
 
-            result = agent.delete_chat(chat_id)
+            result = approved_delete_chat(chat_id)
 
         path_mock.unlink.assert_called_once_with()
         cancel_jobs.assert_called_once_with(
             chat_id,
             None,
         )
-        delete_images.assert_called_once_with(chat)
+        preserve_memory.assert_called_once_with(agent.CHAT_DIRECTORY, chat_id)
+        delete_images.assert_not_called()
 
         self.assertEqual(
             result["deleted"],

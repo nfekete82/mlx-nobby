@@ -258,7 +258,7 @@
                 sections: [
                     {
                         title: t("Erinnern und vergessen", "Remember and forget"),
-                        body: t("Mit „Merk dir: …“ speicherst du dauerhafte Fakten oder Vorlieben. „Vergiss …“ entfernt passende Erinnerungen einschließlich verbundener historischer Varianten. Normale Fragen werden nicht automatisch gespeichert. Relevante Erinnerungen ergänzen lokale Chat-/Agent-Antworten; aktuelle Anweisungen haben Vorrang.", "Use “Remember that …” to store durable facts or preferences. “Forget …” removes matching memories including connected historical variants. Ordinary questions are not automatically stored. Relevant memories enrich local chat/agent responses; current instructions take precedence.")
+                        body: t("Mit „Merk dir: …“ speicherst du dauerhafte Fakten oder Vorlieben. Erinnerungen werden ausschließlich in den Einstellungen unter Memory ausdrücklich gelöscht; „Vergiss …“ im Chat löscht nichts. Normale Fragen werden nicht automatisch gespeichert. Relevante Erinnerungen ergänzen lokale Chat-/Agent-Antworten; aktuelle Anweisungen haben Vorrang.", "Use “Remember that …” to store durable facts or preferences. Memories are deleted only through explicit actions in Settings → Memory; typing “Forget …” in chat does not erase them. Ordinary questions are not automatically stored. Relevant memories enrich local chat/agent responses; current instructions take precedence.")
                     },
                     {
                         title: t("Verwalten und prüfen", "Manage and inspect"),

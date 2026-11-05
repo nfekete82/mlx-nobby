@@ -116,6 +116,7 @@
     "image_upscale_request": "Bild verbessern",
     "image_upscale_source_required": "Bitte wähle ein Bild zum Verbessern aus.",
     "image_upscale_unexpected_action": "Die Bildverbesserung wurde nicht angenommen.",
+    "image_job_check_status": "Status prüfen",
     "image_job_cancelled": "Bildauftrag abgebrochen.",
     "image_artifact_unavailable": "Der Bildjob wurde abgeschlossen, aber das Bild konnte nicht bereitgestellt werden.",
     "image_job_unavailable": "Der laufende Bildjob ist nicht mehr verfügbar. Der Image-Service wurde möglicherweise neu gestartet.",
@@ -407,6 +408,8 @@
     "image_step_last": "Letzter gemeldeter Schritt: {current}/{total}",
     "image_elapsed": "Laufzeit: {duration}",
     "media_phase_waiting": "Warten",
+    "media_phase_waiting_for_resources": "Warte auf freie KI-Ressourcen / Chatmodell",
+    "media_phase_waiting_for_service": "Warte auf Bilddienst",
     "media_phase_loading": "Laden",
     "media_phase_encoding": "Encoding",
     "media_phase_editing": "Editing",
@@ -1185,5 +1188,17 @@
     "mode_always": "Bevorzugt nachfragen",
     "mode_off": "Aus",
     "hint": "MLX-Nobby stellt gezielte Fragen, wenn fehlende Angaben die Antwort verbessern. Die Auswahl wird lokal gespeichert."
+  },
+  "chat_retention":   {
+    "title": "Daten dauerhaft löschen",
+    "warning": "Chats kannst du direkt in der Seitenleiste löschen, ohne das Langzeitgedächtnis zu verlieren. Erinnerungen und Wissensarchive werden nur über die Memory-Einstellungen verwaltet.",
+    "one": "Aktuellen Chat endgültig löschen",
+    "all": "Alle Chats endgültig löschen",
+    "confirm": "Dieser Vorgang löscht Chats und ihre gespeicherten Versionen unwiderruflich. Zugehörige Erinnerungen können dabei verloren gehen. Backups werden separat aufbewahrt. Gib LÖSCHEN ein, um fortzufahren.",
+    "final_confirm": "Endgültig löschen",
+    "error_title": "Löschen fehlgeschlagen",
+    "error": "Das Löschen konnte nicht abgeschlossen werden. Prüfe den Agent-Status, bevor du es erneut versuchst.",
+    "delete_chats_only": "Alle Chats aus der Verlaufsliste entfernen? Die Langzeiterinnerungen und erzeugten Medien bleiben erhalten. Eine private Wissenssicherung der Chats wird angelegt.",
+    "delete_one_only": "Diesen Chat aus der Verlaufsliste entfernen? Die Langzeiterinnerungen und erzeugten Medien bleiben erhalten."
   }
 }

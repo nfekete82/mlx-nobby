@@ -1382,6 +1382,22 @@ assert.equal(noStep.title, 'Image is being processed …');
 assert.match(noStep.details, /Phase: Generating/);
 assert.match(noStep.details, /Elapsed: 00:37/);
 
+const resourceWait = imageJobPresentation({
+    status: 'queued',
+    phase: 'waiting_for_resources',
+    created_at: 1000,
+}, 1030);
+assert.equal(resourceWait.title, 'Image job waiting …');
+assert.match(resourceWait.details, /Waiting for runtime resources/);
+assert.match(resourceWait.details, /Elapsed: 00:30/);
+
+const serviceWait = imageJobPresentation({
+    status: 'queued',
+    phase: 'waiting_for_service',
+    created_at: 1000,
+}, 1030);
+assert.match(serviceWait.details, /Waiting for image service/);
+
 const loading = imageJobPresentation({
     status: 'loading',
     created_at: 1000,
@@ -1427,6 +1443,28 @@ syncImageJobUiTimer();
 syncImageJobUiTimer();
 assert.equal(renderingIntervals.length, 1);
 assert.equal(renderingIntervals[0].delay, 1000);
+
+// Regression: the elapsed-time UI tick must restart a lost image progress
+// watcher. Previously it only redrew "waiting" forever until the user clicked
+// "Status prüfen" despite the server reporting real generation progress.
+let recoveredByUiTimer = false;
+let recoveryCalls = 0;
+renderingWindow.MLXChatGeneration.isWatchingImageJob =
+    () => recoveredByUiTimer;
+renderingWindow.MLXChatGeneration.resumeImageJobsForSession = session => {
+    assert.equal(session, cancellationSession);
+    recoveryCalls++;
+    recoveredByUiTimer = true;
+    return 1;
+};
+renderingIntervals[0].callback();
+assert.equal(recoveryCalls, 1);
+assert.equal(recoveredByUiTimer, true);
+assert.deepEqual(clearedRenderingIntervals, [1],
+    'timer stops when automatic progress polling is restored');
+// Restore the ordinary fixture for the remaining rendering tests.
+renderingWindow.MLXChatGeneration.isWatchingImageJob = () => false;
+delete renderingWindow.MLXChatGeneration.resumeImageJobsForSession;
 
 cancellationSession.messages = [
     { image_job: { status: 'completed' } },

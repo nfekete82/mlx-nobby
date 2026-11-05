@@ -138,14 +138,13 @@ def test_pinned_memory_can_be_retrieved_without_keyword_overlap(isolated_memory)
     assert any(item["text"] == "Nenn mich Nobby." for item in selected)
 
 
-def test_forget_removes_matching_memory(isolated_memory):
+def test_forget_cannot_erase_memory_from_chat(isolated_memory):
     memory.observe_user_message("Merk dir: Für Coding nutze ich Qwen3.8-27B.")
 
     result = memory.observe_user_message("Vergiss Qwen3.8-27B Coding")
 
-    assert result["action"] == "forgot"
-    assert result["count"] == 1
-    assert memory.list_memories() == []
+    assert result["action"] == "settings_only"
+    assert len(memory.list_memories()) == 1
 
 
 def test_enrich_messages_injects_bounded_memory_context(isolated_memory):

@@ -19,7 +19,7 @@
             error: 'Error',
             remove: 'Exclude this chat from memory',
             empty: 'No matching prior messages.',
-            warning: 'Turning off removes the derived search index, not the original chats.',
+            warning: 'Turning off pauses search. Indexed data and original chats remain saved until explicit deletion.',
         },
         de: {},
     };

@@ -501,7 +501,11 @@ def test_delete_all_chats_stops_running_variant_workers(runtime, monkeypatch, si
     monkeypatch.setattr(agent.image_api, 'request', bridge)
     monkeypatch.setattr(media_queue, 'cancel_chat', lambda *_: [])
     monkeypatch.setattr(shorts_jobs, 'cancel_chat_jobs', lambda *_: [])
-    result = agent.delete_all_chats()
+    result = agent.delete_all_chats({
+        'deletion_token': agent.chat_delete_intent.issue(
+            scope='all', confirmation='LÖSCHEN',
+        ),
+    })
     assert result['ok'] and result['deleted_count'] == 1
     assert result['job_cancellation']['variants-test']['image']['ok']
     assert all(wait(runtime, job['id'])['status'] == 'cancelled' for job in jobs)

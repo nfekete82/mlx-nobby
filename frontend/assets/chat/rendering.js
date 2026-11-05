@@ -198,6 +198,8 @@
             : String(job?.phase || status).toLowerCase();
         const labels = {
             queued: rt('media_phase_waiting', 'Waiting'),
+            waiting_for_resources: rt('media_phase_waiting_for_resources', 'Waiting for runtime resources'),
+            waiting_for_service: rt('media_phase_waiting_for_service', 'Waiting for image service'),
             starting: rt('media_phase_loading', 'Loading'),
             loading: rt('media_phase_loading', 'Loading'),
             loading_model: rt('media_phase_loading', 'Loading'),
@@ -414,7 +416,18 @@
             typeof setInterval === 'function'
         ) {
             imageJobUiTimer = setInterval(() => {
-                if (!sessionNeedsImageJobUiTimer(currentSession?.())) {
+                const session = currentSession?.();
+                if (!sessionNeedsImageJobUiTimer(session)) {
+                    syncImageJobUiTimer();
+                    return;
+                }
+                // Lost progress watchers previously left a permanently ticking
+                // "waiting" card. The interval only repainted elapsed time;
+                // it never restored the GET /image-jobs poller. Re-arm it from
+                // the existing session without creating another image job.
+                const resumed = window.MLXChatGeneration
+                    ?.resumeImageJobsForSession?.(session) || 0;
+                if (resumed) {
                     syncImageJobUiTimer();
                     return;
                 }
@@ -507,26 +520,6 @@ function renderSidebar() {
             }
         );
 
-        const remove =
-            document.createElement('button');
-
-        remove.className =
-            'chat-menu-item danger';
-
-        remove.textContent =
-            rt('delete', 'Delete');
-
-        remove.addEventListener(
-            'click',
-            event => {
-                event.stopPropagation();
-
-                deleteSession(
-                    session.id
-                );
-            }
-        );
-
         menuButton.addEventListener(
             'click',
             event => {
@@ -549,6 +542,14 @@ function renderSidebar() {
                 );
             }
         );
+
+        const remove = document.createElement('button');
+        remove.className = 'chat-menu-item danger';
+        remove.textContent = rt('delete', 'Delete');
+        remove.addEventListener('click', event => {
+            event.stopPropagation();
+            deleteSession(session.id);
+        });
 
         menu.appendChild(rename);
         menu.appendChild(remove);
@@ -2107,6 +2108,29 @@ function renderImageJobCard(message) {
             }
         });
         controls.appendChild(cancel);
+        // A completed image may already exist even when this browser still
+        // shows a queued card (tab throttling, lost watcher or stale sync).
+        // Reconcile directly without starting a second generation.
+        if (/^[a-f0-9]{24}$/.test(String(job.id || ''))) {
+            const refresh = document.createElement('button');
+            refresh.type = 'button';
+            refresh.className = 'message-action-btn';
+            refresh.textContent = rt('image_job_check_status', 'Status prüfen');
+            refresh.addEventListener('click', async () => {
+                refresh.disabled = true;
+                try {
+                    const session = MLXChatSessions.currentSession();
+                    await window.MLXChatGeneration?.refreshImageJobStatus?.(
+                        session, message
+                    );
+                } catch (error) {
+                    console.warn('Could not reconcile image job', error);
+                } finally {
+                    refresh.disabled = false;
+                }
+            });
+            controls.appendChild(refresh);
+        }
         card.appendChild(controls);
     }
 

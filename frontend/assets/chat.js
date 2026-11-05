@@ -550,6 +550,7 @@ function openDesktopSidebar() {
 }
 
 
+// The sidebar button deletes chat sessions only; long-term memory remains.
 document.getElementById('deleteAllChats')?.addEventListener('click', async event => {
     document.getElementById('chatHistoryMenu')?.removeAttribute('open');
     const button = event.currentTarget;

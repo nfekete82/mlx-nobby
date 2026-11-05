@@ -9,7 +9,7 @@
             title: 'Private personal memory',
             description: 'Locally saved facts about you, relationships, family and projects. Each fact has a source. The full chat archive is managed above. Nothing is uploaded.',
             toggle: 'Automatically learn facts from my local conversations',
-            warning: 'Disabled by default. Turning this off erases extracted facts and pending questions, not original chats or separately managed Nobby Memory.',
+            warning: 'Disabled by default. Turning this off pauses learning and recall. Saved facts and pending questions are retained until explicit deletion.',
             add: 'Add a fact', search: 'Search saved facts…',
             history: 'Show older versions', rebuild: 'Rebuild facts from local chats',
             pending: 'Questions requiring clarification',

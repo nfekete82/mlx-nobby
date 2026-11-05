@@ -21,7 +21,7 @@ not train the language model or upload conversation content to GitHub.
 
 Visit **Settings → Memory → Lokales Chatgedächtnis 2.0**. Enable indexing to
 backfill existing chats, search with a query, rebuild the index if necessary,
-or exclude individual chat IDs. Turning it off purges the index (but retains
+or exclude individual chat IDs. Turning it off pauses index access (and retains
 your original chat JSON files and existing distilled memory.db facts).
 
 Local API endpoints (the normal web proxy forwards to the native Agent):

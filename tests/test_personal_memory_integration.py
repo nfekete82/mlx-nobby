@@ -63,13 +63,16 @@ def test_live_chat_change_adds_pending_and_user_can_resolve():
         assert len(client.get("/api/personal-memory/conflicts").json()["conflicts"]) == 0
 
 
-def test_delete_chat_purges_derived_fact_and_keeps_other_chats():
+def test_delete_chat_keeps_derived_facts_as_independent_memory():
     with TestClient(chat_host.app, base_url="http://localhost") as writer, api() as client:
         client.post("/api/personal-memory/config", json={"enabled": True})
         writer.put("/api/chats/a", json=chat("a", "Meine Freundin heißt Kim"))
         assert client.get("/api/personal-memory/facts").json()["facts"]
-        assert writer.delete("/api/chats/a").status_code == 200
-        assert client.get("/api/personal-memory/facts").json()["facts"] == []
+        token = chat_host.chat_delete_intent.issue(scope="one", chat_id="a", confirmation="LÖSCHEN")
+        assert writer.request("DELETE", "/api/chats/a", json={"deletion_token": token}).status_code == 200
+        assert client.get("/api/personal-memory/facts").json()["facts"]
+        assert not chat_host.chat_path("a").exists()
+        assert list((chat_host.CHAT_DIRECTORY.parent / "long-term-chat-memory" / "a").glob("*.json"))
 
 
 def test_model_is_told_to_ask_about_detected_conflict(monkeypatch):

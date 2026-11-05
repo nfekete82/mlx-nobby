@@ -1214,8 +1214,15 @@ button {
     background: #1a202b;
 }
 
+/* Compact generated-image result in the chat. Full size is available by
+   clicking the image; never resize the stored image or download. */
 .image-artifact-card {
-    max-width: min(100%, 560px);
+    box-sizing: border-box;
+    width: min(100%, 380px);
+    max-width: 100%;
+}
+.image-artifact-card .batch-chat-details {
+    overflow-wrap: anywhere;
 }
 
 .video-artifact-card {
@@ -1234,9 +1241,11 @@ button {
 
 .image-artifact-preview {
     display: block;
-    width: 100%;
-    max-width: 512px;
-    max-height: 70vh;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: min(32vh, 300px);
+    max-height: min(32dvh, 300px);
     margin-top: 12px;
     border: 1px solid #334155;
     border-radius: 8px;
@@ -6792,13 +6801,16 @@ body.mlx-empty-chat .composer {
 .message-attachment-preview:focus-visible,
 .image-artifact-preview:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
+/* Shared click-to-enlarge dialog: fit the ORIGINAL image in the visible
+   viewport on desktop, phones and resized windows; do not crop it. */
 .image-preview-dialog {
     box-sizing: border-box;
-    width: min(95vw, 1200px);
-    max-width: 95vw;
-    max-height: 90vh;
-    max-height: 90dvh;
+    width: min(96vw, 1800px);
+    max-width: 96vw;
+    max-height: 96vh;
+    max-height: 96dvh;
     padding: 12px;
+    overflow: hidden;
     border: 1px solid var(--border);
     border-radius: 12px;
     background: var(--panel);
@@ -6806,7 +6818,16 @@ body.mlx-empty-chat .composer {
 }
 .image-preview-dialog::backdrop { background: rgba(0, 0, 0, .8); }
 .image-preview-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
-.image-preview-dialog img { display: block; margin: auto; width: auto; height: auto; max-width: 100%; max-height: calc(90vh - 80px); max-height: calc(90dvh - 80px); object-fit: contain; }
+.image-preview-dialog img {
+    display: block;
+    margin: auto;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: calc(96vh - 76px);
+    max-height: calc(96dvh - 76px);
+    object-fit: contain;
+}
 body.image-preview-open { overflow: hidden; }
 
 /* Precision image edit: accessible reveal slider. Original and edited

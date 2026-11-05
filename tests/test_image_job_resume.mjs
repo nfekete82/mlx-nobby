@@ -614,3 +614,87 @@ await settle();
 assert.equal(replacementMessage.image_job.status, 'completed');
 assert.equal(replacementMessage.tool_result.artifacts[0].image_id, imageArtifact.image_id);
 assert.equal(timeouts.size, 0);
+
+ 
+// A job can finish while a browser tab is backgrounded. If the normal watcher
+// is missing, the user can reconcile the queued card against the completed
+// Agent response without a new generation or a new chat message.
+stopAllWatchers();
+const manualId = 'f'.repeat(24);
+const manualMessage = storedMessage('queued', manualId, {tool: 'image_generate'});
+const manualSession = session('manual-complete', [manualMessage]);
+activeSession = manualSession;
+requests.length = 0;
+fetchImpl = async () => response(toolResult('completed', manualId, {
+    tool: 'image_generate', artifact: imageArtifact, finishedAt: 1080,
+}));
+assert.equal(await recovery.refreshImageJobStatus(manualSession, manualMessage), true);
+assert.equal(requests.length, 1);
+assert.equal(requests[0].url, '/api/mlx/image-jobs/' + manualId);
+assert.equal(requests[0].options.cache, 'no-store');
+assert.equal(manualMessage.image_job.status, 'completed');
+assert.equal(manualMessage.image_generation_pending, false);
+assert.equal(manualMessage.tool_result.artifacts[0].image_id, imageArtifact.image_id);
+assert.equal(manualSession.workspace.active_artifact_id, imageArtifact.artifact_id);
+assert.equal(manualSession.messages.length, 1);
+assert.equal(recovery.isWatchingImageJob(manualMessage), false);
+assert.equal(timeouts.size, 0);
+assert.equal(await recovery.refreshImageJobStatus(manualSession, manualMessage), false);
+assert.equal(requests.length, 1, 'completed jobs are not fetched again');
+
+// A late response cannot overwrite another session or a replaced message.
+const staleId = '1'.repeat(24);
+const staleMessage = storedMessage('queued', staleId, {tool: 'image_generate'});
+const staleSession = session('manual-stale-session', [staleMessage]);
+let manualResolve;
+activeSession = staleSession;
+fetchImpl = () => new Promise(resolve => { manualResolve = resolve; });
+const staleRequest = recovery.refreshImageJobStatus(staleSession, staleMessage);
+activeSession = manualSession;
+manualResolve(response(toolResult('completed', staleId, {
+    tool: 'image_generate', artifact: imageArtifact,
+})));
+assert.equal(await staleRequest, false);
+assert.equal(staleMessage.image_job.status, 'queued');
+assert.equal(staleMessage.tool_result.artifacts.length, 0);
+
+const missingManualId = '2'.repeat(24);
+const missingManualMessage = storedMessage('queued', missingManualId, {
+    tool: 'image_generate',
+});
+const missingManualSession = session('manual-missing', [missingManualMessage]);
+activeSession = missingManualSession;
+fetchImpl = async () => ({ok: false, status: 404});
+assert.equal(
+    await recovery.refreshImageJobStatus(missingManualSession, missingManualMessage),
+    true
+);
+assert.equal(missingManualMessage.image_job.status, 'failed');
+assert.equal(missingManualMessage.image_job.recovery_status, 'not_found');
+
+// A still-running job returns to automatic polling after a manual refresh.
+const continuingId = '3'.repeat(24);
+const continuingMessage = storedMessage('queued', continuingId, {
+    tool: 'image_generate',
+});
+const continuingSession = session('manual-continuing', [continuingMessage]);
+activeSession = continuingSession;
+fetchImpl = async () => response(toolResult('running', continuingId, {
+    tool: 'image_generate',
+}));
+assert.equal(
+    await recovery.refreshImageJobStatus(continuingSession, continuingMessage),
+    true
+);
+await settle();
+assert.equal(continuingMessage.image_job.status, 'running');
+assert.equal(recovery.isWatchingImageJob(continuingMessage), true);
+stopAllWatchers();
+
+// Rendering must expose the recovery action for active image jobs.
+const renderingSource = fs.readFileSync(
+    new URL('../frontend/assets/chat/rendering.js', import.meta.url), 'utf8'
+);
+assert.match(renderingSource, /image_job_check_status/);
+assert.match(renderingSource, /refreshImageJobStatus/);
+console.log('Manual stale-image reconciliation passed.');

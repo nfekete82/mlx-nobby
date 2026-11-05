@@ -25,6 +25,7 @@ import zlib
 from agent import knowledge
 from agent import profile
 from agent import chat_archive
+from agent import chat_delete_intent, chat_retention
 from agent import personal_memory
 from agent import semantic_personal_memory
 from agent import memory_dashboard
@@ -394,18 +395,31 @@ def read_chat(chat_id):
 
 
 def write_chat(chat):
+    from agent import memory_forgetting
+    try:
+        memory_forgetting.filter_deleted_originals(chat)
+    except Exception as error:
+        # Never accept a stale save when original-deletion rules cannot be checked.
+        if personal_memory.DB_PATH.exists():
+            raise HTTPException(503, 'Chat-Löschregeln konnten nicht geprüft werden') from error
     path = chat_path(chat["id"])
     temporary_path = None
 
     try:
-        CHAT_DIRECTORY.mkdir(parents=True, exist_ok=True)
+        CHAT_DIRECTORY.mkdir(parents=True, exist_ok=True, mode=0o700)
         temporary_path = CHAT_DIRECTORY / (
             f".{chat['id']}.{uuid.uuid4().hex}.tmp"
         )
-        temporary_path.write_text(
-            json.dumps(chat, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        # Preserve prior text before destructive edit; never auto-purge.
+        chat_retention.preserve_before_overwrite(path, chat)
+        fd = os.open(
+            temporary_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
         )
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(chat, stream, ensure_ascii=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
         os.replace(temporary_path, path)
         # Derived, opt-in local search index. Chat persistence must still work
         # when SQLite/FTS is unavailable.
@@ -413,17 +427,21 @@ def write_chat(chat):
             try:
                 chat_archive.index_chat(chat)
             except Exception as archive_error:
-                logger.warning("Local chat archive indexing failed: %s", archive_error)
+                logger.warning("Local chat archive indexing failed: %s", type(archive_error).__name__)
+                from agent import knowledge_memory
+                knowledge_memory.diagnose("archive", archive_error)
             try:
                 personal_memory.index_chat(chat)
             except Exception as memory_error:
-                logger.warning("Private personal memory indexing failed: %s", memory_error)
-            try:
-                # Fire-and-forget: the local Qwen worker must never delay a
-                # chat save or write model output into the authoritative chat.
-                semantic_personal_memory.enqueue(chat)
-            except Exception:
-                logger.warning("Local semantic memory scheduling failed")
+                logger.warning("Private personal memory indexing failed: %s", type(memory_error).__name__)
+                from agent import knowledge_memory
+                knowledge_memory.diagnose("indexing", memory_error)
+        try:
+            # Persist work during pause too; inference still waits for resume.
+            # A save may contain multiple previously unseen user turns.
+            semantic_personal_memory.enqueue(chat, latest_only=False)
+        except Exception:
+            logger.warning("Local semantic memory scheduling failed")
     except Exception as exc:
         raise HTTPException(
             status_code=500,
@@ -433,6 +451,83 @@ def write_chat(chat):
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
 
+
+def archived_memory_chat(chat_id):
+    """Load the latest owner-only archival source without making it a visible chat.
+
+    The archive is a memory source, never a restored active session. Explicit
+    memory tombstones are still enforced by smart/knowledge extraction.
+    """
+    return next(iter_archived_memory_chats(chat_id, newest_first=True), None)
+
+
+def iter_archived_memory_chats(chat_id, *, newest_first=False):
+    """Read every retained source revision; never restore it into the sidebar."""
+    validate_chat_id(chat_id)
+    vault = CHAT_DIRECTORY.parent / "long-term-chat-memory"
+    if vault.is_symlink():
+        raise ValueError("Unsafe long-term memory root")
+    revisions = CHAT_DIRECTORY / '.revisions'
+    if revisions.is_symlink():
+        raise ValueError('Unsafe chat revision root')
+    paths = []
+    for root in (vault, revisions):
+        folder = root / chat_id
+        if folder.is_symlink():
+            raise ValueError("Unsafe archived chat directory")
+        if folder.is_dir():
+            paths.extend(p for p in folder.glob('*.json') if p.is_file() and not p.is_symlink())
+    for source in sorted(paths, key=lambda p: p.stat().st_mtime_ns, reverse=newest_first):
+        try:
+            chat = normalize_chat(json.loads(source.read_text(encoding="utf-8")), expected_id=chat_id)
+        except (OSError, UnicodeError, ValueError, TypeError):
+            logger.warning("Invalid private memory archive for chat %s", chat_id)
+            raise ValueError('Unreadable historical chat source') from None
+        if chat is not None:
+            yield chat
+        else:
+            raise ValueError('Invalid historical chat source')
+
+
+def memory_chat_reader(chat_id, *, ordinal=None, digest=None):
+    """Smart-Qwen source lookup: active first, archival fallback after UI delete."""
+    current = read_chat(chat_id)
+    if digest is None:
+        return current or archived_memory_chat(chat_id)
+    from agent.knowledge_memory import digest as source_digest
+    def matches(chat):
+        messages = chat.get('messages', []) if chat else []
+        return (isinstance(ordinal, int) and 0 <= ordinal < len(messages)
+                and source_digest(messages[ordinal].get('content', '')) == digest)
+    if matches(current):
+        return current
+    return next((chat for chat in iter_archived_memory_chats(chat_id, newest_first=True)
+                 if matches(chat)), None)
+
+
+def iter_memory_chats():
+    """Stream all authoritative source chats, including deleted-sidebar vaults."""
+    vault = CHAT_DIRECTORY.parent / "long-term-chat-memory"
+    if vault.is_symlink():
+        raise ValueError("Unsafe long-term memory root")
+    revisions = CHAT_DIRECTORY / '.revisions'
+    if revisions.is_symlink():
+        raise ValueError('Unsafe chat revision root')
+    ids = set()
+    for root in (vault, revisions):
+        if root.is_dir():
+            ids.update(folder.name for folder in root.iterdir()
+                       if folder.is_dir() and not folder.is_symlink() and CHAT_ID_PATTERN.fullmatch(folder.name))
+    for chat_id in sorted(ids):
+        yield from iter_archived_memory_chats(chat_id)
+    paths = sorted(CHAT_DIRECTORY.glob("*.json"), key=lambda path: path.stat().st_mtime)
+    for path in paths:
+        if path.is_symlink() or not CHAT_ID_PATTERN.fullmatch(path.stem):
+            continue
+        with CHATS_LOCK:
+            chat = read_chat(path.stem)
+        if chat is not None:
+            yield chat
 
 def list_chats():
     try:
@@ -1339,7 +1434,12 @@ def _best_effort_cancel_chat_image_jobs(
 
 
 @app.post("/api/chats/{chat_id}/reset")
-def reset_chat(chat_id: str):
+def reset_chat(chat_id: str, request: dict | None = None):
+    if not chat_delete_intent.consume(
+        scope="reset", token=(request or {}).get("deletion_token"),
+        chat_id=chat_id,
+    ):
+        raise HTTPException(403, "Explicit chat deletion approval required")
     """Clear one chat while preserving the chat session itself."""
 
     path = chat_path(chat_id)
@@ -1417,8 +1517,29 @@ def cancel_chat_media_jobs(chat_id, chat):
     return results
 
 
+@app.post("/api/chats/delete-intent")
+def authorize_chat_deletion(request: dict):
+    """One-use permit after an explicit UI confirmation; no memory deletion."""
+    scope = request.get("scope")
+    chat_id = request.get("chat_id")
+    if scope in ("one", "reset"):
+        validate_chat_id(chat_id)
+    try:
+        token = chat_delete_intent.issue(
+            scope=scope, confirmation=request.get("confirmation"),
+            chat_id=chat_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"deletion_token": token, "expires_in": 90}
+
+
 @app.delete("/api/chats")
 def delete_all_chats(request: dict | None = None):
+    if not chat_delete_intent.consume(
+        scope="all", token=(request or {}).get("deletion_token"),
+    ):
+        raise HTTPException(403, "Explicit chat deletion approval required")
     requested_ids = (request or {}).get("ids", [])
     if not isinstance(requested_ids, list):
         raise HTTPException(status_code=400, detail="ids must be a list")
@@ -1437,17 +1558,21 @@ def delete_all_chats(request: dict | None = None):
             raise HTTPException(status_code=500, detail="A chat could not be read before deletion")
         by_id = {chat["id"]: chat for chat in chats}
         ids = set(by_id) | set(requested_ids)
-        # Atomic logical deletion before cleanup: late PUTs cannot recreate files.
+        # Archive *every* complete source before any logical deletion.
+        # A failed archive aborts the entire operation; memories, searchable
+        # history and generated media remain independently retained.
+        try:
+            for chat in chats:
+                chat_retention.preserve_deleted_chat(CHAT_DIRECTORY, chat["id"])
+        except (OSError, ValueError) as archive_error:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Long-term chat memory backup failed: {type(archive_error).__name__}",
+            ) from archive_error
+        # Tombstones reject late writes from other browser tabs.
         write_deleted_chat_ids(previous | ids)
-        # Purge derived search entries for deleted chats; never let a
-        # previously indexed conversation appear in future memory retrieval.
-        for erased_id in ids:
-            for cleanup in (chat_archive.remove_chat, personal_memory.remove_chat):
-                try:
-                    cleanup(erased_id, exclude=True)
-                except Exception as archive_error:
-                    logger.error("Local memory privacy purge failed for %s: %s",
-                                 erased_id, archive_error)
+        # Do not purge chat_archive, personal_memory, semantic memories or
+        # chat revisions here. Those are long-term memory, not UI history.
         cancellations = {chat_id: cancel_chat_media_jobs(chat_id, by_id.get(chat_id)) for chat_id in ids}
         deleted_images, failed_images, failed_files = [], [], []
         for chat in chats:
@@ -1455,9 +1580,6 @@ def delete_all_chats(request: dict | None = None):
                 chat_path(chat["id"]).unlink(missing_ok=True)
             except OSError:
                 failed_files.append(chat["id"])
-            deleted, failed = delete_chat_images(chat)
-            deleted_images.extend(deleted)
-            failed_images.extend(failed)
 
     return {"ok": True, "deleted_count": len(chats),
             "deleted_images": deleted_images, "failed_images": failed_images,
@@ -1465,7 +1587,12 @@ def delete_all_chats(request: dict | None = None):
 
 
 @app.delete("/api/chats/{chat_id}")
-def delete_chat(chat_id: str):
+def delete_chat(chat_id: str, request: dict | None = None):
+    if not chat_delete_intent.consume(
+        scope="one", token=(request or {}).get("deletion_token"),
+        chat_id=chat_id,
+    ):
+        raise HTTPException(403, "Explicit chat deletion approval required")
     path = chat_path(chat_id)
 
     with CHATS_LOCK:
@@ -1484,18 +1611,15 @@ def delete_chat(chat_id: str):
             )
 
         try:
+            chat_retention.preserve_deleted_chat(CHAT_DIRECTORY, chat_id)
             path.unlink()
         except Exception as exc:
             raise HTTPException(
                 status_code=500,
-                detail=f"Chat konnte nicht gelöscht werden: {exc}",
-            )
-        for cleanup in (chat_archive.remove_chat, personal_memory.remove_chat):
-            try:
-                cleanup(chat_id, exclude=True)
-            except Exception as archive_error:
-                logger.error("Local memory privacy purge failed for %s: %s",
-                             chat_id, archive_error)
+                detail=f"Chat konnte nicht archiviert/gelöscht werden: {type(exc).__name__}",
+            ) from exc
+        # Retain all independent memory sources and prior chat revisions.
+        revision_error = None
 
         # The chat file is gone. Cancel every active image job
         # owned by this chat, regardless of revision.
@@ -1505,12 +1629,14 @@ def delete_chat(chat_id: str):
             )
         )
 
-        deleted_images, failed_images = delete_chat_images(chat)
+        # Generated media belong to the user's library, not to the chat list.
+        deleted_images, failed_images = [], []
 
     return {
         "deleted": chat_id,
         "deleted_images": deleted_images,
         "failed_images": failed_images,
+        "failed_revisions": revision_error,
         "image_job_cancellation": image_job_cancellation,
     }
 
@@ -6673,7 +6799,18 @@ def tool_pii_audit(request):
     return deterministic_pii_audit(path.read_text(encoding="utf-8", errors="replace"))
 
 def tool_knowledge_search(request):
-    return knowledge.search(request.prompt)
+    result = knowledge.search(request.prompt)
+    try:
+        from agent import knowledge_memory
+        current = run_state.current_run_context()
+        original_goal = current.user_goal if current and current.user_goal else request.prompt
+        recalled = knowledge_memory.context(request.prompt, budget=5000, semantic=True, privacy_query=original_goal)
+        if recalled and isinstance(result, dict):
+            result = {**result, 'personal_memory': recalled}
+    except Exception as error:
+        from agent import knowledge_memory
+        knowledge_memory.diagnose('additional_recall', error)
+    return result
 
 def tool_knowledge_add(request):
     match = re.search(r"(?:indexiere)\s+(.+?)(?:\s*$)", request.prompt, re.I)
@@ -13372,7 +13509,7 @@ def _build_agent_tool_registry():
         ("system_status", "Inspect system and MLX runtime status.", "READ", (), None, None),
         ("logs_query", "Read recent service logs.", "READ", (), None, None),
         ("batch_status", "Inspect batch job status.", "READ", (), None, None),
-        ("knowledge_search", "Search the local knowledge index.", "READ", (), None, None),
+        ("knowledge_search", "Search local documents and source-linked personal memories for additional evidence.", "READ", (), None, None),
         ("code_search", "Search the active code workspace.", "READ", (), None, None),
         ("code_files", "Find files in the active code workspace.", "READ", (), None, None),
         ("code_read", "Read a workspace file, optionally with a line range.", "READ", (), None, None),

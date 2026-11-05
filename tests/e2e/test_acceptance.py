@@ -216,8 +216,33 @@ def test_image_job_preview_download(ui):
     image.evaluate('(img) => img.decode()')
     assert image.evaluate('(img) => img.naturalWidth > 0 && img.naturalHeight > 0')
     expect(page.locator('.image-artifact-card a[href*="download=1"]')).to_be_visible()
+    # Chat thumbnails stay compact; original image is untouched and clickable.
+    dimensions = page.evaluate("""() => {
+        const card = document.querySelector('.image-artifact-card');
+        const img = document.querySelector('.image-artifact-preview');
+        return {
+            cardWidth: card.getBoundingClientRect().width,
+            thumbHeight: img.getBoundingClientRect().height,
+            viewportWidth: window.innerWidth,
+            viewportHeight: window.innerHeight,
+        };
+    }""")
+    assert dimensions["cardWidth"] <= min(381, dimensions["viewportWidth"])
+    assert dimensions["thumbHeight"] <= min(301, 0.32 * dimensions["viewportHeight"] + 2)
+
     image.click()
     expect(page.locator('.image-preview-dialog')).to_be_visible()
+    page.set_viewport_size({"width": 680, "height": 450})
+    page.locator('.image-preview-dialog img').evaluate('(img) => img.decode()')
+    fitted = page.evaluate("""() => {
+        const img = document.querySelector('.image-preview-dialog img');
+        const bounds = img.getBoundingClientRect();
+        return {left: bounds.left, right: bounds.right,
+                top: bounds.top, bottom: bounds.bottom,
+                width: window.innerWidth, height: window.innerHeight};
+    }""")
+    assert fitted["left"] >= -1 and fitted["right"] <= fitted["width"] + 1
+    assert fitted["top"] >= -1 and fitted["bottom"] <= fitted["height"] + 1
     page.locator('.image-preview-dialog button').click()
     expect(page.locator('.image-preview-dialog')).not_to_be_visible()
     assert [j['status'] for j in agent.jobs.values()] == ['completed']

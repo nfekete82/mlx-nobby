@@ -114,6 +114,18 @@ def delete_memory(memory_id):
 
 def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory.DEFAULT_LIMIT):
     copied = [dict(message) for message in (messages or [])]
+    last_turn = next((
+        message.get("content") for message in reversed(copied)
+        if message.get("role") == "user"
+        and isinstance(message.get("content"), str)
+    ), None)
+    if last_turn and memory._EXPLICIT_FORGET.match(last_turn):
+        return memory.attach_system_context(
+            copied,
+            "RETENTION POLICY: This chat request did not delete any memory. "
+            "Do not claim to have forgotten or erased data. Explain that "
+            "permanent deletion requires explicit action in Settings > Memory.",
+        )
     if memory_dashboard.paused():
         return copied
     last_user = next(
@@ -128,6 +140,9 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory
     if not last_user:
         return copied
 
+    if personal_memory.recall_requested(memory.recall_query(copied)):
+        return fast_personal_context(copied)
+
     if observe:
         observe_user_message(last_user, source_chat_id=source_chat_id)
 
@@ -141,22 +156,71 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory
     )
     try:
         clarification = personal_memory.question_for(last_user, source_chat_id=source_chat_id)
-        personal_context = personal_memory.context(last_user, limit=6)
+        personal_context = personal_memory.context(
+            memory.recall_query(copied), limit=6,
+        )
+        from agent import knowledge_memory
+        knowledge_context = knowledge_memory.context(memory.recall_query(copied), semantic=True)
         extra = "\n\n".join(part for part in (
-            clarification, personal_context,
+            clarification, personal_context, knowledge_context,
         ) if part)
         if extra:
-            enriched = memory.attach_system_context(enriched, extra)
-    except Exception:
-        # Memory must never block normal chat completion.
-        pass
+            enriched = memory.attach_system_context(enriched, extra[:9000])
+    except Exception as error:
+        from agent import knowledge_memory
+        knowledge_memory.diagnose('recall', error)
     return enriched
+
+
+def fast_personal_context(messages):
+    """Read-only, local fallback when legacy semantic recall misses its deadline.
+
+    This does not run embeddings, observe user messages, resolve conflicts,
+    or mutate stored memories. It keeps the core personal context available
+    for ordinary chat even during slow legacy-memory indexing.
+    """
+    copied = [dict(message) for message in (messages or [])]
+    if memory_dashboard.paused():
+        return copied
+    query = memory.recall_query(copied)
+    if not query:
+        return copied
+    try:
+        from agent import knowledge_memory
+        # Include the old durable-memory inventory for explicit user overviews.
+        # Unlike ordinary lexical recall, this does not require embeddings.
+        explicit = personal_memory.recall_requested(query)
+        parts = ([knowledge_memory.context(query, budget=18000)] if explicit else [
+            personal_memory.context(query, limit=6),
+            knowledge_memory.context(query, budget=3000),
+        ])
+        if explicit:
+            from agent import chat_archive
+            parts.append(chat_archive.context(query, limit=8))
+            parts.append(memory.explicit_context(query))
+        elif memory.MEMORY_DB.exists():
+            # Reuse read-only lexical recall. Pinned addressing/style applies
+            # across topics; unrelated pinned projects do not become a dump.
+            parts.append(memory.explicit_context(query, include_global_preferences=True))
+        private_context = "\n\n".join(filter(None, parts))
+        if private_context:
+            return memory.attach_system_context(copied, private_context)
+    except Exception as error:
+        from agent import knowledge_memory
+        knowledge_memory.diagnose('recall', error)
+        if personal_memory.recall_requested(query):
+            return memory.attach_system_context(copied,
+                'LOCAL MEMORY RETRIEVAL UNAVAILABLE. Explain the temporary retrieval failure. '
+                'Do not claim there are no stored memories or invent personal facts.')
+        return copied
+    return copied
 
 
 __all__ = [
     "create_memory",
     "delete_memory",
     "enrich_messages",
+    "fast_personal_context",
     "observe_user_message",
     "update_memory",
 ]

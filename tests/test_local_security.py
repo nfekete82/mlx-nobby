@@ -1,4 +1,6 @@
 import os
+import asyncio
+import httpx
 import unittest
 from unittest.mock import patch
 
@@ -42,8 +44,13 @@ def guarded_app():
 class LocalRequestGuardTests(unittest.TestCase):
     def request(self, base_url, *, allowed_hosts=ALLOWED_HOSTS, headers=None):
         with patch.dict(os.environ, {"MLX_ALLOWED_HOSTS": allowed_hosts}, clear=False):
-            with TestClient(guarded_app(), base_url=base_url) as client:
-                return client.get("/", headers=headers or {})
+            # Exercise the actual ASGI guard for IPv4 and bracketed IPv6.
+            # Starlette 1.6's deprecated httpx TestClient splits IPv6 netloc
+            # at the first colon before the request can reach the guard.
+            async def send():
+                async with httpx.AsyncClient(transport=httpx.ASGITransport(app=guarded_app()), base_url=base_url) as client:
+                    return await client.get('/', headers=headers or {})
+            return asyncio.run(send())
 
     def test_allows_https_origin_behind_tls_terminating_proxy(self):
         response = self.request(

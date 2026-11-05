@@ -1,119 +1,42 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const chatHtml = fs.readFileSync(
-    new URL('../frontend/chat.html', import.meta.url),
-    'utf8',
-);
+const html = fs.readFileSync(new URL('../frontend/chat.html', import.meta.url), 'utf8');
+const chat = fs.readFileSync(new URL('../frontend/assets/chat.js', import.meta.url), 'utf8');
+const sessions = fs.readFileSync(new URL('../frontend/assets/chat/sessions.js', import.meta.url), 'utf8');
 
-const chatJs = fs.readFileSync(
-    new URL('../frontend/assets/chat.js', import.meta.url),
-    'utf8',
-);
+// Confirm modal and its shared helper remain available.
+for (const id of ['confirmModal', 'confirmModalConfirm', 'confirmModalCancel']) {
+    assert.match(html, new RegExp('id="' + id + '"'));
+}
+assert.match(chat, /window\.MLXConfirm\s*=\s*showConfirmModal/);
 
-const sessionsJs = fs.readFileSync(
-    new URL('../frontend/assets/chat/sessions.js', import.meta.url),
-    'utf8',
-);
+// "All chats" is still in the main sidebar, NOT under Settings.
+assert.match(html, /id="chatHistoryMenu"/);
+assert.match(html, /id="deleteAllChats"/);
+assert.doesNotMatch(html, /id="settingsDeleteAllChats"/);
+assert.match(chat, /MLXChatSessions\.deleteAllSessions\(\)/);
 
-assert.match(
-    chatHtml,
-    /id="confirmModal"/,
-);
+// The sidebar action requires a confirmation before it sends a scoped request.
+const start = sessions.indexOf('async function deleteAllSessions()');
+const end = sessions.indexOf('function renameSession(', start);
+assert.ok(start > -1 && end > start);
+const bulk = sessions.slice(start, end);
+assert.match(bulk, /await window\.MLXConfirm\(\{/);
+assert.match(bulk, /if \(!confirmed\) return false/);
+assert.match(bulk, /chatDeleteApproval\('all'\)/);
+assert.match(bulk, /deletion_token: deletionToken/);
+assert.match(bulk, /await window\.MLXChatWorkspace\?\.deactivate\?\.\(\)/);
 
-assert.match(
-    chatHtml,
-    /id="confirmModalConfirm"/,
-);
+// There is no hidden destructive "clear messages" shortcut.
+const clearStart = sessions.indexOf('async function deleteMessages()');
+const clearEnd = sessions.indexOf('function updateTitle(', clearStart);
+assert.ok(clearStart > -1 && clearEnd > clearStart);
+const clear = sessions.slice(clearStart, clearEnd);
+assert.match(clear, /return false/);
+assert.doesNotMatch(clear, /api\/mlx\/chats/);
 
-assert.match(
-    chatHtml,
-    /id="confirmModalCancel"/,
-);
-
-assert.match(
-    chatJs,
-    /window\.MLXConfirm\s*=\s*showConfirmModal/,
-);
-
-assert.match(
-    sessionsJs,
-    /async function deleteMessages\(\)/,
-);
-
-assert.match(
-    sessionsJs,
-    /await confirmFn\(\{/,
-);
-
-const deleteMessagesStart =
-    sessionsJs.indexOf('async function deleteMessages()');
-
-const updateTitleStart =
-    sessionsJs.indexOf(
-        'function updateTitle(session)',
-        deleteMessagesStart,
-    );
-
-assert.notEqual(deleteMessagesStart, -1);
-assert.notEqual(updateTitleStart, -1);
-
-const deleteMessagesBlock =
-    sessionsJs.slice(
-        deleteMessagesStart,
-        updateTitleStart,
-    );
-
-assert.doesNotMatch(
-    deleteMessagesBlock,
-    /(^|[^A-Za-z])confirm\s*\(/,
-);
-
-assert.match(
-    deleteMessagesBlock,
-    /delete session\.workspace\.active_artifact_id;/,
-);
-
-assert.match(
-    deleteMessagesBlock,
-    /if \(!Object\.keys\(session\.workspace\)\.length\)/,
-);
-
-assert.match(
-    deleteMessagesBlock,
-    /const resetResult = await response\.json\(\)/,
-);
-
-assert.match(
-    deleteMessagesBlock,
-    /session\.revision = revision/,
-);
-
-
-assert.match(
-    deleteMessagesBlock,
-    /await window\.MLXChatWorkspace\?\.deactivate\?\.\(\)/,
-    'clearing a chat must deactivate the active workspace',
-);
-
-assert.match(
-    chatJs,
-    /async function deactivateWorkspace\(\)/,
-    'chat runtime must expose workspace deactivation',
-);
-
-assert.match(
-    chatJs,
-    /method:\s*['"]DELETE['"]/,
-    'workspace deactivation must use DELETE',
-);
-
-assert.match(
-    chatJs,
-    /deactivate:\s*deactivateWorkspace/,
-    'workspace deactivation must be exported for chat reset',
-);
-
-console.log(
-    'Confirm modal: markup, helper, async clear-chat flow, and native confirm removal passed.'
-);
+// Workspace deactivation remains available.
+assert.match(chat, /async function deactivateWorkspace\(\)/);
+assert.match(chat, /deactivate:\s*deactivateWorkspace/);
+console.log('Sidebar chat deletion confirmation and non-destructive memory boundary passed.');
