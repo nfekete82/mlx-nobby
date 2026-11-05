@@ -184,14 +184,14 @@ def test_dispatch_uses_chat_role_only_until_explicit_opt_in(local_server):
     assert calls == [messages, messages]
 
 
-def test_compact_profile_targets_small_model_without_changing_chat_prompt():
+def test_compact_profile_targets_small_model_with_shared_claim_rules():
     payload = json.dumps({"message": "Ich entwickle beruflich mit PHP.",
                           "context": ""}, ensure_ascii=False)
     standard = smart.extraction_messages(payload)
     assert standard == smart.extraction_messages(payload, profile="standard")
-    assert standard[0]["content"] == smart._SYSTEM
+    assert standard[0]["content"] == smart._SYSTEM + smart._CLAIM_RULES
     dedicated = smart.extraction_messages(payload, profile="compact")
-    assert dedicated[0]["content"] == smart._SYSTEM_COMPACT
+    assert dedicated[0]["content"] == smart._SYSTEM_COMPACT + smart._CLAIM_RULES
     assert dedicated[1] == standard[1]
     assert 'VERBOTEN als subject' in dedicated[0]["content"]
     assert 'value ein EXAKTER' in dedicated[0]["content"]

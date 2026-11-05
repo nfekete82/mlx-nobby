@@ -19,7 +19,7 @@ VERSION = 5
 CATEGORIES = ('about', 'life', 'people', 'events', 'preferences', 'work', 'media', 'decisions')
 KINDS = ('statement', 'fact', 'plan', 'interpretation', 'assumption')
 _WORD = re.compile(r'[^\W_][\w-]{2,}', re.UNICODE)
-_PRIVATE = re.compile(r'\b(?:kindheit|childhood|familie|family|sohn|tochter|kinder?|son|daughter|bruder|schwester|mutter|vater|eltern|freundin?|ehe\w*|partner\w*|beziehung\w*|relationship|gesundheit|health|trauma\w*|erfahrung\w*|experience\w*|vergangenheit|past|lebensgeschichte|life story|sex\w*|intim\w*)\b', re.I)
+_PRIVATE = re.compile(r'\b(?:kindheit|childhood|familie|family|sohn|tochter|kinder?|son|daughter|bruder|schwester|mutter|vater|eltern|freundin?|ehe\w*|partner\w*|beziehung\w*|relationship|gesund\w*|health|trauma\w*|erfahrung\w*|experience\w*|vergangenheit|past|lebensgeschichte|life story|sex\w*|intim\w*)\b', re.I)
 _SECRET = re.compile(r'\b(?:passwort|password|api[ _-]?key|access[ _-]?token|private[ _-]?key|secret|bearer|pin[ _-]?(?:code|nummer))\b|\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{16,})|-----BEGIN .*PRIVATE KEY', re.I)
 _NO_LEARN = re.compile(r'(?:merk\w*\s+dir\s+(?:das\s+)?nicht|(?:do not|don.t)\s+(?:remember|save)|nur ein beispiel|only an example)', re.I)
 _GENERATION_REQUEST = re.compile(
@@ -551,7 +551,12 @@ def query_terms(query):
         'heiße':['name'], 'heißt':['name'], 'spitzname':['name','spitzname','nennen'], 'geboren':['geburtstag','geburtsort'],
         'ziele':['ziel','goal'], 'projekten':['projekte'], 'projekte':['projekte','work'],
         'entschieden':['entscheidung'], 'entscheidungen':['entscheidung'],
-        'sohn':['familie.sohn'], 'tochter':['familie.tochter']}
+        'sohn':['familie.sohn'], 'tochter':['familie.tochter'],
+        'gesundheitlich':['gesundheit'], 'gesundheitlicher':['gesundheit'],
+        'gesundheitlichen':['gesundheit'], 'gesundheitliche':['gesundheit'],
+        'wünsche':['vorliebe','wünsche'], 'partnerschaft':['beziehung','relationship'],
+        'wohne':['wohnort'], 'wohnt':['wohnort'], 'hobbys':['hobby'],
+        'plane':['plan','goal'], 'umzug':['ziehen','wohnort','goal']}
     aliases = {key.casefold(): value for key,value in aliases.items()}
     words.extend(alias for w in list(words) for alias in aliases.get(w, []))
     if any(w in words for w in ('kindheit','childhood')): words.extend(('kind','child','jahren'))
@@ -624,7 +629,7 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None):
             if kind == 'fact':
                 r = conn.execute("SELECT f.*,COALESCE(m.pinned,0) AS pinned,COALESCE(m.kind,'statement') AS kind FROM facts f LEFT JOIN fact_metadata m ON m.fact_id=f.id WHERE f.id=? AND f.status='active'", (oid,)).fetchone()
                 if r is None: continue
-                private = r['subject'].startswith(('partner', 'familie', 'personen.')) or r['field'].split('.')[0] in ('gesundheit', 'beziehung', 'kindheit', 'erlebnis') or bool(_PRIVATE.search(r['value']))
+                private = r['subject'].startswith(('partner', 'familie', 'personen.')) or r['field'].startswith('status.gesundheitlich') or r['field'].split('.')[0] in ('gesundheit', 'beziehung', 'kindheit', 'erlebnis') or bool(_PRIVATE.search(r['value']))
                 if private and not personal and r['subject'] not in requested_subjects: continue
                 body = r['value']
                 label = f"{r['subject']}.{r['field']} ({r['kind']})"
@@ -633,7 +638,9 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None):
                 r = conn.execute('SELECT * FROM episodes WHERE id=?', (oid,)).fetchone()
                 if r is None: continue
                 if not personal and (r['theme'] not in ('work', 'goal') or _PRIVATE.search(r['description'])): continue
-                body, label, priority = r['description'], r['title'] + ' (reported experience)', 0
+                body, label, priority = r['description'], r['title'] + (' (plan; not completed)' if r['status'] == 'plan' else ' (reported experience)'), 0
+                if r['period']:
+                    label += ' [period: ' + r['period'] + ']'
             sources = _sources(conn, kind, oid)
             if any(blocked(conn, body, s.get('id')) for s in sources): continue
             relevance = len(set(words) & set(_WORD.findall((label + ' ' + body).casefold())))
@@ -701,9 +708,15 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None):
 
 def named_subjects(conn, query):
     words = set(_WORD.findall(str(query).casefold())) - pm._CONTEXT_STOPWORDS
-    return {r['subject'] for r in conn.execute(
+    subjects = {r['subject'] for r in conn.execute(
         "SELECT subject,value FROM facts WHERE status='active' AND field='name'")
         if set(_WORD.findall(r['value'].casefold())) & words}
+    # Named people do not need a redundant name fact to be retrievable. Called
+    # only for an explicit recall request, respecting the original privacy query.
+    subjects.update(r[0] for r in conn.execute(
+        "SELECT DISTINCT subject FROM facts WHERE status='active' AND subject LIKE 'personen.%'")
+        if (name_tokens := set(_WORD.findall(r[0].split('.', 1)[1].replace('_', ' ')))) and name_tokens <= words)
+    return subjects
 
 
 _EXPORT_TABLES = ('memory_sources', 'facts', 'fact_lineage', 'conflicts', 'conflict_evidence', 'observed',
