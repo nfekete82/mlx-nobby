@@ -674,7 +674,8 @@
             handoffMetrics,
             pressureText,
             stateText,
-            statusText
+            statusText,
+            budgetText
         }
     };
 
