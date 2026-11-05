@@ -1,6 +1,7 @@
 """Native, local image service. Images stay on disk, never in API payloads."""
 import copy
 import json
+import math
 import os
 import re
 import secrets
@@ -1275,6 +1276,38 @@ def edit(request: Edit):
             raise HTTPException(503, _provider_failure(exc)) from exc
 
 
+def _image_handoff_measurement(preflight):
+    """Whitelisted elapsed timing only; never persist private model/job data."""
+    if not isinstance(preflight, dict) or not isinstance(
+        preflight.get("handoff_timings_ms"), dict
+    ):
+        return None
+    timing = preflight["handoff_timings_ms"]
+    keys = (
+        "lease_wait", "video_wait", "speech_release",
+        "musetalk_release", "chat_stop", "chat_restore", "total",
+    )
+    safe = {
+        key: round(float(timing[key]), 2)
+        for key in keys
+        if type(timing.get(key)) in (int, float)
+        and 0 <= timing[key] <= 3_600_000
+        and math.isfinite(timing[key])
+    }
+    return {
+        "version": 4,
+        "duration_ms": safe.get("total"),
+        "timings_ms": safe,
+        "speech_released": preflight.get("speech_released") is True,
+        "musetalk_released": preflight.get("musetalk_released") is True,
+        "chat_released": preflight.get("chat_released") is True,
+        "chat_restore_skipped": (
+            preflight["chat_restore_skipped"] is True
+            if "chat_restore_skipped" in preflight else None
+        ),
+    }
+
+
 def _job_snapshot(job):
     snapshot = {
         key: value
@@ -1427,7 +1460,14 @@ def _run_image_job(
                         "SDXL-Worker konnte vor dem Modellwechsel nicht entladen werden"
                     )
             timings.mark("resources_acquired")
-            _update_job(job_id, status="loading", phase="loading")
+            handoff = (
+                _image_handoff_measurement(preflight)
+                if not batched_sdxl else None
+            )
+            _update_job(
+                job_id, status="loading", phase="loading",
+                **({"runtime_handoff": handoff} if handoff is not None else {}),
+            )
             if operation == "edit":
                 execute = _edit_result
             elif operation == "upscale":
@@ -1471,6 +1511,13 @@ def _run_image_job(
                         if preflight is not None:
                             preflight["suppress_chat_restore"] = True
                         raise
+        # The context has now finished its chat restore, if any. Replace
+        # only the elapsed measurement so the durable Agent queue can expose
+        # both admission and restoration costs without original prompts.
+        if not batched_sdxl:
+            handoff = _image_handoff_measurement(preflight)
+            if handoff is not None:
+                _update_job(job_id, runtime_handoff=handoff)
         timings.mark("execution_finished")
         if cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")
