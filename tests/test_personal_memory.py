@@ -38,7 +38,7 @@ def test_partner_and_family_details_are_local_and_source_linked():
                and f["value"] == "Alex" for f in facts)
     assert any(f["subject"] == "partner" and f["field"] == "beruf"
                and f["value"].lower() == "psychologin" for f in facts)
-    assert any(f["sensitive"] and f["field"] == "gesundheit" for f in facts)
+    assert any(f["sensitive"] and f["field"].split(".")[0] == "gesundheit" for f in facts)
     assert any(f["subject"] == "familie.sohn" for f in facts)
     assert any(f["subject"] == "familie.tochter" for f in facts)
     assert all(f["source_chat_id"] == "conversation-1" for f in facts)
@@ -365,3 +365,26 @@ def test_explicit_birth_date_will_not_learn_when_personal_layer_opted_out():
     assert pm.index_chat(user_chat("nooptin",
         "Korrigiere mein Geburtsdatum auf den 12.05.1982"))["processed"] == 0
     assert not pm.DB_PATH.exists()
+
+
+
+def test_named_diagnoses_coexist_without_erasing_health_history():
+    """Two explicitly reported diagnoses are not necessarily contradictory."""
+    pm.set_enabled(True)
+    pm.index_chat(user_chat("diagnosis-a", "Meine Partnerin hat die Diagnose Migräne."))
+    pm.index_chat(user_chat("diagnosis-b", "Meine Partnerin hat die Diagnose Asthma."))
+    facts = [row for row in pm.list_facts() if row["field"].startswith("gesundheit.")]
+    assert len(facts) == 2
+    assert {row["value"] for row in facts} == {"Migräne", "Asthma"}
+    assert {row["source_chat_id"] for row in facts} == {"diagnosis-a", "diagnosis-b"}
+    assert pm.list_conflicts() == []
+    pm.index_chat(user_chat("diagnosis-b", "Meine Partnerin hat die Diagnose Asthma."))
+    assert len([row for row in pm.list_facts() if row["field"].startswith("gesundheit.")]) == 2
+
+
+def test_identity_conflicts_still_require_review_with_health_facets():
+    pm.set_enabled(True)
+    pm.index_chat(user_chat("name-a", "Meine Freundin heißt Mira"))
+    pm.index_chat(user_chat("name-b", "Meine Freundin heißt Nora"))
+    assert len(pm.list_conflicts()) == 1
+    assert pm.list_conflicts()[0]["field"] == "name"
