@@ -42,6 +42,27 @@ CASES = (
     ("task_not_fact", "Erstelle ein Bild von einer Frau mit roten Haaren.", (), True),
 )
 
+# Unseen phrasings: avoid treating a prompt tuned to the core 18 examples
+# as validated on unrestricted German chat history.
+HELDOUT_CASES = (
+    ("style_request_alt", "Für unsere Gespräche wünsche ich mir knappe technische Antworten.",
+     ("knappe", "technische"), False),
+    ("style_preference_alt", "Ich bevorzuge präzise Antworten ohne Floskeln.",
+     ("präzise", "ohne Floskeln"), False),
+    ("adult_preference_alt", "Beim Sex bevorzuge ich sanfte Berührungen.",
+     ("sanfte Berührungen",), False),
+    ("adult_preference_alt2", "Ich liebe beim Sex lange Küsse.",
+     ("lange Küsse",), False),
+    ("past_job_alt", "2021 habe ich drei Monate in Bremen gearbeitet.",
+     ("Bremen",), False),
+    ("past_move_alt", "2019 bin ich nach Mainz umgezogen.",
+     ("Mainz",), False),
+    ("mixed_topic", "Ich arbeite als Softwareentwickler und spiele gern Padel.",
+     ("Softwareentwickler", "Padel"), False),
+    ("negative_quoted_intimacy", 'Meine Kollegin sagte: "Ich mag beim Sex lange Küsse."',
+     (), True),
+)
+
 class BlockRedirects(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, request, fp, code, msg, headers, url):
         return None
@@ -112,10 +133,11 @@ def grounded_episode_texts(structure, original):
     return valid
 
 
-def run(port, model, timeout, *, selected=None, diagnose=False, profile="standard"):
+def run(port, model, timeout, *, selected=None, diagnose=False,
+        profile="standard", cases=CASES):
     results = []
     print(f"\n=== MODELL-TEST — Port {port}, Profil {profile} ===", flush=True)
-    for name, prompt, expected, negative in CASES:
+    for name, prompt, expected, negative in cases:
         if selected is not None and name not in selected:
             continue
         output, elapsed, reason = inference(port, model, prompt, timeout, profile)
@@ -186,6 +208,8 @@ def main():
                         default="standard", help="Extraction instructions to test")
     parser.add_argument("--compare-prompt-profile", choices=("standard", "compact"),
                         default="standard", help="Compare-model extraction instructions")
+    parser.add_argument("--suite", choices=("core", "heldout", "all"), default="core",
+                        help="Core 18 cases, additional unseen phrasings or both")
     parser.add_argument("--diagnose", action="store_true",
                         help="Print synthetic raw output and validated results for misses")
     parser.add_argument("--cases", nargs="+",
@@ -198,16 +222,20 @@ def main():
         parser.error("timeout must be between 10 and 900 seconds")
     if bool(args.compare_port) != bool(args.compare_model):
         parser.error("--compare-port and --compare-model must be provided together")
-    valid_names = {case[0] for case in CASES}
+    cases = (CASES if args.suite == "core" else HELDOUT_CASES
+             if args.suite == "heldout" else CASES + HELDOUT_CASES)
+    valid_names = {case[0] for case in cases}
     if args.cases and not set(args.cases) <= valid_names:
-        parser.error("Unknown test case: " + ", ".join(sorted(set(args.cases) - valid_names)))
+        parser.error("Unknown test case for selected suite: " + ", ".join(
+            sorted(set(args.cases) - valid_names)))
     selected = set(args.cases) if args.cases else None
     run(args.port, args.model, args.timeout,
-        selected=selected, diagnose=args.diagnose, profile=args.prompt_profile)
+        selected=selected, diagnose=args.diagnose,
+        profile=args.prompt_profile, cases=cases)
     if args.compare_port:
         run(args.compare_port, args.compare_model, args.timeout,
             selected=selected, diagnose=args.diagnose,
-            profile=args.compare_prompt_profile)
+            profile=args.compare_prompt_profile, cases=cases)
     print("\nHinweis: Falsche Ablehnungen oder False Positives brauchen zusätzlich eine"
           " manuelle Qualitätsprüfung. Dieser Test schreibt keine Chats oder Fakten.")
 
