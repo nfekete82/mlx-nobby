@@ -371,6 +371,11 @@ def _dispatch_and_poll(job_id):
                 dispatch_attempts=int(job.get("dispatch_attempts") or 0) + 1,
             )
             try:
+                # Give the optional 4B model a chance to free unified RAM
+                # before native image/video admission. No other model is killed.
+                from agent import memory_model_coordination as mem_coord
+                if not mem_coord.prepare_media_dispatch(kind):
+                    raise ServiceError(503, "Memory model is finishing a local inference")
                 native = _service_request(
                     kind,
                     "POST",
