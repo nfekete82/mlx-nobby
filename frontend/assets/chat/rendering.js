@@ -2095,6 +2095,29 @@ function renderImageJobCard(message) {
             }
         });
         controls.appendChild(cancel);
+        // A completed image may already exist even when this browser still
+        // shows a queued card (tab throttling, lost watcher or stale sync).
+        // Reconcile directly without starting a second generation.
+        if (/^[a-f0-9]{24}$/.test(String(job.id || ''))) {
+            const refresh = document.createElement('button');
+            refresh.type = 'button';
+            refresh.className = 'message-action-btn';
+            refresh.textContent = rt('image_job_check_status', 'Status prüfen');
+            refresh.addEventListener('click', async () => {
+                refresh.disabled = true;
+                try {
+                    const session = MLXChatSessions.currentSession();
+                    await window.MLXChatGeneration?.refreshImageJobStatus?.(
+                        session, message
+                    );
+                } catch (error) {
+                    console.warn('Could not reconcile image job', error);
+                } finally {
+                    refresh.disabled = false;
+                }
+            });
+            controls.appendChild(refresh);
+        }
         card.appendChild(controls);
     }
 
