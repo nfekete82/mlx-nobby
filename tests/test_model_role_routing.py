@@ -100,6 +100,17 @@ class ModelRoleRoutingTests(unittest.TestCase):
         ensure.assert_not_called()
         self.assertEqual(json.loads(urlopen.call_args.args[0].data)["model"], self.app.ROUTER_MODEL)
 
+    def test_router_cold_start_timeout_only_when_on_demand_enabled(self):
+        from agent import memory_model_coordination as ctl
+        for enabled, timeout in ((False, 30), (True, 180)):
+            with self.subTest(on_demand=enabled):
+                upstream = io.BytesIO(b'{"choices":[{"message":{"content":"{}"}}]}')
+                with mock.patch.object(ctl, "on_demand_enabled", return_value=enabled), \
+                     mock.patch.object(self.app.urllib.request, "urlopen", return_value=upstream) as urlopen:
+                    self.app.router_llm([{"role": "user", "content": "Route this"}])
+                self.assertEqual(urlopen.call_args.kwargs["timeout"], timeout)
+
+
     def test_image_edit_payload_uses_auto_edit_model(self):
         with mock.patch.object(self.app, "_image_source_path", return_value=Path("/tmp/source.png")), \
              mock.patch.object(self.app, "optimize_image_edit_prompt", return_value="Edit"), \
