@@ -107,30 +107,35 @@ def complete(payload, *, timeout=180):
     # Inference remains protected for its entire duration. No overlapping
     # media worker can load its large model while router inference is active.
     with rc.runtime_lease(workload="router", timeout=30):
-        _wait_for_model()
-        with ctl.inference_lease():
-            with _ACTIVE_LOCK:
-                _ACTIVE += 1
-            try:
-                request = urllib.request.Request(
-                    UPSTREAM + "/v1/chat/completions",
-                    data=body,
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with _OPENER.open(request, timeout=timeout) as response:
-                    result = response.read(MAX_RESPONSE + 1)
-                if len(result) > MAX_RESPONSE:
-                    raise RouterUnavailable("4B response exceeds limit")
-                output = json.loads(result)
-                if not isinstance(output, dict):
-                    raise RouterUnavailable("4B returned invalid response")
-                return output
-            except (OSError, urllib.error.HTTPError, ValueError) as exc:
-                raise RouterUnavailable("Shared 4B inference unavailable") from exc
-            finally:
+        try:
+            _wait_for_model()
+            with ctl.inference_lease():
                 with _ACTIVE_LOCK:
-                    _ACTIVE -= 1
+                    _ACTIVE += 1
+                try:
+                    request = urllib.request.Request(
+                        UPSTREAM + "/v1/chat/completions",
+                        data=body,
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with _OPENER.open(request, timeout=timeout) as response:
+                        result = response.read(MAX_RESPONSE + 1)
+                    if len(result) > MAX_RESPONSE:
+                        raise RouterUnavailable("4B response exceeds limit")
+                    output = json.loads(result)
+                    if not isinstance(output, dict):
+                        raise RouterUnavailable("4B returned invalid response")
+                    return output
+                except (OSError, urllib.error.HTTPError, ValueError) as exc:
+                    raise RouterUnavailable("Shared 4B inference unavailable") from exc
+                finally:
+                    with _ACTIVE_LOCK:
+                        _ACTIVE -= 1
+        finally:
+            # After completion the supervisor can begin its 120s idle grace.
+            # The gateway's cross-process lease is held until this point.
+            ctl.release_router_demand()
 
 
 class Handler(BaseHTTPRequestHandler):
