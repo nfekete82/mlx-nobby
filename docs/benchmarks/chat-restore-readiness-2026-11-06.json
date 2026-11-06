@@ -1,0 +1,137 @@
+{
+  "fixture": "delayed local HTTP API; no models",
+  "runs": {
+    "baseline": {
+      "samples": [
+        {
+          "fixture_ready_ms": 150.0,
+          "shell_return_ms": 1025.01,
+          "detection_lag_ms": 875.01,
+          "requests": 2
+        },
+        {
+          "fixture_ready_ms": 350.0,
+          "shell_return_ms": 1012.24,
+          "detection_lag_ms": 662.24,
+          "requests": 2
+        },
+        {
+          "fixture_ready_ms": 550.0,
+          "shell_return_ms": 1022.04,
+          "detection_lag_ms": 472.04,
+          "requests": 2
+        },
+        {
+          "fixture_ready_ms": 750.0,
+          "shell_return_ms": 1023.76,
+          "detection_lag_ms": 273.76,
+          "requests": 2
+        },
+        {
+          "fixture_ready_ms": 950.0,
+          "shell_return_ms": 1027.25,
+          "detection_lag_ms": 77.25,
+          "requests": 2
+        },
+        {
+          "fixture_ready_ms": 150.0,
+          "shell_return_ms": 1022.13,
+          "detection_lag_ms": 872.13,
+          "requests": 2
+        },
+        {
+          "fixture_ready_ms": 350.0,
+          "shell_return_ms": 1024.63,
+          "detection_lag_ms": 674.63,
+          "requests": 2
+        },
+        {
+          "fixture_ready_ms": 550.0,
+          "shell_return_ms": 1012.78,
+          "detection_lag_ms": 462.78,
+          "requests": 2
+        },
+        {
+          "fixture_ready_ms": 750.0,
+          "shell_return_ms": 1026.74,
+          "detection_lag_ms": 276.74,
+          "requests": 2
+        },
+        {
+          "fixture_ready_ms": 950.0,
+          "shell_return_ms": 1023.23,
+          "detection_lag_ms": 73.23,
+          "requests": 2
+        }
+      ],
+      "median_detection_lag_ms": 467.40999999999997,
+      "mean_detection_lag_ms": 471.981
+    },
+    "patched": {
+      "samples": [
+        {
+          "fixture_ready_ms": 150.0,
+          "shell_return_ms": 224.01,
+          "detection_lag_ms": 74.01,
+          "requests": 2
+        },
+        {
+          "fixture_ready_ms": 350.0,
+          "shell_return_ms": 443.85,
+          "detection_lag_ms": 93.85,
+          "requests": 3
+        },
+        {
+          "fixture_ready_ms": 550.0,
+          "shell_return_ms": 670.16,
+          "detection_lag_ms": 120.16,
+          "requests": 4
+        },
+        {
+          "fixture_ready_ms": 750.0,
+          "shell_return_ms": 875.45,
+          "detection_lag_ms": 125.45,
+          "requests": 5
+        },
+        {
+          "fixture_ready_ms": 950.0,
+          "shell_return_ms": 1109.92,
+          "detection_lag_ms": 159.92,
+          "requests": 6
+        },
+        {
+          "fixture_ready_ms": 150.0,
+          "shell_return_ms": 221.79,
+          "detection_lag_ms": 71.79,
+          "requests": 2
+        },
+        {
+          "fixture_ready_ms": 350.0,
+          "shell_return_ms": 447.29,
+          "detection_lag_ms": 97.29,
+          "requests": 3
+        },
+        {
+          "fixture_ready_ms": 550.0,
+          "shell_return_ms": 667.8,
+          "detection_lag_ms": 117.8,
+          "requests": 4
+        },
+        {
+          "fixture_ready_ms": 750.0,
+          "shell_return_ms": 890.02,
+          "detection_lag_ms": 140.02,
+          "requests": 5
+        },
+        {
+          "fixture_ready_ms": 950.0,
+          "shell_return_ms": 1112.0,
+          "detection_lag_ms": 162.0,
+          "requests": 6
+        }
+      ],
+      "median_detection_lag_ms": 118.97999999999999,
+      "mean_detection_lag_ms": 116.229
+    }
+  }
+}

@@ -262,20 +262,24 @@ find_alias_for_repo() {
 
 wait_for_api() {
     local timeout="${1:-$START_TIMEOUT}"
-    local elapsed=0
+    local started=$SECONDS
+    local elapsed
 
     printf "Warte auf MLX API"
 
-    while [ "$elapsed" -lt "$timeout" ]; do
+    # Model loading remains synchronous. Poll only the existing lightweight
+    # models endpoint more closely so API readiness does not wait for the next
+    # whole second. Use elapsed time, including curl, to bound failed starts.
+    while [ "$((SECONDS - started))" -lt "$timeout" ]; do
         if api_ready; then
+            elapsed=$((SECONDS - started))
             echo
             printf "${GREEN}✓ MLX ist bereit${RESET} nach %d Sekunden.\n" "$elapsed"
             return 0
         fi
 
         printf "."
-        sleep 1
-        elapsed=$((elapsed + 1))
+        sleep 0.2
     done
 
     echo
