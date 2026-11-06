@@ -190,3 +190,23 @@ no change to GPU memory guards, model unload/restore, RAM reserves,
 model weights or image-enhancement tools. Real Ultra+ success and safe
 automatic 27B/4B handoff have not been validated. Re-enable only after a
 separate GPU test and review.
+
+## 2026-11-06 — native Ultra format clarity
+
+The normal image generation modal keeps the last *confirmed* image format,
+including 9:16. An actual 864×1536 Juggernaut Ultra render is therefore
+consistent with **9:16**, and by itself does not demonstrate backend aspect
+ratio corruption. The explicitly selected **3:4** input maps to 1152×1536.
+
+To prevent confusing the two portrait modes, each format option now previews
+its exact native target dimensions when **Juggernaut XL + Ultra** are selected
+(e.g. `Hochformat 9:16 · Ultra: 864 × 1536 px` versus
+`Hochformat 3:4 · Ultra: 1152 × 1536 px`). The preview recomputes when
+changing model or quality and does not modify any payload, remembered
+preferences or the native render algorithm. Other image models, quality
+profiles and video retain their existing format labels.
+
+The UI helper mirrors the existing `/16` long-edge calculation, and tests
+verify both the JS option labels/submitted format and the Python service's
+actual resolved native dimensions. Live Metal imaging is still a separate
+manual acceptance step; CPU/browser tests do not prove GPU stability.
