@@ -189,6 +189,93 @@ def test_named_person_recall_does_not_mix_other_person_episodes_or_facts():
     assert 'Mit Clara war ich wandern.' in both
 
 
+@pytest.mark.parametrize('text,person,action,expected', [
+    ('Mit Anna war ich wandern, mit Clara schwimmen.', 'anna', 'schwimmen', False),
+    ('Mit Anna war ich wandern, mit Clara schwimmen.', 'clara', 'schwimmen', True),
+    ('Anna ging wandern, Clara war schwimmen.', 'anna', 'schwimmen', False),
+    ('Anna ging wandern, Clara war schwimmen.', 'clara', 'schwimmen', True),
+    ('Anna ging wandern, danach war sie schwimmen.', 'anna', 'schwimmen', False),
+    ('Anna ging wandern. Sie war später schwimmen.', 'anna', 'schwimmen', False),
+    ('Anna ging wandern und sie war schwimmen.', 'anna', 'schwimmen', False),
+    ('Anna und Clara waren gemeinsam wandern.', 'anna', 'wandern', True),
+    ('Anna und Clara waren gemeinsam wandern.', 'clara', 'wandern', True),
+    ('Mit Anna und Clara war ich schwimmen.', 'anna', 'schwimmen', True),
+])
+def test_clause_boundaries_and_pronouns_never_swap_named_actions(
+    text, person, action, expected
+):
+    output = json.dumps({'facts': [dict(
+        subject='personen.' + person, field='erlebnis', value=action,
+        evidence=text, confidence=.99, correction=False,
+    )], 'episodes': []}, ensure_ascii=False)
+    assert bool(smart.parse_facts(output, text)) is expected
+
+
+def test_archive_excerpts_do_not_reintroduce_another_persons_activity():
+    """FTS OR matching is not authorization to attach Clara's action to Anna."""
+    from agent import memory_grounding
+
+    text = 'Mit Anna war ich wandern, mit Clara war ich schwimmen.'
+    pm.create_fact('personen.anna', 'hobby', 'Wandern', sensitive=True)
+    pm.create_fact('personen.clara', 'hobby', 'Schwimmen', sensitive=True)
+    chat_archive.set_enabled(True)
+    chat_archive.index_chat({
+        'id': 'fictional-two-person-message',
+        'title': 'Synthetic activities',
+        'updated': 100,
+        'messages': [{'role': 'user', 'content': text}],
+    })
+
+    single = chat_archive.search(
+        'Was habe ich mit Anna beim Schwimmen unternommen?', limit=8,
+    )
+    assert single
+    assert any('Anna' in row['excerpt'] for row in single)
+    assert all('Clara' not in row['excerpt'] and 'schwimmen' not in row['excerpt'].lower()
+               for row in single)
+    for fragment in memory_grounding.attributed_clauses(text):
+        assert not ('Anna' in fragment and 'Clara' in fragment)
+
+    both = chat_archive.search('Was haben Anna und Clara gemacht?', limit=8)
+    assert both
+    assert any('Anna' in row['excerpt'] and 'Clara' in row['excerpt'] for row in both)
+
+
+def test_partner_name_is_scoped_against_similarly_worded_other_people():
+    """The special partner identity is not a generic named-person record."""
+    pm.create_fact('partner', 'name', 'Mira', sensitive=True)
+    pm.create_fact('partner', 'hobby', 'Wandern', sensitive=True)
+    pm.create_fact('personen.clara', 'hobby', 'Wandern', sensitive=True)
+
+    query = 'Was weißt du über Mira und ihre Hobbys?'
+    assert pm.recall_requested(query)
+    personal = pm.context(query)
+    structured = km.context(query)
+    assert 'partner.name' in personal
+    assert 'personen.clara' not in personal
+    assert 'partner' in structured
+    assert 'personen.clara' not in structured
+
+    colleague = km.context('Was weißt du über Clara und ihre Hobbys?')
+    assert 'personen.clara' in colleague
+    assert 'partner.hobby' not in colleague
+
+
+def test_old_misattributed_person_fact_never_becomes_current_recall_evidence():
+    """A bad older extraction remains stored for audit, but is not asserted."""
+    source = 'Mit Anna war ich wandern. Mit Clara war ich schwimmen.'
+    with pm._connect() as conn:
+        pm._schema(conn)
+        bad = pm._propose(conn, 'personen.anna', 'erlebnis', 'schwimmen',
+                          True, 'fictional-wrong-attribution', 0)
+        sid = km.source(conn, 'fictional-wrong-attribution', 0, source)
+        km.annotate(conn, bad['fact_id'], subject='personen.anna',
+                    field='erlebnis', sid=sid, evidence=source)
+    found = km.context('Was habe ich mit Anna beim Schwimmen unternommen?')
+    assert 'personen.anna.erlebnis' not in found
+    assert 'schwimmen' not in found.casefold()
+
+
 def test_equal_values_in_distinct_entities_preserve_both_sources():
     for subject,cid in [('projekte.silber','fictional-a'),('projekte.kupfer','fictional-b')]:
         with pm._connect() as conn:
