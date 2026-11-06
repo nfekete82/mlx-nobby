@@ -52,3 +52,67 @@ one Juggernaut image, one masked 512px Qwen edit and one short LTX video.
 Observe processes/heap, swap, job outcomes and chat restoration. A test-only
 mock does not establish actual RAM reclamation. Do not tag a release before
 final-main local acceptance as defined in `docs/RELEASING.md`.
+
+## Consistent exclusive media preemption (November 2026)
+
+The previous exclusive handoff covered the 27B chat, image/video,
+speech and MuseTalk runtimes, but the separately managed 4B memory model
+used a pressure-dependent rule for video, edit and upscale. Direct image
+endpoints bypassed the Agent queue preemption path altogether.
+
+All native image/video exclusive runtime scopes now request and verify a
+4B supervisor handoff *before* loading new weights. The durable Agent queue
+also requests exclusive 4B preemption for **every** image and video operation,
+not only text-to-image. In-progress 4B extraction finishes under its shared
+inference lock; an unready supervisor causes a bounded wait and a safe
+defer/error. Original memory jobs are not discarded.
+
+Manually launched or otherwise unmanaged dedicated 4B processes are **never
+killed**. If the configured dedicated memory port is still live but not
+owned by the supervisor, exclusive media admission fails with an explicit,
+actionable error instead of silently sharing RAM. There is no blanket
+process kill, system cache purge or force-stop of unrelated applications.
+
+The 4B supervisor checks the cross-process native runtime lease as well as
+the Agent's persistent media queue. This prevents a direct image or video
+request from allowing 4B to restart after the short dispatch marker expires.
+
+The direct image `/generate`, `/edit` and `/upscale` paths use the same
+exclusive runtime mode as queued image jobs. Inside the image-service lock,
+idle SDXL and unrelated registered MLX-Serve image models are released before
+the selected provider is loaded. Unknown resident MLX-Serve IDs are never
+guessed and unloaded; instead the handoff fails closed. SDXL img2img workers
+are torn down before 27B restoration, not just SDXL text-to-image workers.
+A batch keeps its existing shared lease and releases the warm SDXL worker
+before the outer chat restoration.
+
+Nothing changes `ACTIVE_MIN_FREE_PERCENT`,
+`ACTIVE_MAX_SWAP_GROWTH_GB`, model admission reserves or the hard 90% used
+ceiling. These are safety tripwires, not performance controls. A successful
+synthetic test cannot prove that Apple MPS, MLX or macOS has truly reclaimed
+memory: test **real Juggernaut XL Ultra+ and LTX** separately under an
+uncontended local workload, observing pre-admission, peak free percentage,
+swap delta, loaded runtime states and post-job chat restoration.
+
+Targeted tests (offline, fictional state, no model downloads):
+
+```bash
+python3 -m pytest -q tests/test_memory_model_supervisor.py \
+  tests/test_media_queue.py tests/test_exclusive_model_handoff.py \
+  tests/test_runtime_coordinator.py tests/test_sdxl_memory_safety.py
+```
+
+For a read-only local memory snapshot:
+
+```bash
+python3 - <<'PY'
+import runtime_coordinator as rc
+print(rc.memory_budget_snapshot())
+print(rc.lease_state_snapshot())
+PY
+```
+
+A baseline of existing swap is not proof of current memory pressure. The
+measured **increase during an individual job** and the availability of
+reclaimable memory matter. Mac process RSS alone excludes some GPU/Metal
+allocations and must not be treated as total unified-memory usage.
