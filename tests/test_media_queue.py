@@ -93,9 +93,11 @@ class MediaQueueTests(unittest.TestCase):
     def test_unmanaged_memory_model_fails_job_with_actionable_error(self):
         from agent.memory_model_coordination import UnmanagedMemoryModel
         job = self.enqueue("video")
-        with mock.patch("agent.memory_model_coordination.prepare_media_dispatch",
-                        side_effect=UnmanagedMemoryModel("Manuellen 4B-Server beenden")), \\
-             mock.patch.object(media_queue, "_service_request") as native:
+        with (
+            mock.patch("agent.memory_model_coordination.prepare_media_dispatch",
+                       side_effect=UnmanagedMemoryModel("Manuellen 4B-Server beenden")),
+            mock.patch.object(media_queue, "_service_request") as native,
+        ):
             media_queue._dispatch_and_poll(job["id"])
         native.assert_not_called()
         record = media_queue.get_job("video", job["id"])
