@@ -1214,21 +1214,11 @@ button {
     background: #1a202b;
 }
 
-/* Widen only image-result messages. Ordinary chat keeps its 900px measure. */
-.messages-inner:has(.image-artifact-card) {
-    width: min(1200px, calc(100% - 48px));
-}
-.messages-inner:has(.image-artifact-card) > .message {
-    width: min(900px, 100%);
-    margin-inline: auto;
-}
-.messages-inner:has(.image-artifact-card) > .message:has(.image-artifact-card) {
-    width: 100%;
-}
+/* Image results use the same 900px message measure as ordinary chat. */
 .image-artifact-card {
     box-sizing: border-box;
     width: 100%;
-    max-width: 1200px;
+    max-width: 100%;
     min-width: 0;
     container-type: inline-size;
     container-name: image-result;
@@ -1281,7 +1271,7 @@ button {
 }
 @container image-result (min-width: 660px) {
     .image-artifact-layout {
-        grid-template-columns: minmax(0, 11fr) minmax(0, 9fr);
+        grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
     }
 }
 
@@ -1305,8 +1295,8 @@ button {
     height: auto;
     max-width: 100%;
     box-sizing: border-box;
-    max-height: 68vh;
-    max-height: 68dvh;
+    /* Thumbnail only: card height follows its metadata/actions, not the full image. */
+    max-height: 190px;
     margin-top: 0;
     border: 1px solid #334155;
     border-radius: 8px;
@@ -2055,8 +2045,7 @@ button {
         left: 0;
     }
 
-    .messages-inner,
-    .messages-inner:has(.image-artifact-card) {
+    .messages-inner {
         width: calc(100% - 28px);
     }
 
