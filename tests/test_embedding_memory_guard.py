@@ -1,3 +1,4 @@
+import pytest
 import embedding_service
 
 
@@ -89,6 +90,16 @@ def test_embedding_resident_model_does_not_reapply_load_guard(monkeypatch):
         lambda model_id, model=None: 3,
     )
 
-    embedding_service._make_embeddings_sync(["hello"])
+    embedding_service._make_embeddings_sync(["hello"], require_loaded=True)
 
     assert calls == []
+
+
+def test_foreground_recall_rejects_cold_embedding_without_load_or_inference(monkeypatch):
+    monkeypatch.setattr(embedding_service,'selected_embedding_model',lambda:('embedding-role','org/embedding'))
+    monkeypatch.setattr(embedding_service,'_model_entry',lambda _: {'loaded':False,'capabilities':['embeddings']})
+    monkeypatch.setattr(embedding_service,'_has_embedding_capability',lambda _:True)
+    monkeypatch.setattr(embedding_service.runtime_coordinator,'ensure_model_load_allowed',lambda _:pytest.fail('must not load'))
+    monkeypatch.setattr(embedding_service,'_mlxserve_json',lambda *a,**kw:pytest.fail('must not infer'))
+    with pytest.raises(RuntimeError,match='already loaded'):
+        embedding_service._make_embeddings_sync(['fictional query'],require_loaded=True)

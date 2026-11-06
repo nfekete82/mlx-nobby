@@ -87,6 +87,7 @@ class EmbeddingRequest(BaseModel):
 
 
 class SingleEmbeddingRequest(BaseModel):
+    require_loaded: bool = False
     text: Annotated[
         str,
         Field(
@@ -486,6 +487,7 @@ def embedding_model_compatible(
 
 def _make_embeddings_sync(
     texts: list[str],
+    *, require_loaded: bool = False,
 ) -> dict:
     role_model, upstream_model = (
         selected_embedding_model()
@@ -509,6 +511,8 @@ def _make_embeddings_sync(
         )
 
     if model.get("loaded") is not True:
+        if require_loaded:
+            raise RuntimeError("Foreground recall requires an already loaded embedding model")
         runtime_coordinator.ensure_model_load_allowed(
             "embedding",
         )
@@ -629,6 +633,7 @@ def _make_embeddings_sync(
 
 async def make_embeddings(
     texts: list[str],
+    *, require_loaded: bool = False,
 ) -> dict:
     if any(
         not text.strip()
@@ -646,6 +651,7 @@ async def make_embeddings(
         return await asyncio.to_thread(
             _make_embeddings_sync,
             texts,
+            **({'require_loaded': True} if require_loaded else {}),
         )
 
     except Exception as exc:
@@ -720,6 +726,8 @@ async def health() -> dict:
                 dimensions,
             "backend":
                 "mlx-serve",
+            "loaded": model.get("loaded") is True,
+            "resident_query_supported": True,
             "mlxserve_url":
                 MLXSERVE_URL,
             "batch_size":
@@ -803,5 +811,5 @@ async def embedding(
     request: SingleEmbeddingRequest,
 ) -> dict:
     return await make_embeddings(
-        [request.text]
+        [request.text], require_loaded=request.require_loaded,
     )

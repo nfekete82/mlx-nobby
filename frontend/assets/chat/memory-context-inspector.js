@@ -4,6 +4,7 @@
     const state = {
         data: null,
         loading: false,
+        error: null,
     };
 
     const FALLBACK = {
@@ -29,6 +30,21 @@
             pinned: 'Pinned bonus',
             context: 'Injected context preview',
             error: 'Inspector error:',
+            diagnose: 'Diagnose all memory stores',
+            diagnosis: 'Fast recall diagnosis (local preview)',
+            terms: 'Search terms',
+            stores: 'Searched stores',
+            candidates: 'Index candidates',
+            injected: 'Knowledge sources in context',
+            omitted: 'Omitted by relevance or context budget',
+            reason: 'Result',
+            matched: 'Matching evidence found',
+            no_matching_evidence: 'No matching evidence; check storage, wording and indexing progress',
+            source_unavailable: 'A store is unavailable; other evidence remains usable',
+            paused: 'Memory is paused',
+            no_match: 'No match',
+            unavailable: 'Unavailable',
+            preview: 'This reproduces the fast chat retrieval path. It does not run an answer model or prove how a past answer used its context.',
         },
         de: {},
     };
@@ -55,8 +71,8 @@
         values
     );
 
-    async function request(path) {
-        const response = await fetch(path, { cache: 'no-store' });
+    async function request(path, options = {}) {
+        const response = await fetch(path, { cache: 'no-store', ...options });
         let data = {};
         try {
             data = await response.json();
@@ -138,7 +154,9 @@
                 </label>
                 <button id="memoryContextInspectorRun" class="settings-button" type="button"></button>
             </div>
+            <button id="memoryContextInspectorDiagnose" class="settings-button" type="button"></button>
             <div id="memoryContextInspectorMeta" class="memory-context-inspector-meta"></div>
+            <div id="memoryContextInspectorDiagnosis" class="memory-context-inspector-copy" hidden></div>
             <div id="memoryContextInspectorResults" class="memory-context-inspector-results"></div>
             <details id="memoryContextInspectorContext" class="memory-context-inspector-context" hidden>
                 <summary id="memoryContextInspectorContextLabel"></summary>
@@ -151,6 +169,7 @@
         else summary.after(root);
 
         $('memoryContextInspectorRun').addEventListener('click', () => inspect());
+        $('memoryContextInspectorDiagnose').addEventListener('click', () => diagnose());
         $('memoryContextInspectorQuery').addEventListener('keydown', event => {
             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
                 event.preventDefault();
@@ -186,6 +205,30 @@
         );
     }
 
+    function renderDiagnosis() {
+        const target = $('memoryContextInspectorDiagnosis');
+        if (!target) return;
+        const data = state.data?.diagnosis;
+        target.hidden = !data;
+        target.replaceChildren();
+        if (!data) return;
+        const add = (label, value) => {
+            const line = document.createElement('small');
+            line.textContent = `${label}: ${value}`;
+            target.appendChild(line);
+        };
+        add(t('diagnosis'), `${data.elapsed_ms} ms`);
+        add(t('terms'), (data.knowledge?.terms || []).join(', ') || '—');
+        add(t('stores'), (data.stores || []).map(s => `${s.store}: ${t(s.state)} (${s.hits})`).join(' · ') || '—');
+        add(t('candidates'), data.knowledge?.candidates || 0);
+        add(t('injected'), (data.injected_knowledge_ids || []).length);
+        add(t('omitted'), data.knowledge?.omitted || 0);
+        add(t('reason'), t(data.reason));
+        const note = document.createElement('small');
+        note.textContent = t('preview');
+        target.appendChild(note);
+    }
+
     function resultCard(entry) {
         const card = document.createElement('article');
         card.className = 'memory-context-inspector-result';
@@ -219,6 +262,17 @@
         }
 
         card.append(head, breakdown);
+        if (entry.sources) {
+            const refs = document.createElement('small');
+            refs.textContent = `${entry.status || ''} `;
+            for (const source of entry.sources) {
+                const link = document.createElement('a');
+                link.textContent = `chat ${source.chat_id} · ${source.ordinal}${source.revision ? ` · r${source.revision}` : ''} `;
+                link.href = `/chat?memory_chat=${encodeURIComponent(source.chat_id)}&memory_message=${encodeURIComponent(source.ordinal)}`;
+                refs.appendChild(link);
+            }
+            card.appendChild(refs);
+        }
         return card;
     }
 
@@ -230,6 +284,7 @@
         const data = state.data;
         if (!data) {
             details.hidden = true;
+            if (state.error) target.textContent = `${t('error')} ${state.error}`;
             return;
         }
 
@@ -258,7 +313,11 @@
         const run = $('memoryContextInspectorRun');
         run.textContent = state.loading ? t('inspecting') : t('inspect');
         run.disabled = state.loading;
+        const diagnoseButton = $('memoryContextInspectorDiagnose');
+        diagnoseButton.textContent = t('diagnose');
+        diagnoseButton.disabled = state.loading;
         renderMeta();
+        renderDiagnosis();
         renderResults();
     }
 
@@ -274,6 +333,7 @@
         }
 
         state.loading = true;
+        state.error = null;
         render();
         try {
             const limit = Number($('memoryContextInspectorLimit').value || 6);
@@ -286,6 +346,7 @@
             return state.data;
         } catch (error) {
             state.data = null;
+            state.error = error.message;
             render();
             const target = $('memoryContextInspectorResults');
             if (target) {
@@ -294,6 +355,41 @@
                 message.textContent = `${t('error')} ${error.message}`;
                 target.replaceChildren(message);
             }
+            return null;
+        } finally {
+            state.loading = false;
+            render();
+        }
+    }
+
+    async function diagnose(queryOverride) {
+        if (!ensureUi() || state.loading) return null;
+        const input = $('memoryContextInspectorQuery');
+        if (queryOverride != null) input.value = String(queryOverride);
+        const query = String(input.value || '').trim();
+        if (!query) { input.focus(); return null; }
+        state.loading = true;
+        state.error = null;
+        render();
+        try {
+            const diagnosis = await request('/api/mlx/memory/knowledge/diagnose', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query }),
+            });
+            state.data = {
+                diagnosis, context: diagnosis.context,
+                mode: diagnosis.knowledge?.mode || 'lexical',
+                eligible_count: diagnosis.knowledge?.candidates || 0,
+                selected: (diagnosis.knowledge?.selected || []).map(item => ({
+                    ...item, memory: { text: item.text },
+                })),
+            };
+            return diagnosis;
+        } catch (error) {
+            state.data = null;
+            state.error = error.message;
+            const target = $('memoryContextInspectorResults');
+            if (target) target.textContent = `${t('error')} ${error.message}`;
             return null;
         } finally {
             state.loading = false;
@@ -321,6 +417,7 @@
     document.addEventListener('mlx-language-changed', render);
     window.MLXMemoryInspector = {
         inspect,
+        diagnose,
         getLastResult: () => state.data,
     };
     init();

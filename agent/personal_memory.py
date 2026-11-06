@@ -282,7 +282,14 @@ def _extract(text):
     text = str(text or "").strip()
     if _QUESTION.search(text) or _FORGET.search(text):
         return []
+    from agent import memory_grounding
+    # Regex extraction needs the same distinction between the user's reports
+    # and quoted/hypothetical/model-authored examples as semantic extraction.
+    text = memory_grounding.asserted_text(text)
     entries = []
+    for subject, statement in memory_grounding.project_statements(text):
+        entries.append((subject, 'beschreibung.' + hashlib.sha256(
+            statement.casefold().encode()).hexdigest()[:12], statement, False))
     # Explicit "I gave the wrong date; correct it to ..." phrasing is not
     # covered by ordinary factual patterns like "My birthday is on ...".
     for correction in _BIRTH_CORRECTIONS:

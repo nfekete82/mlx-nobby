@@ -20,7 +20,22 @@
     "recency": "Aktualität",
     "pinned": "Pin-Bonus",
     "context": "Vorschau des injizierten Contexts",
-    "error": "Inspector-Fehler:"
+    "error": "Inspector-Fehler:",
+    "diagnose": "Alle Speicherbereiche diagnostizieren",
+    "diagnosis": "Diagnose des schnellen Abrufs (lokale Vorschau)",
+    "terms": "Suchbegriffe",
+    "stores": "Durchsuchte Speicherbereiche",
+    "candidates": "Indexkandidaten",
+    "injected": "Wissensquellen im Kontext",
+    "omitted": "Durch Relevanz oder Kontextbudget ausgelassen",
+    "reason": "Ergebnis",
+    "matched": "Passende Belege gefunden",
+    "no_matching_evidence": "Keine passenden Belege; Speicherung, Wortwahl und Indexfortschritt prüfen",
+    "source_unavailable": "Ein Speicherbereich ist nicht erreichbar; andere Belege bleiben nutzbar",
+    "paused": "Gedächtnis ist pausiert",
+    "no_match": "Kein Treffer",
+    "unavailable": "Nicht erreichbar",
+    "preview": "Dies wiederholt den schnellen Chatabruf. Es startet kein Antwortmodell und beweist nicht, wie eine frühere Antwort ihren Kontext verwendet hat."
   },
   "en": {
     "title": "Context Inspector",
@@ -43,6 +58,21 @@
     "recency": "Recency",
     "pinned": "Pinned bonus",
     "context": "Injected context preview",
-    "error": "Inspector error:"
+    "error": "Inspector error:",
+    "diagnose": "Diagnose all memory stores",
+    "diagnosis": "Fast recall diagnosis (local preview)",
+    "terms": "Search terms",
+    "stores": "Searched stores",
+    "candidates": "Index candidates",
+    "injected": "Knowledge sources in context",
+    "omitted": "Omitted by relevance or context budget",
+    "reason": "Result",
+    "matched": "Matching evidence found",
+    "no_matching_evidence": "No matching evidence; check storage, wording and indexing progress",
+    "source_unavailable": "A store is unavailable; other evidence remains usable",
+    "paused": "Memory is paused",
+    "no_match": "No match",
+    "unavailable": "Unavailable",
+    "preview": "This reproduces the fast chat retrieval path. It does not run an answer model or prove how a past answer used its context."
   }
 }

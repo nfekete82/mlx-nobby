@@ -154,72 +154,102 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory
         observe=False,
         limit=limit,
     )
-    try:
-        clarification = personal_memory.question_for(last_user, source_chat_id=source_chat_id)
-        personal_context = personal_memory.context(
-            memory.recall_query(copied), limit=6,
-        )
-        from agent import knowledge_memory
-        knowledge_context = knowledge_memory.context(memory.recall_query(copied), semantic=True)
-        extra = "\n\n".join(part for part in (
-            clarification, personal_context, knowledge_context,
-        ) if part)
-        if extra:
-            enriched = memory.attach_system_context(enriched, extra[:9000])
-    except Exception as error:
-        from agent import knowledge_memory
-        knowledge_memory.diagnose('recall', error)
+    from agent import knowledge_memory
+    parts = []
+    # Independent source failures must not discard previously read evidence in
+    # normal chat either. Diagnostics failures are optional too.
+    for reader in (
+        lambda: personal_memory.question_for(last_user, source_chat_id=source_chat_id),
+        lambda: personal_memory.context(memory.recall_query(copied), limit=6),
+        lambda: knowledge_memory.context(memory.recall_query(copied), semantic=True),
+    ):
+        try:
+            value = reader()
+            if value: parts.append(value)
+        except Exception as error:
+            try: knowledge_memory.diagnose('recall', error)
+            except Exception: pass
+    if parts:
+        enriched = memory.attach_system_context(enriched, _bounded_parts(parts, 9000))
     return enriched
 
 
-def fast_personal_context(messages):
+def _bounded_parts(parts, budget):
+    """Keep complete evidence lines and share the budget across source stores."""
+    if sum(map(len, parts)) + 2*len(parts) <= budget:
+        return '\n\n'.join(parts)
+    queues = [part.splitlines() for part in parts]
+    selected = [[] for _ in parts]
+    used = 0
+    while any(queues):
+        for index, queue in enumerate(queues):
+            if not queue: continue
+            line = queue.pop(0)
+            if used + len(line) + 2 > budget: continue
+            selected[index].append(line)
+            used += len(line) + 2
+    return '\n\n'.join('\n'.join(lines) for lines in selected if lines)
+
+
+def fast_personal_context(messages, *, trace=None, semantic=False):
     """Source-aware, bounded-latency fallback for explicit and normal recall.
 
     Each existing store is read independently: a failed structured/legacy
     lookup must never erase already available, user-confirmed personal facts.
-    No embeddings, extraction or model inference runs in this fallback.
+    By default no embeddings, extraction or model inference runs in this
+    fallback. The explicit semantic wrapper opts into a bounded query vector.
     """
     copied = [dict(message) for message in (messages or [])]
+    if trace is not None:
+        trace.update(stores=[], query='', knowledge={}, state='ready')
     if memory_dashboard.paused():
+        if trace is not None: trace['state'] = 'paused'
         return copied
     query = memory.recall_query(copied)
     if not query:
         return copied
+    if trace is not None: trace['query'] = query
 
     from agent import knowledge_memory, chat_archive
     explicit = personal_memory.recall_requested(query)
     parts = []
     failed = False
 
-    def include(reader):
+    def include(name, reader):
         nonlocal failed
         try:
             value = reader()
         except Exception as error:
             failed = True
-            try:
-                knowledge_memory.diagnose('recall', error)
-            except Exception:
-                pass  # Diagnostics must not erase results from other stores.
+            if trace is not None: trace['stores'].append({'store':name,'state':'unavailable','error_code':type(error).__name__,'hits':0})
+            if trace is None:
+                try:
+                    knowledge_memory.diagnose('recall', error)
+                except Exception:
+                    pass  # Diagnostics must not erase results from other stores.
             return
+        if trace is not None:
+            hits = sum(line.startswith('- ') for line in (value or '').splitlines())
+            trace['stores'].append({'store':name,'state':'matched' if hits else 'no_match', 'hits':hits})
         if value:
             parts.append(value)
 
     # The personal fact inventory is an independent store. Explicit requests
     # previously skipped it entirely and could yield generic/no-evidence text
     # even when a relevant current fact had been saved in SQLite.
-    include(lambda: personal_memory.context(query, limit=12 if explicit else 6))
-    include(lambda: knowledge_memory.context(
+    include('personal', lambda: personal_memory.context(query, limit=12 if explicit else 6))
+    include('knowledge', lambda: knowledge_memory.context(
         query, budget=18000 if explicit else 3000,
+        semantic=semantic, trace=trace['knowledge'] if trace is not None else None,
     ))
 
     if explicit:
-        include(lambda: chat_archive.context(query, limit=8))
-        include(lambda: memory.explicit_context(query))
+        include('archive', lambda: chat_archive.context(query, limit=8))
+        include('legacy', lambda: memory.explicit_context(query))
     elif memory.MEMORY_DB.exists():
         # Keep only relevant lexical legacy matches and global communication
         # preferences. Never dump unrelated pinned notes into ordinary chat.
-        include(lambda: memory.explicit_context(
+        include('legacy', lambda: memory.explicit_context(
             query, include_global_preferences=True,
         ))
 
@@ -244,7 +274,9 @@ def fast_personal_context(messages):
                 'negate evidence in another. Do not invent missing dates, '
                 'names or completion claims. Current user corrections '
                 'override older or unresolved records.')
-        return memory.attach_system_context(copied, "\n\n".join(parts))
+        result = memory.attach_system_context(copied, _bounded_parts(parts, 26000 if explicit else 9000))
+        if trace is not None: trace['state'] = 'assembled'
+        return result
 
     if explicit and failed:
         return memory.attach_system_context(copied,
@@ -252,6 +284,15 @@ def fast_personal_context(messages):
             'retrieval failure. Do not claim there are no stored memories '
             'or invent personal facts.')
     return copied
+
+
+def semantic_personal_context(messages):
+    """Explicit recall with a bounded query embedding, then the same fallback.
+
+    This searches already indexed vectors only. It never loads an LLM, starts
+    an embedding runtime or performs a foreground embedding backfill.
+    """
+    return fast_personal_context(messages, semantic=True)
 
 
 __all__ = [

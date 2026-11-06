@@ -399,6 +399,7 @@ def _explicit_partner_names(original):
 
 def parse_facts(output: str, original: str, *, context_text='') -> list[dict]:
     """Untrusted model output must be literal-grounded before persistence."""
+    from agent import memory_grounding
     original = str(original or "")
     if not 12 <= len(original) <= MAX_TEXT or km.extraction_skip_reason(original):
         return []
@@ -428,7 +429,7 @@ def parse_facts(output: str, original: str, *, context_text='') -> list[dict]:
             evidence.casefold() not in source or
             value.casefold() not in evidence.casefold() or
             _SECRET.search(value) or _BAD.search(evidence) or
-            _HYPOTHETICAL.search(evidence)):
+            _HYPOTHETICAL.search(evidence) or not memory_grounding.supported(evidence, original)):
             continue
         # Literal occurrence alone does not establish the attribute. Qwen can
         # otherwise convert 'born in X' into a present residence in X.

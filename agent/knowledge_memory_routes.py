@@ -1,5 +1,6 @@
 """Same-origin local APIs for paginated knowledge, revisions and safe restore."""
 from fastapi import HTTPException
+from fastapi.responses import JSONResponse
 from agent import knowledge_memory as km, personal_memory as pm, memory_commands
 
 
@@ -11,6 +12,31 @@ def install_routes(app, chat_host=None):
 
     @app.get('/api/knowledge-memory/status')
     def status(): return km.stats()
+
+    @app.post('/api/knowledge-memory/diagnose')
+    def diagnose(payload: dict):
+        # POST keeps personal queries out of HTTP access-log URLs. Nothing is
+        # persisted; this reproduces the fast production context assembly.
+        import time
+        from agent import memory_lifecycle
+        query = payload.get('query')
+        if not isinstance(query, str) or not 1 <= len(query.strip()) <= 4000:
+            raise HTTPException(422, 'query must contain 1..4000 characters')
+        trace = {}
+        messages = [{'role':'user','content':query.strip()}]
+        started = time.perf_counter()
+        result = memory_lifecycle.fast_personal_context(messages, trace=trace)
+        trace['context'] = '\n\n'.join(m.get('content','') for m in result if m.get('role')=='system')
+        trace['context_chars'] = len(trace['context'])
+        trace['elapsed_ms'] = round((time.perf_counter()-started)*1000,3)
+        trace['path'] = 'fast_context_preview'
+        trace['persisted'] = False
+        selected = trace.get('knowledge',{}).get('selected',[])
+        trace['injected_knowledge_ids'] = [r['id'] for r in selected if f"[{r['kind']}:{r['id']}]" in trace['context']]
+        trace['reason'] = ('paused' if trace['state']=='paused' else
+            'source_unavailable' if any(s['state']=='unavailable' for s in trace['stores']) else
+            'no_matching_evidence' if not trace['context'] or not any(s['hits'] for s in trace['stores']) else 'matched')
+        return JSONResponse(trace, headers={'Cache-Control':'no-store'})
 
     @app.get('/api/knowledge-memory/items')
     def items(kind: str = 'fact', query: str = '', category: str = '', project: str = '', since: float = 0, until: float = 0, offset: int = 0, limit: int = 30):

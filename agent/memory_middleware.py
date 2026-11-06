@@ -169,14 +169,14 @@ class MemoryChatMiddleware:
     async def _explicit_overview(self, raw_messages):
         """Bounded local inventory fetch prioritized for direct memory questions.
 
-        This is read-only and never invokes Qwen, embeddings or external APIs;
-        the normal chat model still composes its reply using the grounded facts.
+        A bounded loopback query embedding can search existing vectors; it never
+        invokes Qwen or a foreground vector backfill. SQLite remains the fallback.
         """
         current = self._overview_future
         if current is not None and not current.done():
             return await self._fast_personal(raw_messages)
         future = self._overview_executor.submit(
-            memory_lifecycle.fast_personal_context, raw_messages,
+            memory_lifecycle.semantic_personal_context, raw_messages,
         )
         self._overview_future = future
         try:

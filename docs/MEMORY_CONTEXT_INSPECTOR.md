@@ -1,5 +1,12 @@
 # Memory Context Inspector
 
+Memory 3 adds **Diagnose all memory stores**, a local POST-based preview of
+the actual fast chat-context assembly across personal facts, structured
+knowledge, archive and legacy notes. It shows rewritten terms, candidates,
+selected sources, budgets and pause/failure reasons; it does not execute an
+answer model. The original legacy scoring inspector below remains available.
+See [Memory 3](MEMORY_3.md#dashboard-and-diagnosis).
+
 The Memory Context Inspector is a read-only developer tool under **Settings → Memory**. It explains which long-term memories Nobby would inject for a specific user message without changing memory usage counters.
 
 ## What it shows
