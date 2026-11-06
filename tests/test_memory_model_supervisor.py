@@ -161,9 +161,10 @@ def test_exclusive_handoff_never_terminates_external_4b(monkeypatch):
     ctl._write(ctl.STATE, {
         "updated_at": time.time(), "owned": False, "state": "external",
     })
-    assert ctl.prepare_media_dispatch(
-        "image", timeout_seconds=0.1, exclusive=True,
-    )
+    with pytest.raises(ctl.UnmanagedMemoryModel, match="4B"):
+        ctl.prepare_media_dispatch(
+            "image", timeout_seconds=0.1, exclusive=True,
+        )
     assert ctl.requested_media_priority() is None
     manager = sup.Supervisor()
     monkeypatch.setattr(sup, "valid_settings", lambda: True)
@@ -171,6 +172,41 @@ def test_exclusive_handoff_never_terminates_external_4b(monkeypatch):
     with mock.patch.object(manager, "stop") as stop:
         manager.tick()
     stop.assert_not_called()
+
+
+def test_direct_native_media_lease_keeps_supervisor_suspended_after_demand_expires(monkeypatch):
+    import runtime_coordinator as rc
+    monkeypatch.setattr(rc, "lease_state_snapshot",
+                        lambda: {"active": {"workload": "video"}})
+    ctl._write(ctl.DEMAND, {
+        "kind": "video", "exclusive": True, "until": time.time() - 10,
+    })
+    assert ctl.active_media_kind() == "video"
+    assert not sup.should_load({"free_percent": 85, "headroom_gb": 30},
+                               ctl.active_media_kind())
+
+
+def test_manual_4b_blocks_exclusive_video_without_killing_process(monkeypatch):
+    monkeypatch.setattr(ctl, "_external_dedicated_model_running", lambda: True)
+    with pytest.raises(ctl.UnmanagedMemoryModel, match="4B"):
+        ctl.prepare_media_dispatch("video", timeout_seconds=0, exclusive=True)
+    # Nonexclusive API semantics are unchanged.
+    assert ctl.prepare_media_dispatch("video", timeout_seconds=0, exclusive=False)
+
+
+def test_exclusive_video_waits_for_supervisor_owned_memory(monkeypatch):
+    ctl._write(ctl.STATE, {
+        "updated_at": time.time(), "owned": True, "state": "running",
+    })
+    monkeypatch.setattr(ctl, "_external_dedicated_model_running", lambda: False)
+    def release(_duration):
+        assert ctl.exclusive_media_requested("video")
+        ctl._write(ctl.STATE, {
+            "updated_at": time.time(), "owned": False,
+            "state": "suspended_media",
+        })
+    monkeypatch.setattr(ctl.time, "sleep", release)
+    assert ctl.prepare_media_dispatch("video", timeout_seconds=1, exclusive=True)
 
 
 def test_owned_4b_resumes_after_media_finishes(monkeypatch):

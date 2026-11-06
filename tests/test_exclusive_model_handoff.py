@@ -232,3 +232,194 @@ def test_image_service_fails_closed_if_warm_sdxl_refuses_to_release(monkeypatch)
         assert called == []
     finally:
         image._jobs.pop(job_id, None)
+
+def test_exclusive_native_runtime_verifies_4b_release_before_media_admission():
+    """Direct native image/video requests cannot bypass the 4B supervisor."""
+    from agent import memory_model_coordination as ctl
+
+    seen = []
+    def memory_preflight(kind, timeout_seconds=20, *, exclusive=False):
+        seen.append((kind, exclusive))
+        return True
+    with tempfile.TemporaryDirectory() as directory, \
+         mock.patch.object(ctl, "prepare_media_dispatch", side_effect=memory_preflight), \
+         mock.patch.object(runtime, "memory_budget_snapshot", return_value=SAFE.copy()), \
+         mock.patch.object(runtime, "ensure_model_load_allowed"), \
+         mock.patch.object(runtime, "release_idle_image_runtime", return_value={"released": False, "loaded": False}), \
+         mock.patch.object(runtime, "release_idle_speech_runtime", return_value={"released": False}), \
+         mock.patch.object(runtime, "release_idle_musetalk_runtime", return_value={"released": False}), \
+         mock.patch.object(runtime, "wait_for_idle", return_value={"status": "ready"}):
+        with runtime.image_runtime(
+            threading.Event(), lock_path=Path(directory) / "image.lock",
+            chat_loaded=lambda: False, exclusive_models=True,
+        ):
+            pass
+        with runtime.video_runtime(
+            threading.Event(), lock_path=Path(directory) / "video.lock",
+            chat_loaded=lambda: False, chat_command=lambda action: None,
+            exclusive_models=True,
+        ):
+            pass
+    assert seen == [("image", True), ("video", True)]
+
+
+def test_exclusive_native_media_fails_before_model_loading_if_4b_busy():
+    from agent import memory_model_coordination as ctl
+    with tempfile.TemporaryDirectory() as directory, \
+         mock.patch.object(ctl, "prepare_media_dispatch", return_value=False), \
+         mock.patch.object(runtime, "ensure_model_load_allowed") as admission:
+        try:
+            with runtime.image_runtime(
+                threading.Event(), lock_path=Path(directory) / "runtime.lock",
+                chat_loaded=lambda: False, exclusive_models=True,
+            ):
+                raise AssertionError("Unsafe model admission")
+        except runtime.ServiceUnavailable as exc:
+            assert "4B" in str(exc)
+    admission.assert_not_called()
+
+
+def test_direct_image_generate_edit_and_upscale_use_exclusive_runtime(monkeypatch):
+    """The older synchronous routes must share the same protective lease."""
+    import image_service as image
+    from contextlib import contextmanager
+    calls = []
+
+    @contextmanager
+    def guarded(_cancel_event, **kwargs):
+        calls.append(kwargs)
+        yield {"suppress_chat_restore": False}
+
+    monkeypatch.setattr(image.runtime_coordinator, "image_runtime", guarded)
+    monkeypatch.setattr(image, "_release_unused_image_models", lambda selected=None: None)
+    monkeypatch.setattr(image, "sdxl_worker_running", lambda: False)
+    monkeypatch.setattr(image, "shutdown_sdxl_worker", lambda: None)
+    monkeypatch.setattr(image, "_resolve_generation", lambda request: {
+        "model": {"provider": "sdxl", "id": "fixture"}
+    })
+    monkeypatch.setattr(image, "_generate_result", lambda request, **kw: {"id": "fixture"})
+    monkeypatch.setattr(image, "_edit_result", lambda request: {"id": "fixture"})
+    monkeypatch.setattr(image, "_upscale_result", lambda request: {"id": "fixture"})
+
+    assert image.generate(image.Generate(prompt="Synthetic terrain"))["id"] == "fixture"
+    assert image.edit(image.Edit(prompt="Edit synthetic picture", source_path="/tmp/a.png"))["id"] == "fixture"
+    assert image.upscale(image.Upscale(source_path="/tmp/a.png"))["id"] == "fixture"
+    assert len(calls) == 3
+    assert all(call.get("exclusive_models") is True for call in calls)
+
+
+def test_image_model_cache_releases_other_models_and_rejects_unknown(monkeypatch):
+    import image_service as image
+    calls = []
+    state = {"sdxl": True}
+    monkeypatch.setattr(image, "sdxl_worker_running", lambda: state["sdxl"])
+    def shutdown():
+        calls.append("sdxl")
+        state["sdxl"] = False
+    monkeypatch.setattr(image, "shutdown_sdxl_worker", shutdown)
+    monkeypatch.setattr(image, "_loaded_mlxserve_repository_ids", lambda: ["model-a", "model-b"])
+    monkeypatch.setattr(image.registry, "load_registry", lambda: {
+        "models": [
+            {"repository": "model-a", "provider": "mlxserve"},
+            {"repository": "model-b", "provider": "mlxserve"},
+        ]
+    })
+    monkeypatch.setattr(image, "_unload_mlxserve_model_and_wait",
+                        lambda model: calls.append(model["repository"]))
+    image._release_unused_image_models({"provider": "mlxserve", "repository": "model-a"})
+    assert calls == ["sdxl", "model-b"]
+
+    monkeypatch.setattr(image, "_loaded_mlxserve_repository_ids", lambda: ["unknown-weights"])
+    try:
+        image._release_unused_image_models({"provider": "sdxl"})
+    except RuntimeError as exc:
+        assert "unbekanntes MLX-Serve-Modell" in str(exc)
+    else:
+        raise AssertionError("Unknown weights must not coexist with SDXL")
+
+def test_mlxserve_release_error_suppresses_chat_restore_for_direct_edit(monkeypatch):
+    """A failed provider unload must never restart 27B over resident weights."""
+    import image_service as image
+    from contextlib import contextmanager
+    observed = {}
+
+    @contextmanager
+    def guarded(_cancel, **kwargs):
+        assert kwargs.get("exclusive_models") is True
+        yield observed
+
+    def cannot_unload(_request):
+        raise image.ImageModelReleaseError("MLX-Serve edit weights still loaded")
+
+    monkeypatch.setattr(image.runtime_coordinator, "image_runtime", guarded)
+    monkeypatch.setattr(image, "_release_unused_image_models", lambda selected=None: None)
+    monkeypatch.setattr(image, "sdxl_worker_running", lambda: False)
+    monkeypatch.setattr(image, "_edit_result", cannot_unload)
+
+    try:
+        image.edit(image.Edit(prompt="Synthetic local edit", source_path="/tmp/test.png"))
+    except Exception as exc:
+        assert "MLX-Serve" in str(exc)
+    else:
+        raise AssertionError("Edit with failed model unload must not succeed")
+    assert observed.get("suppress_chat_restore") is True
+
+
+def test_mlxserve_release_error_suppresses_chat_restore_for_queued_edit(monkeypatch):
+    import image_service as image
+    from contextlib import contextmanager
+
+    seen = {}
+    job_id = "exclusive-model-release-error-queued"
+
+    @contextmanager
+    def guarded(_cancel, **kwargs):
+        assert kwargs.get("exclusive_models") is True
+        yield seen
+
+    def cannot_unload(*args, **kwargs):
+        raise image.ImageModelReleaseError("MLX-Serve edit weights still loaded")
+
+    monkeypatch.setattr(image.runtime_coordinator, "image_runtime", guarded)
+    monkeypatch.setattr(image, "_release_unused_image_models", lambda selected=None: None)
+    monkeypatch.setattr(image, "sdxl_worker_running", lambda: False)
+    monkeypatch.setattr(image, "_edit_result", cannot_unload)
+    image._jobs[job_id] = {
+        "id": job_id, "status": "queued", "phase": "queued",
+        "operation": "edit", "_cancel_event": threading.Event(),
+        "created_at": 1.0, "total_steps": 20,
+    }
+    try:
+        image._run_image_job(
+            job_id, "edit",
+            image.Edit(prompt="Synthetic local edit", source_path="/tmp/test.png"),
+            release_lock=False,
+        )
+        assert image._jobs[job_id]["status"] == "failed"
+        assert seen.get("suppress_chat_restore") is True
+    finally:
+        image._jobs.pop(job_id, None)
+
+def test_unmanaged_mlxserve_image_weights_stay_visible_and_block_video_handoff(monkeypatch):
+    """Never report image runtime unloaded while unknown weights remain."""
+    import image_service as image
+    from fastapi import HTTPException
+
+    model = {"id": "fixture", "provider": "sdxl", "enabled": True}
+    monkeypatch.setattr(image.registry, "load_registry",
+                        lambda: {"default_model": "fixture", "models": [model]})
+    monkeypatch.setattr(image.registry, "get_model", lambda: model)
+    monkeypatch.setattr(image, "_loaded_mlxserve_models", lambda: [])
+    monkeypatch.setattr(image, "_loaded_mlxserve_repository_ids",
+                        lambda: ["unmanaged-image-model"])
+    monkeypatch.setattr(image, "sdxl_worker_running", lambda: False)
+    monkeypatch.setattr(image, "shutdown_sdxl_worker", lambda: None)
+    assert image.health()["loaded"] is True
+    assert image.health()["running_model"] == "unmanaged-mlxserve"
+    try:
+        image.unload()
+    except HTTPException as exc:
+        assert exc.status_code == 500
+        assert "vollständig entladen" in str(exc.detail)
+    else:
+        raise AssertionError("Unknown image weight must block video handoff")
