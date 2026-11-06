@@ -40,3 +40,44 @@ def project_statements(text):
         if 12 <= len(sentence) <= 500:
             result.append(('projekte.'+name, sentence.strip()))
     return result
+
+
+def mentions_person(text, person_slug):
+    """Match an explicit name as a complete sequence, never as a substring.
+
+    The source must visibly name the person. A name in a previous chat is not
+    evidence that a new pronoun/action belongs to that person.
+    """
+    name = re.sub(r'[_\s-]+', ' ', str(person_slug).casefold()).strip()
+    source = re.sub(r'[_\s-]+', ' ', str(text).casefold()).strip()
+    return bool(name and re.search(
+        r'(?<!\w)' + re.escape(name) + r'(?!\w)', source
+    ))
+
+
+def person_claim_supported(subject, value, evidence):
+    """Require a person and their claimed attribute in one attributed clause.
+
+    A model may quote an entire paragraph mentioning A and C, assigning C's
+    activity to A while satisfying global name/value substring checks.
+    Ambiguous/pronoun-only claims remain in the original source instead.
+    """
+    if not str(subject).startswith('personen.'):
+        return True
+    name = str(subject).split('.', 1)[1]
+    value = str(value).strip()
+    if not name or not value:
+        return False
+    # Sentence boundaries and a new explicit person/action subject start a
+    # new attribution scope. Avoid transferring actions to another person.
+    scopes = re.split(
+        r'(?<=[.!?;])\s+|\n+|'
+        r'\s+\b(?:und|aber)\s+(?=(?:mit|bei|von|für|mein\w*)\b)|'
+        r'\s+\b(?:und|aber)\s+(?=[A-ZÄÖÜ][\wÄÖÜäöüß-]+\s+'
+        r'(?:war|ist|hat|ging|fuhr|arbeitete|wohnt)\b)',
+        str(evidence),
+    )
+    return any(
+        mentions_person(scope, name) and value.casefold() in scope.casefold()
+        for scope in scopes
+    )
