@@ -76,8 +76,10 @@ def bounds(page):
     return page.locator('.image-artifact-card').first.evaluate('''card => {
         const image = card.querySelector('img').getBoundingClientRect();
         const details = card.querySelector('.image-artifact-details').getBoundingClientRect();
-        return {width: card.getBoundingClientRect().width, imageRight: image.right,
-                detailsLeft: details.left, imageBottom: image.bottom, detailsTop: details.top,
+        return {width: card.getBoundingClientRect().width,
+                height: card.getBoundingClientRect().height,
+                imageRight: image.right, detailsLeft: details.left,
+                imageBottom: image.bottom, detailsTop: details.top,
                 imageHeight: image.height, overflow: document.documentElement.scrollWidth > innerWidth};
     }''')
 
@@ -92,11 +94,13 @@ def test_image_card_layout(browser, viewport, container, two_columns):
         render(page, width, height)
     first = bounds(page)
     assert not first['overflow']
-    assert first['imageHeight'] <= 680
+    assert first['imageHeight'] <= 195  # original image is a compact preview
+    ordinary_width = page.locator('.message').first.bounding_box()['width']
+    assert abs(first['width'] - ordinary_width) <= 1
     if two_columns:
-        assert first['width'] > 1000
+        assert ordinary_width == 900
+        assert first['height'] < 340  # never stretches to the original portrait height
         assert first['detailsLeft'] >= first['imageRight']
-        assert page.locator('.message').first.bounding_box()['width'] == 900
     else:
         assert first['detailsTop'] >= first['imageBottom']
     page.locator('.image-artifact-info summary').first.click()
