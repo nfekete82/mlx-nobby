@@ -145,11 +145,14 @@ def install(service):
         return "cancelled" if "cancelled" in statuses else "failed"
 
     def run(group):
-        # A true multi-image Juggernaut batch does not need to bounce the
-        # heavyweight chat model between successive, identical SDXL jobs.
-        # Keep one *exclusive* coordinator lease and one SDXL worker until
-        # the last pending variant finishes. Other providers and single
-        # variants continue to use the old per-job lifetime.
+        # Keep one exclusive *coordinator lease* across the entire SDXL
+        # gallery, so chat cannot restart between variants. PyTorch MPS can
+        # retain device/host allocations inside a warm SDXL worker, however:
+        # recycle that owned child after two successful variants, while the
+        # same lease is held, before the next variant loads. This limits
+        # cumulative MPS residency in 48-GB unified RAM without altering
+        # per-image output parameters, model guards or existing artifacts.
+        # Other providers and single variants keep their prior lifetime.
         canonical_model = group.get("canonical", {}).get("model", {})
         pending = [job for job in group["jobs"] if not reusable(job)]
         batch_sdxl = (
@@ -165,6 +168,7 @@ def install(service):
             )
             if batch_sdxl else nullcontext()
         )
+        rendered_since_recycle = 0
         try:
             with context as preflight:
                 try:
@@ -194,6 +198,8 @@ def install(service):
                         )
                         persist(group)
                         if job["status"] != "completed":
+                            if job["status"] == "failed":
+                                group["batch_failed"] = True
                             for missing in group["jobs"]:
                                 if missing["status"] == "queued":
                                     service._update_job(
@@ -203,6 +209,29 @@ def install(service):
                                         finished_at=time.time(),
                                     )
                             break
+                        if batch_sdxl:
+                            rendered_since_recycle += 1
+                            remaining = any(
+                                member["status"] not in _TERMINAL
+                                for member in group["jobs"]
+                            )
+                            if rendered_since_recycle >= 2 and remaining:
+                                # We still own the image service lock AND the
+                                # cross-service runtime lease: no chat, video
+                                # or other SDXL job can enter during recycle.
+                                # Never silently proceed if unloading fails.
+                                try:
+                                    service.shutdown_sdxl_worker()
+                                    if service.sdxl_worker_running():
+                                        raise RuntimeError(
+                                            "SDXL worker still resident at variant checkpoint"
+                                        )
+                                except Exception:
+                                    group["batch_failed"] = True
+                                    if isinstance(preflight, dict):
+                                        preflight["suppress_chat_restore"] = True
+                                    raise
+                                rendered_since_recycle = 0
                 finally:
                     if batch_sdxl:
                         # Must finish *before* image_runtime exits and tries
@@ -224,6 +253,7 @@ def install(service):
                         error=None, finished_at=time.time(),
                     )
         except Exception:
+            group["batch_failed"] = True
             for job in group["jobs"]:
                 if job["status"] not in _TERMINAL:
                     service._update_job(job["id"], status="failed",
