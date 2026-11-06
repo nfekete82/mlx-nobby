@@ -293,6 +293,7 @@ def test_direct_image_generate_edit_and_upscale_use_exclusive_runtime(monkeypatc
     monkeypatch.setattr(image.runtime_coordinator, "image_runtime", guarded)
     monkeypatch.setattr(image, "_release_unused_image_models", lambda selected=None: None)
     monkeypatch.setattr(image, "sdxl_worker_running", lambda: False)
+    monkeypatch.setattr(image, "shutdown_sdxl_worker", lambda: None)
     monkeypatch.setattr(image, "_resolve_generation", lambda request: {
         "model": {"provider": "sdxl", "id": "fixture"}
     })
@@ -310,8 +311,12 @@ def test_direct_image_generate_edit_and_upscale_use_exclusive_runtime(monkeypatc
 def test_image_model_cache_releases_other_models_and_rejects_unknown(monkeypatch):
     import image_service as image
     calls = []
-    monkeypatch.setattr(image, "sdxl_worker_running", lambda: True)
-    monkeypatch.setattr(image, "shutdown_sdxl_worker", lambda: calls.append("sdxl"))
+    state = {"sdxl": True}
+    monkeypatch.setattr(image, "sdxl_worker_running", lambda: state["sdxl"])
+    def shutdown():
+        calls.append("sdxl")
+        state["sdxl"] = False
+    monkeypatch.setattr(image, "shutdown_sdxl_worker", shutdown)
     monkeypatch.setattr(image, "_loaded_mlxserve_repository_ids", lambda: ["model-a", "model-b"])
     monkeypatch.setattr(image.registry, "load_registry", lambda: {
         "models": [
