@@ -711,6 +711,31 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
                     label += ' [period: ' + r['period'] + ']'
             sources = _sources(conn, kind, oid)
             if any(blocked(conn, body, s.get('id')) for s in sources): continue
+            if requested_names:
+                from agent import memory_grounding
+                # Even an old, accepted named-person fact may have been
+                # extracted from evidence mentioning two different people.
+                # Do not restate it as certain when the source cannot bind
+                # the claimed action to that person.
+                if kind == 'fact' and r['subject'].startswith('personen.'):
+                    evidence_sources = [s['evidence'] for s in sources if s.get('evidence')]
+                    if evidence_sources and not any(
+                        memory_grounding.person_claim_supported(
+                            r['subject'], r['value'], evidence
+                        ) for evidence in evidence_sources
+                    ):
+                        continue
+                if kind == 'episode' or (
+                    kind == 'fact' and r['subject'] == 'ich'
+                    and r['field'].split('.')[0] in ('notiz', 'erlebnis', 'beziehung')
+                ):
+                    scoped = ' … '.join(dict.fromkeys(
+                        clip for name in requested_names
+                        if (clip := memory_grounding.person_scoped_excerpt(body, name))
+                    ))
+                    if not scoped:
+                        continue
+                    body = scoped
             relevance = len(set(words) & set(_WORD.findall((label + ' ' + body).casefold())))
             age = max(0, time.time() - r['updated_at']) / 86400
             score = relevance + priority + semantic_scores.get((kind, oid), 0) * 3 + 1 / (1 + age / 90)
@@ -718,8 +743,20 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
             evidence = ' | '.join(dict.fromkeys(s['evidence'] for s in sources if s['evidence']))[:700]
             if explicit:
                 from agent import chat_archive
-                evidence = ' | '.join(dict.fromkeys(chat_archive.source_quote(s) or s.get('evidence','')
-                                                    for s in sources[:3]))[:1000]
+                original_quotes = [
+                    chat_archive.source_quote(s) or s.get('evidence', '')
+                    for s in sources[:3]
+                ]
+                if requested_names:
+                    from agent import memory_grounding
+                    # Keep the database's complete source; trim only the
+                    # model-facing quotation to the target person's clauses.
+                    evidence = ' | '.join(dict.fromkeys(
+                        clip for quote in original_quotes for name in requested_names
+                        if (clip := memory_grounding.person_scoped_excerpt(quote, name))
+                    ))[:1000]
+                else:
+                    evidence = ' | '.join(dict.fromkeys(original_quotes))[:1000]
             # FTS prefix matches and source wording must also affect ranking;
             # otherwise a German compound matches in SQL but loses to recent,
             # generic family/partner facts before the prompt budget is applied.
