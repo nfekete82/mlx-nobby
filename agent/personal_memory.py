@@ -935,6 +935,7 @@ def context(query, *, limit=6):
         and memory_grounding.mentions_person(query, fact['value'])
         for fact in facts
     )
+    scoped_people = named_people | ({'partner'} if partner_named else set())
     partner_topic = bool(re.search(
         r"\b(?:partnerin?|freundin|freund|beziehung|ehe)\b", query, re.I))
     family_topic = bool(re.search(
@@ -957,11 +958,9 @@ def context(query, *, limit=6):
             continue
         # A question naming an existing person must not pull in another
         # person's similarly worded notes or the unrelated partner profile.
-        if named_people:
+        if scoped_people:
             subject = fact['subject']
-            if subject.startswith('personen.') and subject not in named_people:
-                continue
-            if subject == 'partner' and not partner_named:
+            if (subject == 'partner' or subject.startswith('personen.')) and subject not in scoped_people:
                 continue
             if subject == 'ich' and fact['field'].split('.')[0] in ('notiz', 'erlebnis', 'beziehung'):
                 if not any(memory_grounding.mentions_person(fact['value'], name.split('.', 1)[1])
