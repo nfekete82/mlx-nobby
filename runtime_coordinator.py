@@ -959,6 +959,23 @@ def _exclusive_memory_model_handoff(kind, cancel_event=None):
     """
     _check_cancelled(cancel_event)
     from agent import memory_model_coordination as coordination
+    if coordination.on_demand_enabled():
+        # The legacy 8040 VLM server carries a second resident 4B. Require
+        # the explicitly deployed zero-weight gateway before claiming a fully
+        # exclusive media preflight. Never kill unmanaged router PIDs.
+        try:
+            router = request_json("GET", "http://127.0.0.1:8040/health", timeout=3)
+        except (OSError, ValueError, RuntimeError) as exc:
+            raise ServiceUnavailable(
+                "Shared-4B router gateway unavailable; media admission refused"
+            ) from exc
+        if (router.get("router_manager") != "shared-4b"
+                or router.get("model_manager_version") != 1
+                or router.get("loaded") is not False
+                or router.get("active_generation") is not False):
+            raise ServiceUnavailable(
+                "Legacy/resident 4B router cannot be safely preempted"
+            )
     if not coordination.prepare_media_dispatch(kind, exclusive=True):
         raise ServiceUnavailable(
             "Exklusiver Medienmodus: Das 4B-Memory-Modell verarbeitet noch "
