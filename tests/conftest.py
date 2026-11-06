@@ -55,6 +55,30 @@ def mflux_cli_contract(monkeypatch):
     monkeypatch.setattr(image_providers, 'probe_mflux_cli', probe)
 
 @pytest.fixture(autouse=True)
+def isolate_live_mlxserve_from_cpu_tests(monkeypatch, request):
+    """Never probe or unload the developer's live MLX-Serve from CPU tests.
+
+    Exclusive image handoffs check the /v1/models residency flags. On a Mac
+    where port 11234 already hosts a real loaded model, synthetic image tests
+    would otherwise see that unrelated resident model and abort. Override the
+    endpoint, NOT the safety logic: explicit handoff unit tests can still
+    simulate known and unknown loaded IDs to exercise fail-closed behavior.
+    Browser/real acceptance runs use separate isolation and are unaffected.
+    """
+    if request.config.getoption("--e2e"):
+        return
+
+    import image_providers
+    import image_service
+
+    # Port 0 is not a connectable listening service. This intentionally
+    # leaves unexpected probes unavailable rather than consulting production.
+    offline_endpoint = "http://127.0.0.1:0"
+    monkeypatch.setattr(image_providers, "MLXSERVE_URL", offline_endpoint)
+    monkeypatch.setattr(image_service, "MLXSERVE_URL", offline_endpoint)
+
+
+@pytest.fixture(autouse=True)
 def stable_runtime_memory_snapshot(monkeypatch, request):
     """Keep non-memory tests independent from the CI runner's physical RAM.
 
