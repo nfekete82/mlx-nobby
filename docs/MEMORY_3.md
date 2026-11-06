@@ -97,7 +97,9 @@ the existing outer chat deadlines and bounded executor remain necessary.
 
 **Fault isolation, contradictions and context.** Normal recall now reads
 clarification/personal/knowledge sources independently, like explicit recall.
-One source or diagnostic failure cannot discard the other results. Current
+One source or diagnostic failure cannot discard the other results. At an
+explicit semantic deadline, recall retries the independent SQLite-only path, so a
+slow vector scan cannot erase otherwise available personal evidence. Current
 facts with unresolved proposals carry a contradiction warning on their own
 line, so dropping a separate proposal to fit the budget does not establish the
 old value as confirmed. Low-confidence reports are labeled. Context assembly

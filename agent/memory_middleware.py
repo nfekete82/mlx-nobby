@@ -186,6 +186,9 @@ class MemoryChatMiddleware:
             )
         except Exception:
             from agent import memory
+            fallback = await self._fast_personal(raw_messages)
+            if fallback != raw_messages:
+                return fallback
             return memory.attach_system_context(raw_messages,
                 'LOCAL MEMORY RETRIEVAL UNAVAILABLE. Explain the temporary retrieval failure. '
                 'Do not claim there are no stored memories or invent personal facts.')
