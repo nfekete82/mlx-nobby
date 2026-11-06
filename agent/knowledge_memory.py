@@ -626,8 +626,23 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
         # OTHER named people are not interchangeable even when the activity
         # vocabulary overlaps. Never infer that "we" denotes this person.
         requested_people = {subj for subj in requested_subjects
-                            if subj.startswith('personen.')}
-        requested_names = [subj.split('.', 1)[1] for subj in requested_people]
+                            if subj == 'partner' or subj.startswith('personen.')}
+        # The special "partner" entity is also a person. A query using the
+        # partner's saved name must not pull in a similarly worded colleague's
+        # or friend's experiences.
+        if explicit and re.search(r'\b(?i:mein(?:e|en|er)? partner(?:in)?)\b', scope_query):
+            requested_people.add('partner')
+        requested_names = [
+            subj.split('.', 1)[1] for subj in requested_people
+            if subj.startswith('personen.')
+        ]
+        if 'partner' in requested_people:
+            requested_names.extend(
+                r[0] for r in conn.execute(
+                    "SELECT value FROM facts WHERE subject='partner' "
+                    "AND field='name' AND status='active'"
+                )
+            )
         # Directly asking about a known named person authorizes only that
         # person's matching private history, not unrelated private episodes.
         if explicit and requested_people:
@@ -664,7 +679,9 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
             if kind == 'fact':
                 r = conn.execute("SELECT f.*,COALESCE(m.pinned,0) AS pinned,COALESCE(m.kind,'statement') AS kind,COALESCE(m.confidence,1) AS confidence FROM facts f LEFT JOIN fact_metadata m ON m.fact_id=f.id WHERE f.id=? AND f.status='active'", (oid,)).fetchone()
                 if r is None: continue
-                if requested_people and r['subject'].startswith('personen.') and r['subject'] not in requested_people:
+                if requested_people and (
+                    r['subject'] == 'partner' or r['subject'].startswith('personen.')
+                ) and r['subject'] not in requested_people:
                     continue
                 if requested_names and r['subject'] == 'ich' and r['field'].split('.')[0] in ('notiz', 'erlebnis', 'beziehung'):
                     from agent import memory_grounding
