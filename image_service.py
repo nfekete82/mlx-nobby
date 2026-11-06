@@ -57,6 +57,10 @@ _active_job_id = None
 _MAX_RETAINED_JOBS = 100
 
 
+class ImageModelReleaseError(RuntimeError):
+    """Model weights could not be verified unloaded; suppress chat restore."""
+
+
 class Generate(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
@@ -705,7 +709,7 @@ def _generate_result(
         _running = None
 
         if cleanup_error is not None and active_error is None:
-            raise RuntimeError(
+            raise ImageModelReleaseError(
                 "MLX-Serve-Image-Modell konnte nicht vollständig entladen "
                 "werden; Chat-Neustart wurde zum Speicherschutz übersprungen"
             ) from cleanup_error
@@ -1043,7 +1047,15 @@ def _edit_result_inner(
                              path, region_crop, path,
                              feather_px=request.region_feather_px)
     finally:
-        _running = None
+        try:
+            if model.get("provider") == "mlxserve":
+                _unload_mlxserve_model_and_wait(model)
+        except Exception as exc:
+            raise ImageModelReleaseError(
+                "MLX-Serve-Edit-Modell konnte nicht vollständig entladen werden"
+            ) from exc
+        finally:
+            _running = None
     if saving_callback:
         saving_callback()
 
@@ -1311,7 +1323,11 @@ def generate(request: Generate):
                     except Exception:
                         preflight["suppress_chat_restore"] = True
                         raise
-                    return _generate_result(request, resolved=resolved)
+                    try:
+                        return _generate_result(request, resolved=resolved)
+                    except ImageModelReleaseError:
+                        preflight["suppress_chat_restore"] = True
+                        raise
                 finally:
                     if sdxl_job:
                         try:
@@ -1343,7 +1359,11 @@ def edit(request: Edit):
                     except Exception:
                         preflight["suppress_chat_restore"] = True
                         raise
-                    return _edit_result(request)
+                    try:
+                        return _edit_result(request)
+                    except ImageModelReleaseError:
+                        preflight["suppress_chat_restore"] = True
+                        raise
                 finally:
                     # SDXL img2img can warm a worker too. Never restore a
                     # large chat model on top of that resident MPS pipeline.
@@ -1565,15 +1585,20 @@ def _run_image_job(
             timings.mark("execution_started")
             rendered_result = None
             try:
-                result = execute(
-                    request,
-                    provider_options=provider_options,
-                    prepared_callback=prepared,
-                    saving_callback=saving,
-                    **({"resolved": resolved} if resolved is not None else {}),
-                    **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
-                       if operation in {"generate", "edit"} else {}),
-                )
+                try:
+                    result = execute(
+                        request,
+                        provider_options=provider_options,
+                        prepared_callback=prepared,
+                        saving_callback=saving,
+                        **({"resolved": resolved} if resolved is not None else {}),
+                        **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
+                           if operation in {"generate", "edit"} else {}),
+                    )
+                except ImageModelReleaseError:
+                    if preflight is not None:
+                        preflight["suppress_chat_restore"] = True
+                    raise
                 timings.mark("result_ready")
                 rendered_result = result
             finally:
