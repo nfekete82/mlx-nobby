@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import vm from 'node:vm';
 
 const html = fs.readFileSync('frontend/chat.html', 'utf8');
 const runtime = fs.readFileSync('frontend/assets/chat/runtime.js', 'utf8');
@@ -81,5 +82,44 @@ assert.match(css, /media-quality-option\[hidden\]/);
 assert.match(css, /repeat\(auto-fit, minmax\(135px, 1fr\)\)/);
 assert.match(generation, /Querformat 16:9/);
 assert.match(generation, /Hochformat 9:16/);
+
+// The selected format must disclose the *native* Juggernaut Ultra canvas.
+// The last local 864×1536 job is the real 9:16 size, not a broken 3:4 render.
+const formatStart = generation.indexOf('const IMAGE_SIZES_BY_FORMAT =');
+const formatEnd = generation.indexOf('function videoAspectRatioForFormat', formatStart);
+assert.ok(formatStart >= 0 && formatEnd > formatStart);
+const formatContext = vm.createContext({
+    window: {MLXI18n: {t: (_key, fallback) => fallback}},
+});
+vm.runInContext(generation.slice(formatStart, formatEnd), formatContext);
+const ultraSize = (format, model = 'juggernaut-xl', quality = 'ultra') =>
+    JSON.parse(JSON.stringify(vm.runInContext(
+        `ultraImageResolutionForFormat(${JSON.stringify(format)}, ${JSON.stringify(model)}, ${JSON.stringify(quality)})`,
+        formatContext,
+    )));
+for (const [format, width, height] of [
+    ['portrait', 864, 1536],
+    ['portrait_3_4', 1152, 1536],
+    ['landscape', 1536, 864],
+    ['landscape_4_3', 1536, 1152],
+    ['square', 1536, 1536],
+    ['portrait_ragnarok', 1056, 1536],
+]) {
+    assert.deepEqual(ultraSize(format), {width, height});
+    const label = vm.runInContext(
+        `imageFormatChoiceLabel(${JSON.stringify(format)}, 'juggernaut-xl', 'ultra')`,
+        formatContext,
+    );
+    assert.match(label, new RegExp(`${width} × ${height} px`));
+}
+assert.equal(ultraSize('portrait_3_4', 'auto'), null);
+assert.equal(ultraSize('portrait_3_4', 'juggernaut-xl', 'quality'), null);
+assert.equal(ultraSize('unknown'), null);
+assert.equal(vm.runInContext(
+    "imageFormatChoiceLabel('portrait_3_4', 'auto', 'ultra')",
+    formatContext,
+), 'Hochformat 3:4');
+// Every visible format option uses the resolved label; video remains unchanged.
+assert.match(generation, /option\.textContent\s*=\s*imageFormatChoiceLabel\(/);
 
 console.log('Media quality default, session persistence, request forwarding, and artifact metadata passed.');
