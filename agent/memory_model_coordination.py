@@ -27,6 +27,10 @@ class DeferredMemoryInference(RuntimeError):
     """Transient scheduling deferral: do NOT mark the SQLite job failed."""
 
 
+class UnmanagedMemoryModel(RuntimeError):
+    """A configured external 4B process cannot be safely stopped by Nobby."""
+
+
 def _write(path: Path, data: dict):
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     fd, filename = tempfile.mkstemp(prefix="." + path.name + "-", dir=path.parent)
@@ -92,6 +96,17 @@ def exclusive_media_requested(kind):
 def active_media_kind():
     if (kind := requested_media_priority()):
         return kind
+    # Native /generate, /edit, /upscale and /jobs can bypass Agent's
+    # persistent media queue. Keep the 4B supervisor suspended for the
+    # ENTIRE active image/video lease, not only the 45-second demand marker.
+    # A live PID and the existing cross-process lease record are required.
+    try:
+        import runtime_coordinator as rc
+        holder = rc.lease_state_snapshot().get("active")
+        if holder and holder.get("workload") in ("image", "video"):
+            return holder["workload"]
+    except (OSError, ValueError):
+        pass
     jobs = _read(MEDIA_JOB_FILE)
     active = [
         job.get("kind")
@@ -122,16 +137,42 @@ def inference_lease():
         os.close(fd)
 
 
-def prepare_media_dispatch(kind, timeout_seconds=20, *, exclusive=False):
-    """Request bounded 4B RAM relief before native media dispatch.
+def _external_dedicated_model_running():
+    """Probe only the explicitly configured local memory-model port.
 
-    Heavy text-to-image generation preempts the supervisor-owned 4B even with
-    otherwise healthy headroom; smaller jobs retain pressure-based coexistence.
-    In-progress extraction keeps its lease and defers media without job loss.
-    External or manually started port-8011 processes are never terminated.
+    We never terminate a manually launched or unknown process. If a dedicated
+    4B is externally managed, exclusive GPU media cannot claim it was released.
+    A quick loopback TCP check works even if the model API is busy loading.
     """
+    import socket
+    from agent import dedicated_memory_model
+    try:
+        config = dedicated_memory_model.settings()
+        if config.get("mode") != "dedicated":
+            return False
+        with socket.create_connection(("127.0.0.1", config["port"]), timeout=0.4):
+            return True
+    except (ConnectionRefusedError, TimeoutError, OSError):
+        return False
+
+
+def prepare_media_dispatch(kind, timeout_seconds=20, *, exclusive=False):
+    """Wait for a supervisor-owned 4B to finish its current inference and exit.
+
+    In exclusive mode, any configured manually owned 4B blocks dispatch with
+    an actionable error. Neither the supervisor nor media dispatch may kill
+    foreign PIDs; nonexclusive callers retain their former compatibility.
+    """
+    if kind not in ("image", "video"):
+        raise ValueError("Unsupported media kind")
     state = supervisor_state()
-    if not state or state.get("state") in ("external", "disabled") or not state.get("owned"):
+    if not state.get("owned"):
+        if exclusive and (state.get("state") == "external" or _external_dedicated_model_running()):
+            raise UnmanagedMemoryModel(
+                "Exklusiver Medienmodus: Ein extern gestartetes 4B-Memory-Modell "
+                "ist aktiv. Bitte den manuell gestarteten 4B-Server beenden "
+                "oder vom MLX-Nobby-Supervisor verwalten lassen."
+            )
         return True
     if not exclusive:
         import runtime_coordinator as rc
@@ -148,7 +189,12 @@ def prepare_media_dispatch(kind, timeout_seconds=20, *, exclusive=False):
     deadline = time.monotonic() + max(0, timeout_seconds)
     while time.monotonic() < deadline:
         state = supervisor_state()
-        if not state or not state.get("owned"):
+        if not state.get("owned"):
+            if exclusive and _external_dedicated_model_running():
+                raise UnmanagedMemoryModel(
+                    "Exklusiver Medienmodus: 4B läuft weiterhin außerhalb "
+                    "des Supervisors. Beende den externen Modellserver."
+                )
             return True
         time.sleep(0.4)
-    return False  # Caller retries its durable queued media request.
+    return False  # Durable Agent queue retries; native routes fail safely.
