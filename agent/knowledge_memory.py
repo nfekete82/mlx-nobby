@@ -556,7 +556,16 @@ def query_terms(query):
         'gesundheitlichen':['gesundheit'], 'gesundheitliche':['gesundheit'],
         'wünsche':['vorliebe','wünsche'], 'partnerschaft':['beziehung','relationship'],
         'wohne':['wohnort'], 'wohnt':['wohnort'], 'hobbys':['hobby'],
-        'plane':['plan','goal'], 'umzug':['ziehen','wohnort','goal']}
+        'plane':['plan','goal'], 'umzug':['ziehen','wohnort','goal'],
+        # German compounds and nearby user terms do not share FTS tokens.
+        # A saved "Browserspiel" / "Echtzeitstrategiespiel" must still be
+        # discoverable by "Wie heißt mein Strategiespiel?" without guessing
+        # any project name, framework, engine or completion status.
+        'strategiespiel':['browserspiel','echtzeitstrategiespiel','rts'],
+        'strategiespiele':['browserspiel','echtzeitstrategiespiel','rts'],
+        'strategiespielen':['browserspiel','echtzeitstrategiespiel','rts'],
+        'echtzeitstrategiespiel':['strategiespiel','browserspiel','rts'],
+        'browserspiel':['strategiespiel','echtzeitstrategiespiel','browsergame']}
     aliases = {key.casefold(): value for key,value in aliases.items()}
     words.extend(alias for w in list(words) for alias in aliases.get(w, []))
     if any(w in words for w in ('kindheit','childhood')): words.extend(('kind','child','jahren'))

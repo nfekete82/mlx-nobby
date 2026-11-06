@@ -58,6 +58,73 @@ def test_explicit_chat_persistence_cross_chat_recall_and_source():
     assert commands.execute(chat('Merk dir, dass ich bei Bildern natürliche Farben bevorzuge.')['messages'], chat_id='fictional-a') == receipt
 
 
+def test_explicit_game_memory_survives_new_chat_and_compound_question():
+    """The actual reported failure: saved Browser-/Echtzeitstrategiespiel is
+    not found by a later question asking for 'Strategiespiel' and technologies.
+    The source and technology names come only from this fictional stored fact.
+    """
+    from agent import memory_lifecycle
+
+    statement = (
+        'Merk dir: Ich entwickle ein Browserspiel namens Nebula Bastion. '
+        'Es ist ein Echtzeitstrategiespiel mit Three.js und WebGL 3D.'
+    )
+    receipt = commands.execute(
+        [{'role': 'user', 'content': statement}], chat_id='test-game-save',
+    )
+    assert receipt['persisted'] is True
+    assert receipt['action'] == 'remembered'
+
+    question = (
+        'Wie heißt mein Strategiespiel und welche Technologien '
+        'verwende ich dafür? Nenne nur Informationen aus deinen '
+        'gespeicherten Erinnerungen.'
+    )
+    assert pm.recall_requested(question)
+    direct = km.context(question, semantic=False)
+    assert 'Nebula Bastion' in direct
+    assert 'Three.js' in direct
+    assert 'WebGL 3D' in direct
+    assert 'chat test-game-save message 0' in direct
+
+    # A fresh, independent chat must be answered from source-backed storage,
+    # without previous-turn context or embeddings.
+    next_chat = [{'role': 'user', 'content': question}]
+    enriched = memory_lifecycle.fast_personal_context(next_chat)
+    injected = '\\n'.join(
+        message['content'] for message in enriched
+        if message['role'] == 'system'
+    )
+    assert 'Nebula Bastion' in injected
+    assert 'Three.js' in injected
+    assert 'WebGL 3D' in injected
+    assert 'chat test-game-save message 0' in injected
+    assert enriched[-1] == next_chat[-1]
+
+
+def test_strategy_game_aliases_do_not_leak_unrelated_private_memory():
+    from agent import memory_lifecycle
+
+    commands.execute(
+        [{'role': 'user', 'content':
+          'Merk dir: Mein fiktives Browserspiel heißt Nebula Bastion.'}],
+        chat_id='test-game-only',
+    )
+    commands.execute(
+        [{'role': 'user', 'content':
+          'Merk dir: Persönlicher Testhinweis über eine private Beziehung.'}],
+        chat_id='test-private-only',
+    )
+    direct = km.context('Wie heißt mein Strategiespiel?')
+    assert 'Nebula Bastion' in direct
+    assert 'Persönlicher Testhinweis' not in direct
+    regular = memory_lifecycle.fast_personal_context([
+        {'role': 'user', 'content': 'Wie verwende ich CSS Grid?'},
+    ])
+    assert 'Nebula Bastion' not in str(regular)
+    assert 'Persönlicher Testhinweis' not in str(regular)
+
+
 def test_remember_previous_statement_pins_correct_source_not_assistant():
     turns = [{'role':'system','content':'synthetic system'}, {'role':'user','content':'Ich bevorzuge natürliche Farben.'},
         {'role':'assistant','content':'Eine erfundene Antwort.'}, {'role':'user','content':'Merk dir das unbedingt.'}]

@@ -134,3 +134,29 @@ Chat-/Media-Jobs beenden lassen und nur den nativen Agent neu starten.
 Docker-Web, GPU-Runtime und Memory-Modell müssen hierfür nicht neu gestartet
 werden. CI-Erfolg ersetzt keinen Antwortqualitätstest mit den tatsächlich
 vorhandenen (privaten) lokalen Erinnerungen.
+
+## 2026-11-06 — German compound retrieval for remembered browser games
+
+A confirmed `Merk dir: … Browserspiel … Echtzeitstrategiespiel …` command
+saves a literal, source-linked note in the existing `personal-memory.sqlite3`.
+The source can be present even when a new chat asks for `mein Strategiespiel`
+and the lexical FTS index returns no match: German compounds are indexed as
+complete tokens, while a related word need not share that exact token.
+The SQL/FTS query now expands only a narrowly defined group of related game
+terms; it does not invent a game name, engine, technology or project status.
+Separate-source privacy filters, tombstones and opt-in settings are unchanged.
+
+Synthetic regression tests cover the full confirmation-to-new-chat lookup with
+the original wording shape, the correct source chat, no online embeddings,
+ordinary unrelated technical questions and protection of an unrelated private
+note. If local storage never confirmed `persisted: true`, the query fix cannot
+restore an unsaved statement; inspect the read-only memory dashboard before
+assuming retrieval is at fault.
+
+Local diagnosis:
+`GET /api/memory-dashboard/status` reports the paused flag and personal count.
+`GET /api/memory-dashboard/items?source=personal&query=Browserspiel`
+reads matching active personal notes without modifying them. The
+`/api/knowledge-memory/context` or native module context can be used to verify
+the exact retrieval path after the Agent is restarted. Do not include private
+memory values in public test artifacts.
