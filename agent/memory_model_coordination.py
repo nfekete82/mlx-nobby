@@ -18,6 +18,7 @@ ROOT = Path.home() / ".config/mlx-web/memory-model-control"
 STATE = ROOT / "state.json"
 DEMAND = ROOT / "media-demand.json"
 ROUTER_DEMAND = ROOT / "router-demand.json"
+ON_DEMAND = ROOT / "on-demand.json"
 MEMORY_DB = Path.home() / ".config/mlx-web/personal-memory.sqlite3"
 MEMORY_CONTROL = Path.home() / ".config/mlx-web/memory-control.json"
 LOCK = ROOT / "inference.lock"
@@ -76,6 +77,11 @@ def note_media_demand(kind, *, exclusive=False):
         "until": time.time() + DEMAND_SECONDS,
         "exclusive": bool(exclusive),
     })
+
+
+def on_demand_enabled():
+    """Explicitly opted-in owner-only policy; absent means legacy behavior."""
+    return _read(ON_DEMAND).get("enabled") is True
 
 
 def request_router_demand(*, seconds=150):
