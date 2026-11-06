@@ -54,7 +54,7 @@ class MediaQueueTests(unittest.TestCase):
         with mock.patch.object(media_queue, "ensure_worker"):
             return media_queue.enqueue(kind, payload)
 
-    def test_text_to_image_requests_exclusive_memory_handoff_only_for_generation(self):
+    def test_all_media_operations_request_exclusive_4b_handoff(self):
         prepared = []
         native_id = "e" * 24
 
@@ -85,10 +85,23 @@ class MediaQueueTests(unittest.TestCase):
             media_queue._dispatch_and_poll(video["id"])
 
         self.assertEqual(prepared, [
-            ("image", True), ("image", False), ("video", False),
+            ("image", True), ("image", True), ("video", True),
         ])
         self.assertEqual(media_queue.get_job("image", generate["id"])["status"],
                          "completed")
+
+    def test_unmanaged_memory_model_fails_job_with_actionable_error(self):
+        from agent.memory_model_coordination import UnmanagedMemoryModel
+        job = self.enqueue("video")
+        with mock.patch("agent.memory_model_coordination.prepare_media_dispatch",
+                        side_effect=UnmanagedMemoryModel("Manuellen 4B-Server beenden")), \\
+             mock.patch.object(media_queue, "_service_request") as native:
+            media_queue._dispatch_and_poll(job["id"])
+        native.assert_not_called()
+        record = media_queue.get_job("video", job["id"])
+        self.assertEqual(record["status"], "failed")
+        self.assertIn("4B-Server", record["error"])
+
 
     def test_cancel_while_4b_is_draining_never_dispatches_native_job(self):
         job = self.enqueue("image")
