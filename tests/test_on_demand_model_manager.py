@@ -158,3 +158,30 @@ def test_old_default_remains_legacy_when_new_policy_not_enabled(monkeypatch):
     snap = {"free_percent": 70, "total_gb": 48, "used_estimate_gb": 20}
     assert sup.should_load(snap) is True
     assert sup.should_unload(snap, idle_expired=True) is False
+
+
+def test_switcher_check_resolves_agent_when_invoked_as_script_from_other_cwd(tmp_path):
+    """Regression: python scripts/switch-... must import agent without PYTHONPATH."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    if sys.platform != "darwin":
+        pytest.skip("The switcher intentionally requires macOS")
+    script = Path(__file__).resolve().parents[1] / "scripts" / "switch-shared-4b-router.py"
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [sys.executable, str(script), "--check"],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    info = json.loads(result.stdout)
+    assert isinstance(info["on_demand"], bool)
+    assert isinstance(info["gateway_healthy"], bool)
+    assert "supervisor_state" in info
