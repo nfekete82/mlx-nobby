@@ -399,3 +399,27 @@ def test_mlxserve_release_error_suppresses_chat_restore_for_queued_edit(monkeypa
         assert seen.get("suppress_chat_restore") is True
     finally:
         image._jobs.pop(job_id, None)
+
+def test_unmanaged_mlxserve_image_weights_stay_visible_and_block_video_handoff(monkeypatch):
+    """Never report image runtime unloaded while unknown weights remain."""
+    import image_service as image
+    from fastapi import HTTPException
+
+    model = {"id": "fixture", "provider": "sdxl", "enabled": True}
+    monkeypatch.setattr(image.registry, "load_registry",
+                        lambda: {"default_model": "fixture", "models": [model]})
+    monkeypatch.setattr(image.registry, "get_model", lambda: model)
+    monkeypatch.setattr(image, "_loaded_mlxserve_models", lambda: [])
+    monkeypatch.setattr(image, "_loaded_mlxserve_repository_ids",
+                        lambda: ["unmanaged-image-model"])
+    monkeypatch.setattr(image, "sdxl_worker_running", lambda: False)
+    monkeypatch.setattr(image, "shutdown_sdxl_worker", lambda: None)
+    assert image.health()["loaded"] is True
+    assert image.health()["running_model"] == "unmanaged-mlxserve"
+    try:
+        image.unload()
+    except HTTPException as exc:
+        assert exc.status_code == 500
+        assert "vollständig entladen" in str(exc.detail)
+    else:
+        raise AssertionError("Unknown image weight must block video handoff")
