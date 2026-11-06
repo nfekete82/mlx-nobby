@@ -665,6 +665,9 @@ def test_sdxl_multi_variant_reuses_worker_under_one_runtime_lease(runtime, monke
     monkeypatch.setattr(service, 'run_provider', render)
     monkeypatch.setattr(service, 'shutdown_sdxl_worker', unload)
     monkeypatch.setattr(service, 'sdxl_worker_running', lambda: False)
+    monkeypatch.setattr(service.runtime_coordinator, 'memory_budget_snapshot',
+                        lambda: {'free_percent': 68.0, 'headroom_gb': 26.6,
+                                 'swap_used_gb': 1.2, 'pressure': 'normal'})
 
     gallery = batch(runtime, first)
     assert gallery['status'] in {'running', 'completed'}
@@ -677,6 +680,16 @@ def test_sdxl_multi_variant_reuses_worker_under_one_runtime_lease(runtime, monke
     ]
     for member in gallery['jobs']:
         assert runtime.get('/jobs/' + member['id']).json()['status'] == 'completed'
+    from image_variants import load_record
+    record = load_record(service.OUTPUT, 'group-' + gallery['variant_group_id'])
+    checkpoints = record['memory_checkpoints']
+    assert [entry['stage'] for entry in checkpoints] == [
+        'image_complete', 'image_complete', 'worker_released',
+        'image_complete', 'image_complete', 'worker_released',
+        'image_complete', 'batch_worker_released',
+    ]
+    assert all(entry['free_percent'] == 68.0 for entry in checkpoints)
+    assert 'An optimized studio photograph' not in repr(checkpoints)
 
 
 def test_sdxl_checkpoint_unload_failure_keeps_completed_images_and_suppresses_restore(runtime, monkeypatch):
