@@ -5,6 +5,8 @@
     const $ = id => document.getElementById(id);
     const defaults = {
         knowledgeTitle: "Knowledge & life story",
+        knowledgeSaved: "Saved",
+        knowledgeUpdated: "Updated",
         knowledgeHelp: "Browse every stored item by topic. A page is a selection; use More to continue. Statements reflect what you reported, not independently verified truth.",
         knowledgeAbout: "About me",
         knowledgeLife: "My life story",
@@ -339,6 +341,10 @@
                 if (label) card.append(element('small', t(label)));
             }
             if (item.period) card.append(element('small', item.period));
+            const stamps = [];
+            if (item.created_at) stamps.push(t('knowledgeSaved') + ': ' + new Date(item.created_at * 1000).toLocaleString());
+            if (item.updated_at) stamps.push(t('knowledgeUpdated') + ': ' + new Date(item.updated_at * 1000).toLocaleString());
+            if (stamps.length) card.append(element('small', stamps.join(' · ')));
             if (Array.isArray(item.people) && item.people.length) card.append(element('small', item.people.join(', ')));
             for (const source of item.sources || []) card.append(sourceLink(source));
             const actions = element('div', '', 'memory-overview-actions');

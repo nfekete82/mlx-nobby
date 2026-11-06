@@ -334,3 +334,31 @@ def test_non_overview_uses_normal_enrichment_route(client, monkeypatch):
     assert response.status_code == 200
     assert calls
     assert response.json()["messages"][0]["content"] == "REGULAR_CONTEXT"
+
+
+def test_explicit_embedding_deadline_preserves_lexical_personal_sources(client, monkeypatch):
+    """A slow semantic scan cannot replace available facts with unavailability."""
+    pm.set_enabled(True)
+    pm.observe('Mein Sohn heißt Beispielkind.', source_chat_id='fictional-source', source_ordinal=0)
+    gate = threading.Event()
+    entered = threading.Event()
+    def slow_semantic(messages):
+        entered.set()
+        gate.wait(2)
+        return messages
+    original_wait = asyncio.wait_for
+    async def short_explicit_deadline(future, timeout):
+        return await original_wait(future, .01 if timeout == 3.0 else timeout)
+    monkeypatch.setattr(memory_lifecycle, 'semantic_personal_context', slow_semantic)
+    monkeypatch.setattr(memory_middleware.asyncio, 'wait_for', short_explicit_deadline)
+    try:
+        response = client.post('/api/runtime/chat/stream', json={
+            'messages':[{'role':'user','content':'Wie heißt mein Sohn?'}],
+        })
+        assert response.status_code == 200 and entered.is_set()
+        context = '\n'.join(m['content'] for m in response.json()['messages'] if m['role']=='system')
+        assert 'Beispielkind' in context
+        assert 'chat fictional-source message 0' in context
+        assert 'RETRIEVAL UNAVAILABLE' not in context
+    finally:
+        gate.set()

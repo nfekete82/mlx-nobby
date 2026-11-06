@@ -1,5 +1,8 @@
 # Persistent local intelligence memory
 
+Current continuation: [Memory 3 architecture, diagnosis and safe local acceptance](MEMORY_3.md)
+and [2026-11-06 A/B validation](validation/memory3-20261106.md).
+
 Development continuation of draft PR #421, based on `8757c8ce`. This change is
 additive to the existing local archive and personal-memory system. No service
 restart, production data migration, merge or deployment is part of development.

@@ -26,7 +26,10 @@ test('context inspector exposes read-only retrieval diagnostics', () => {
     assert.match(inspector, /confidence/);
     assert.match(inspector, /recency/);
     assert.match(inspector, /Injected context preview/);
-    assert.doesNotMatch(inspector, /method:\s*['"](?:POST|PATCH|DELETE)/);
+    assert.doesNotMatch(inspector, /method:\s*['"](?:PATCH|DELETE)/);
+    assert.match(inspector, /\/api\/mlx\/memory\/knowledge\/diagnose/);
+    assert.match(inspector, /JSON.stringify\(\{ query \}\)/);
+    assert.match(inspector, /injected_knowledge_ids/);
 });
 
 

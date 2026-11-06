@@ -6,9 +6,12 @@ extracts, durable work checkpoints and deletion rules, never attachment bytes.
 from __future__ import annotations
 
 import hashlib
+from collections import OrderedDict
 import json
 import math
 import re
+import struct
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -16,6 +19,8 @@ from datetime import datetime
 from agent import personal_memory as pm
 
 VERSION = 5
+_QUERY_VECTOR_CACHE = OrderedDict()
+_QUERY_VECTOR_LOCK = threading.RLock()
 CATEGORIES = ('about', 'life', 'people', 'events', 'preferences', 'work', 'media', 'decisions')
 KINDS = ('statement', 'fact', 'plan', 'interpretation', 'assumption')
 _WORD = re.compile(r'[^\W_][\w-]{2,}', re.UNICODE)
@@ -355,6 +360,7 @@ def autobiographic_candidates(original):
 
 def apply_episodes(conn, output, original, sid):
     from agent import semantic_personal_memory as smart
+    from agent import memory_grounding
     if extraction_skip_reason(original): return 0
     try: obj = smart.decode_output(output)
     except (ValueError, TypeError): return 0
@@ -374,13 +380,17 @@ def apply_episodes(conn, output, original, sid):
             not 12 <= len(desc) <= 1200 or not 12 <= len(evidence) <= 1500 or
             desc not in original or evidence not in original or desc not in evidence or
             kind not in ('statement', 'plan') or theme not in ('childhood', 'family', 'relationship', 'work', 'experience', 'goal') or
-            not title or _SECRET.search(evidence) or _NO_LEARN.search(original) or smart._BAD.search(desc) or smart._HYPOTHETICAL.search(desc) or blocked(conn, desc, sid)):
+            not title or _SECRET.search(evidence) or _NO_LEARN.search(original) or smart._BAD.search(desc) or smart._HYPOTHETICAL.search(desc) or blocked(conn, desc, sid) or not memory_grounding.supported(evidence, original)):
             continue
         if not scope_allowed(conn, 'work' if theme == 'work' else 'life'): continue
         # Dates and people must literally occur in the grounded extract.
         period = str(item.get('period') or '')[:100]
         if period and period not in evidence: period = ''
-        people = [p for p in (item.get('people') or [])[:20] if isinstance(p, str) and p in evidence]
+        # A name elsewhere in a multi-person evidence paragraph does not
+        # establish participation in this particular event description.
+        people = [p for p in (item.get('people') or [])[:20]
+                  if isinstance(p, str) and p in evidence
+                  and memory_grounding.mentions_person(desc, p)]
         eid = digest(theme + '\0' + normalized(desc))
         conn.execute('INSERT OR IGNORE INTO episodes VALUES(?,?,?,?,?,?,?,?,?)',
             (eid, title, theme, desc, period, json.dumps(people), kind, 0.0, time.time()))
@@ -560,7 +570,8 @@ def query_terms(query):
     aliases = {key.casefold(): value for key,value in aliases.items()}
     words.extend(alias for w in list(words) for alias in aliases.get(w, []))
     if any(w in words for w in ('kindheit','childhood')): words.extend(('kind','child','jahren'))
-    return list(dict.fromkeys(words))
+    from agent import memory_query
+    return memory_query.expand(words)
 
 
 def fts_expression(words):
@@ -574,17 +585,20 @@ def fts_expression(words):
 
 
 def query_relevance(words, text):
-    tokens = set(_WORD.findall(text.casefold()))
-    exact = len(set(words) & tokens)
-    prefix = sum(any(token.startswith(w[:6]) for token in tokens)
-                 for w in words if len(w)>=8 and w.isalpha() and w not in tokens)
-    return exact + 3*prefix
+    from agent import memory_query
+    return memory_query.relevance(words, text)
 
 
-def context(query, *, budget=5000, semantic=False, privacy_query=None):
+def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=None, limit=None):
     """FTS candidate retrieval with strict privacy gating and bounded output."""
     from agent import memory_dashboard
-    if memory_dashboard.paused() or not pm.enabled(): return ''
+    started = time.perf_counter()
+    if trace is not None:
+        trace.update(query=query, terms=[], selected=[], candidates=0, omitted=0,
+                     mode='lexical', state='ready', budget=budget)
+    if memory_dashboard.paused() or not pm.enabled():
+        if trace is not None: trace['state'] = 'paused' if memory_dashboard.paused() else 'disabled'
+        return ''
     scope_query = privacy_query if privacy_query is not None else query
     explicit = pm.recall_requested(scope_query)
     overview = pm.overview_requested(query) and pm.overview_requested(scope_query)
@@ -592,17 +606,34 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None):
     words = query_terms(query)
     if not words and not overview: return ''
     semantic_scores = {}
-    if semantic and not explicit:
+    if semantic:
         try:
             semantic_scores = {(kind, oid): score for score, kind, oid in semantic_candidates(query)}
-        except Exception as error: diagnose('embeddings', error)
+        except Exception as error:
+            try: diagnose('embeddings', error)
+            except Exception: pass
     with pm.LOCK, pm._connect() as conn:
         pm._schema(conn)
+        from agent import memory_query
+        words = memory_query.vocabulary_terms(conn, words)
+        if trace is not None:
+            trace.update(terms=words, mode='hybrid' if semantic_scores else 'lexical',
+                         semantic_candidates=len(semantic_scores))
         selected = []
         lexical_scores = {}
-        requested_subjects = set()
-        if explicit:
-            requested_subjects = named_subjects(conn, scope_query)
+        requested_subjects = named_subjects(conn, scope_query)
+        # When a question names a known person, source-backed facts about
+        # OTHER named people are not interchangeable even when the activity
+        # vocabulary overlaps. Never infer that "we" denotes this person.
+        requested_people = {subj for subj in requested_subjects
+                            if subj.startswith('personen.')}
+        requested_names = [subj.split('.', 1)[1] for subj in requested_people]
+        # Directly asking about a known named person authorizes only that
+        # person's matching private history, not unrelated private episodes.
+        if explicit and requested_people:
+            personal = True
+        if not explicit:
+            requested_subjects = {s for s in requested_subjects if s.startswith('projekte.')}
         if overview:
             # Fair category inventory; the UI supplies navigable complete pages.
             buckets = [[('fact', r['id']) for r in conn.execute("SELECT f.id FROM facts f LEFT JOIN fact_metadata m ON m.fact_id=f.id WHERE status='active' AND COALESCE(m.category,'about')=? ORDER BY f.updated_at DESC", (cat,))] for cat in CATEGORIES]
@@ -613,9 +644,12 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None):
                     if bucket: selected.append(bucket.pop(0))
         elif words:
             expression = fts_expression(words)
-            matches = conn.execute('SELECT object_type,object_id,bm25(knowledge_fts) FROM knowledge_fts WHERE knowledge_fts MATCH ? ORDER BY bm25(knowledge_fts)', (expression,)).fetchall()
+            matches = conn.execute('SELECT object_type,object_id,bm25(knowledge_fts) FROM knowledge_fts WHERE knowledge_fts MATCH ? ORDER BY bm25(knowledge_fts) LIMIT 256', (expression,)).fetchall()
             selected = [(r[0],r[1]) for r in matches]
-            lexical_scores = {(r[0],r[1]):-float(r[2]) for r in matches}
+            # BM25 scale grows with corpus size. Normalize before mixing it
+            # with overlap/semantic scores so common query verbs cannot swamp
+            # a specific compound anchor as the archive grows.
+            lexical_scores = {(r[0],r[1]):max(0,-float(r[2]))/(1+abs(float(r[2]))) for r in matches}
         for subject in requested_subjects:
             selected.extend(('fact', r[0]) for r in conn.execute(
                 "SELECT id FROM facts WHERE subject=? AND status='active'", (subject,)))
@@ -624,19 +658,36 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None):
             selected = [('fact', r[0]) for r in conn.execute(
                 "SELECT id FROM facts WHERE status='active' AND subject LIKE 'projekte.%'")]
         selected = list(dict.fromkeys(selected + list(semantic_scores)))
+        if trace is not None: trace['candidates'] = len(selected)
         ranked = []
         for kind, oid in selected:
             if kind == 'fact':
-                r = conn.execute("SELECT f.*,COALESCE(m.pinned,0) AS pinned,COALESCE(m.kind,'statement') AS kind FROM facts f LEFT JOIN fact_metadata m ON m.fact_id=f.id WHERE f.id=? AND f.status='active'", (oid,)).fetchone()
+                r = conn.execute("SELECT f.*,COALESCE(m.pinned,0) AS pinned,COALESCE(m.kind,'statement') AS kind,COALESCE(m.confidence,1) AS confidence FROM facts f LEFT JOIN fact_metadata m ON m.fact_id=f.id WHERE f.id=? AND f.status='active'", (oid,)).fetchone()
                 if r is None: continue
+                if requested_people and r['subject'].startswith('personen.') and r['subject'] not in requested_people:
+                    continue
+                if requested_names and r['subject'] == 'ich' and r['field'].split('.')[0] in ('notiz', 'erlebnis', 'beziehung'):
+                    from agent import memory_grounding
+                    if not any(memory_grounding.mentions_person(r['value'], name) for name in requested_names):
+                        continue  # No person-specific attribution in this note.
+                projects = {s for s in requested_subjects if s.startswith('projekte.')}
+                if projects and r['subject'].startswith('projekte.') and r['subject'] not in projects: continue
                 private = r['subject'].startswith(('partner', 'familie', 'personen.')) or r['field'].startswith('status.gesundheitlich') or r['field'].split('.')[0] in ('gesundheit', 'beziehung', 'kindheit', 'erlebnis') or bool(_PRIVATE.search(r['value']))
                 if private and not personal and r['subject'] not in requested_subjects: continue
                 body = r['value']
                 label = f"{r['subject']}.{r['field']} ({r['kind']})"
+                issues = [issue for issue in conn.execute('SELECT * FROM conflicts WHERE fact_id=?', (oid,))
+                          if not pm.equivalent_value(r['field'],r['value'],issue['proposed_value'])]
+                if issues: label += ' [UNRESOLVED CONTRADICTION; neither value confirmed]'
+                elif r['confidence'] < .95: label += ' [uncertain user report]'
                 priority = int(r['pinned']) * 3
             else:
                 r = conn.execute('SELECT * FROM episodes WHERE id=?', (oid,)).fetchone()
                 if r is None: continue
+                if requested_names:
+                    from agent import memory_grounding
+                    if not any(memory_grounding.mentions_person(r['description'], name) for name in requested_names):
+                        continue  # An event about someone else is not this person's event.
                 if not personal and (r['theme'] not in ('work', 'goal') or _PRIVATE.search(r['description'])): continue
                 body, label, priority = r['description'], r['title'] + (' (plan; not completed)' if r['status'] == 'plan' else ' (reported experience)'), 0
                 if r['period']:
@@ -665,9 +716,13 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None):
                 line += ' Evidence: ' + evidence
             named_subject = kind=='fact' and r['subject'] in requested_subjects
             if overview or relevance or named_subject or semantic_scores.get((kind,oid),0):
-                ranked.append((score,line))
+                ranked.append((score,line,{'kind':kind, 'id':oid, 'sources':sources,
+                    'score':round(score,6), 'lexical':round(relevance,6),
+                    'semantic':semantic_scores.get((kind,oid)), 'text':body,
+                    'subject':r['subject'] if kind=='fact' else '',
+                    'field':r['field'] if kind=='fact' else '',
+                    'status':('unresolved' if issues else r['kind']) if kind=='fact' else r['status']}))
             if kind == 'fact':
-                issues = conn.execute('SELECT * FROM conflicts WHERE fact_id=?', (oid,)).fetchall()
                 for issue in issues:
                     if pm.equivalent_value(r['field'],r['value'],issue['proposed_value']):
                         continue  # retained legacy proposal, equivalent date spelling
@@ -683,14 +738,27 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None):
                             proposal += ' Proposal evidence: ' + ' | '.join(expanded)[:1000]
                     proposal_relevance = query_relevance(words,proposal)
                     if overview or proposal_relevance or named_subject:
-                        ranked.append((proposal_relevance+priority+lexical_scores.get((kind,oid),0)*3,proposal))
+                        ranked.append((proposal_relevance+priority+lexical_scores.get((kind,oid),0)*3,proposal,
+                            {'kind':'conflict','id':issue['id'],'text':issue['proposed_value'],
+                             'subject':r['subject'],'field':r['field'],'status':'unresolved',
+                             'sources':[{'chat_id':issue['source_chat_id'],'ordinal':issue['source_ordinal'],
+                                         'revision':None}] if issue['source_chat_id'] else []}))
         if not overview:
             ranked.sort(key=lambda x: x[0], reverse=True)
         lines, used = [], 0
-        for _, line in ranked:
+        seen = set()
+        for _, line, item in ranked:
+            key = (item.get('subject'), item.get('field'), normalized(item['text']))
+            if (item['kind'],key) in seen: continue
+            if limit is not None and len(lines) >= limit: continue
             if used + len(line) > budget: continue
             lines.append(line); used += len(line) + 1
+            seen.add((item['kind'],key))
+            if trace is not None: trace['selected'].append(item)
         total = conn.execute("SELECT count(*) FROM facts WHERE status='active'").fetchone()[0] + conn.execute('SELECT count(*) FROM episodes').fetchone()[0]
+    if trace is not None:
+        trace.update(omitted=max(0,len(ranked)-len(lines)), elapsed_ms=round((time.perf_counter()-started)*1000,3),
+                     state='matched' if lines else 'no_matching_evidence', used_chars=used)
     if not lines:
         if explicit:
             return ('LOCAL STRUCTURED KNOWLEDGE: No matching stored evidence for this question. '
@@ -710,11 +778,11 @@ def named_subjects(conn, query):
     words = set(_WORD.findall(str(query).casefold())) - pm._CONTEXT_STOPWORDS
     subjects = {r['subject'] for r in conn.execute(
         "SELECT subject,value FROM facts WHERE status='active' AND field='name'")
-        if set(_WORD.findall(r['value'].casefold())) & words}
+        if (name := set(_WORD.findall(r['value'].casefold()))) and name <= words}
     # Named people do not need a redundant name fact to be retrievable. Called
     # only for an explicit recall request, respecting the original privacy query.
     subjects.update(r[0] for r in conn.execute(
-        "SELECT DISTINCT subject FROM facts WHERE status='active' AND subject LIKE 'personen.%'")
+        "SELECT DISTINCT subject FROM facts WHERE status='active' AND (subject LIKE 'personen.%' OR subject LIKE 'projekte.%')")
         if (name_tokens := set(_WORD.findall(r[0].split('.', 1)[1].replace('_', ' ')))) and name_tokens <= words)
     return subjects
 
@@ -829,16 +897,44 @@ def semantic_candidates(query, *, limit=60):
     """Bounded RAM streaming cosine scan; existing local service provides query vector."""
     from agent import memory_embeddings as emb
     import heapq
-    health = emb.embedding_health()
+    # No model/service request when there is no vector index to search. Never
+    # build embeddings during a foreground lookup.
+    if not pm.DB_PATH.exists(): return []
+    with pm.LOCK, pm._connect() as conn:
+        pm._schema(conn)
+        if not conn.execute('SELECT 1 FROM knowledge_vectors LIMIT 1').fetchone(): return []
+    health = emb.embedding_health(timeout=.05)
     if not health: return []
+    # Older proxies do not support the resident-only contract. Fail lexical
+    # rather than accidentally requesting a cold model load in foreground.
+    if not health.get('loaded') or not health.get('resident_query_supported'): return []
     model = emb._model_key(health)
-    response = emb._request('/embedding', {'text': emb._query_text(query)}, timeout=.35)
-    _, _, vectors = emb._validate_response(response, 1, expected_model=model, expected_dimensions=int(health['dimensions']))
+    key = (str(pm.DB_PATH), model, int(health['dimensions']), digest(emb._query_text(query)))
+    with _QUERY_VECTOR_LOCK:
+        cached = _QUERY_VECTOR_CACHE.get(key)
+        query_vector = cached[1] if cached and cached[0] > time.monotonic() else None
+    if query_vector is None:
+        response = emb._request('/embedding', {'text': emb._query_text(query), 'require_loaded': True}, timeout=.15)
+        _, _, vectors = emb._validate_response(response, 1, expected_model=model, expected_dimensions=int(health['dimensions']))
+        query_vector = vectors[0]
+        with _QUERY_VECTOR_LOCK:
+            _QUERY_VECTOR_CACHE[key] = (time.monotonic()+30, query_vector)
+            _QUERY_VECTOR_CACHE.move_to_end(key)
+            while len(_QUERY_VECTOR_CACHE)>64: _QUERY_VECTOR_CACHE.popitem(last=False)
     best = []
     with pm.LOCK, pm._connect() as conn:
         pm._schema(conn)
-        for row in conn.execute('SELECT object_type,object_id,vector FROM knowledge_vectors WHERE model=?', (model,)):
-            score = emb._cosine(vectors[0], emb._unpack(row['vector']))
+        for row in conn.execute('''SELECT v.*,COALESCE(f.value,e.description) AS body FROM knowledge_vectors v
+            LEFT JOIN facts f ON v.object_type='fact' AND f.id=v.object_id
+            LEFT JOIN episodes e ON v.object_type='episode' AND e.id=v.object_id
+            WHERE v.model=? AND (f.status='active' OR e.id IS NOT NULL)''', (model,)):
+            try:
+                if row['digest'] != digest(row['body']): continue
+                vector = emb._unpack(row['vector'])
+                if len(vector) != len(query_vector) or not all(math.isfinite(v) for v in vector): continue
+                score = emb._cosine(query_vector, vector)
+            except (ValueError, TypeError, struct.error):
+                continue
             if score < .55: continue
             value = (score, row['object_type'], row['object_id'])
             if len(best) < limit: heapq.heappush(best, value)

@@ -282,7 +282,14 @@ def _extract(text):
     text = str(text or "").strip()
     if _QUESTION.search(text) or _FORGET.search(text):
         return []
+    from agent import memory_grounding
+    # Regex extraction needs the same distinction between the user's reports
+    # and quoted/hypothetical/model-authored examples as semantic extraction.
+    text = memory_grounding.asserted_text(text)
     entries = []
+    for subject, statement in memory_grounding.project_statements(text):
+        entries.append((subject, 'beschreibung.' + hashlib.sha256(
+            statement.casefold().encode()).hexdigest()[:12], statement, False))
     # Explicit "I gave the wrong date; correct it to ..." phrasing is not
     # covered by ordinary factual patterns like "My birthday is on ...".
     for correction in _BIRTH_CORRECTIONS:
@@ -917,6 +924,17 @@ def context(query, *, limit=6):
 
     tokens = set(w.casefold() for w in _WORDS.findall(query.replace('-', ' ')))
     tokens -= _CONTEXT_STOPWORDS
+    from agent import memory_grounding
+    named_people = {
+        fact['subject'] for fact in facts
+        if fact['subject'].startswith('personen.')
+        and memory_grounding.mentions_person(query, fact['subject'].split('.', 1)[1])
+    }
+    partner_named = any(
+        fact['subject'] == 'partner' and fact['field'] == 'name'
+        and memory_grounding.mentions_person(query, fact['value'])
+        for fact in facts
+    )
     partner_topic = bool(re.search(
         r"\b(?:partnerin?|freundin|freund|beziehung|ehe)\b", query, re.I))
     family_topic = bool(re.search(
@@ -937,6 +955,18 @@ def context(query, *, limit=6):
     for fact in facts:
         if fact in identity:
             continue
+        # A question naming an existing person must not pull in another
+        # person's similarly worded notes or the unrelated partner profile.
+        if named_people:
+            subject = fact['subject']
+            if subject.startswith('personen.') and subject not in named_people:
+                continue
+            if subject == 'partner' and not partner_named:
+                continue
+            if subject == 'ich' and fact['field'].split('.')[0] in ('notiz', 'erlebnis', 'beziehung'):
+                if not any(memory_grounding.mentions_person(fact['value'], name.split('.', 1)[1])
+                           for name in named_people):
+                    continue
         from agent import knowledge_memory as km
         if (km._PRIVATE.search(fact['value']) or fact['field'].split('.')[0] in ('gesundheit', 'beziehung', 'kindheit', 'erlebnis')) and not km._PRIVATE.search(query):
             continue

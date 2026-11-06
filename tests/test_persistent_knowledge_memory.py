@@ -332,7 +332,7 @@ def test_pagination_reaches_older_records_beyond_2000():
 def test_semantic_vector_batching_and_query_uses_existing_local_service(monkeypatch):
     text = 'Ich bevorzuge natürliche Farben.'
     smart.apply('fictional-a',0,text,output(text))
-    monkeypatch.setattr(memory_embeddings,'embedding_health',lambda **kw: {'model':'synthetic-embedding','dimensions':2})
+    monkeypatch.setattr(memory_embeddings,'embedding_health',lambda **kw: {'model':'synthetic-embedding','dimensions':2,'loaded':True,'resident_query_supported':True})
     calls=[]
     def request(path,payload,**kw):
         calls.append((path,payload))

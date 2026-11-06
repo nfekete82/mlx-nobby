@@ -135,7 +135,9 @@
     "smartIncomplete": "Incomplete — resume analysis to retry",
     "smartComplete": "Historical analysis complete",
     "smartExcluded": "Excluded",
-    "smartRetrying": "Waiting for automatic retry"
+    "smartRetrying": "Waiting for automatic retry",
+    "knowledgeSaved": "Saved",
+    "knowledgeUpdated": "Updated"
   },
   "de": {
     "title": "Dein Gedächtnis",
@@ -273,6 +275,8 @@
     "smartIncomplete": "Unvollständig — Analyse zur Wiederaufnahme starten",
     "smartComplete": "Historische Analyse vollständig",
     "smartExcluded": "Ausgenommen",
-    "smartRetrying": "Automatischer neuer Versuch ausstehend"
+    "smartRetrying": "Automatischer neuer Versuch ausstehend",
+    "knowledgeSaved": "Gespeichert",
+    "knowledgeUpdated": "Geändert"
   }
 }

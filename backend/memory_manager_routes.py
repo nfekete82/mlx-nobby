@@ -5,6 +5,7 @@ from __future__ import annotations
 import urllib.parse
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 
 MEMORY_MANAGER_SCRIPT = (
@@ -17,13 +18,13 @@ PERSONAL_MEMORY_SCRIPT = (
     b'<script src="/assets/chat/personal-memory.js?v=20261104-private-knowledge-review3"></script>'
 )
 MEMORY_OVERVIEW_SCRIPT = (
-    b'<script src="/assets/chat/memory-overview.js?v=20261104-persistent-knowledge-v3"></script>'
+    b'<script src="/assets/chat/memory-overview.js?v=20261106-memory3-v1"></script>'
 )
 MEMORY_MANAGER_CONSOLIDATION_SCRIPT = (
     b'<script src="/assets/chat/memory-manager-consolidation.js?v=20260928-memory-manager-v12"></script>'
 )
 MEMORY_CONTEXT_INSPECTOR_SCRIPT = (
-    b'<script src="/assets/chat/memory-context-inspector.js?v=20260928-memory-context-v13"></script>'
+    b'<script src="/assets/chat/memory-context-inspector.js?v=20261106-memory3-v1"></script>'
 )
 CHAT_SCRIPT_MARKER = b'<script src="/assets/chat.js?v=20260926-shorts-progress"></script>'
 
@@ -451,9 +452,10 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
     @app.post('/api/mlx/memory/knowledge/{operation}')
     def knowledge_write(operation: str, payload: dict):
         from fastapi import HTTPException
-        if operation not in ('import', 'merge', 'command', 'scopes'):
+        if operation not in ('import', 'merge', 'command', 'scopes', 'diagnose'):
             raise HTTPException(404, 'Unknown knowledge operation')
-        return agent_json_request('POST', '/api/knowledge-memory/' + operation, payload=payload, timeout=60)
+        data = agent_json_request('POST', '/api/knowledge-memory/' + operation, payload=payload, timeout=60)
+        return JSONResponse(data, headers={'Cache-Control':'no-store'}) if operation == 'diagnose' else data
 
     @app.post('/api/mlx/memory/knowledge/pin/{fid}')
     def knowledge_pin(fid: str, payload: dict):

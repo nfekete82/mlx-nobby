@@ -1,5 +1,8 @@
 # MLX-Nobby: lokales Gesamtgedächtnis (PR #421)
 
+Aktuelle Weiterentwicklung: [Memory 3](MEMORY_3.md) mit
+[reproduzierbarer A/B-Abnahme](validation/memory3-20261106.md).
+
 ## Ziel
 
 Das Gedächtnis verbindet **vollständig gespeicherte Original-Chats**,
@@ -16,8 +19,9 @@ nicht in einen einzelnen Modellprompt.
    Chatkontext ausgegeben. Bereits gelöschte Chats werden nicht wiederhergestellt.
 2. **Lokaler Suchindex:** `chat-archive.sqlite3` (optional, SQLite FTS5)
    indiziert Benutzer-/Assistententext und aktualisiert/entfernt Einträge bei
-   Änderungen. Ein einzelner Indexeintrag ist aus Ressourcengründen auf
-   256.000 Zeichen begrenzt; längere **Originalnachrichten bleiben erhalten**.
+   Änderungen. Auch sehr lange Nachrichten werden vollständig indiziert;
+   die Auswahl im Modellkontext bleibt begrenzt. Originalnachrichten bleiben
+   unter der bestehenden Retention-Policy separat erhalten.
    Tool-Payloads, Binaries und Dateipfade werden nicht pauschal indiziert.
 3. **Strukturierte Chronik:** `archive_activity` erfasst separat Quelle,
    Tätigkeitstyp, Ausführungsstatus, Modell, soweit vorhanden Erstellprompt,
@@ -27,10 +31,10 @@ nicht in einen einzelnen Modellprompt.
    dass die Datei heute noch existiert.
 4. **Persönliche Fakten:** `personal-memory.sqlite3` enthält überprüfte
    Schlüssel/Werte mit Chat-Quelle, Korrekturen und Löschsperren.
-   Die lokale Qwen-Analyse extrahiert bis zu fünf explizite, belegte Fakten
-   pro verarbeiteter Nutzernachricht. Sehr lange Nachrichten (>1.600 Zeichen)
-   bleiben vollständig im Originalarchiv, werden aber derzeit nicht als
-   Ganzes semantisch extrahiert.
+   Die lokale Qwen-Analyse prüft bis zu zwölf explizite, belegte Fakten
+   pro Segment. Lange Nachrichten werden ohne Zeichenverlust in Segmente
+   mit dauerhaften Verarbeitungspunkten zerlegt. Ein gestarteter Job ist noch
+   kein Beweis für erfolgreich gespeicherte Fakten.
 5. **Vorhandene Bilder/Videos:** bei gezielten Fragen wird die vorhandene
    lokale Medienbibliothek mit ihren bereits geprüften Metadaten abgefragt.
    Fehlende Prompts, Bildinhalte ohne Vision-Analyse und gelöschte Dateien
@@ -66,6 +70,10 @@ nicht in einen einzelnen Modellprompt.
 
 Unter **Einstellungen → Gedächtnis**:
 
+Ein produktiver Vollscan benötigt eine ausdrückliche Freigabe und eine zuvor
+erstellte, verifizierte private Sicherung. Die folgenden Schritte beschreiben
+die vorhandenen Optionen; Entwicklungstests starten diesen Scan nicht.
+
 1. Gedächtnis fortsetzen, falls pausiert.
 2. Unter erweiterten Einstellungen das lokale Chatarchiv einschalten und
    **Suchindex neu aufbauen** (wichtig für neue Aktivitätsfelder).
@@ -73,9 +81,10 @@ Unter **Einstellungen → Gedächtnis**:
 4. Lokales Qwen-Lernen aktivieren.
 5. **„Alle gespeicherten Chats mit Qwen analysieren“** starten.
    Der Produzent arbeitet den bisherigen Chatbestand nach Opt-in durch,
-   wartet bei voller 100er-Queue, vermeidet bereits geprüfte Message-Hashes
-   und stoppt bei Pause/Deaktivierung. Ein nach Unterbrechung erneut
-   gestarteter Durchlauf überspringt bereits verarbeitete Nachrichten.
+   schreibt Segment-Jobs dauerhaft, auch wenn die 100er-Wakeup-Queue voll ist,
+   und stoppt bei Pause/Deaktivierung. Nach Unterbrechung wird nur ein bereits
+   autorisierter Scan fortgesetzt; abgeschlossene unveränderte Segmente der
+   aktuellen Extraktorversion werden übersprungen.
    Der Fortschritt zeigt Scannen, Warteschlange, Erfolge und Fehler.
 
 Bei vielen tausend Chats benötigt der Vorgang entsprechend viel lokale

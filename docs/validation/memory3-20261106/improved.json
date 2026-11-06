@@ -1,0 +1,321 @@
+{
+  "date": "2026-11-06T15:59:16.752671+00:00",
+  "fixture": "memory3_retrieval.json",
+  "mode": "CPU lexical; embeddings unavailable; no live extraction/answer model",
+  "distractors": 2000,
+  "cases": [
+    {
+      "case": 1,
+      "target": "game",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 2,
+      "target": "game",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 3,
+      "target": "game",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 4,
+      "target": "game",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 5,
+      "target": "tracker",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 6,
+      "target": "tracker",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 7,
+      "target": "tracker",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 8,
+      "target": "tracker",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 9,
+      "target": "garden",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 0.5,
+      "hits": 3,
+      "sourced_hits": 3
+    },
+    {
+      "case": 10,
+      "target": "garden",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 11,
+      "target": "garden",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 0.5,
+      "hits": 3,
+      "sourced_hits": 3
+    },
+    {
+      "case": 12,
+      "target": "garden",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 13,
+      "target": "energy",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 3,
+      "sourced_hits": 3
+    },
+    {
+      "case": 14,
+      "target": "energy",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 15,
+      "target": "energy",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 3,
+      "sourced_hits": 3
+    },
+    {
+      "case": 16,
+      "target": "energy",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 17,
+      "target": "backup",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 18,
+      "target": "backup",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 19,
+      "target": "backup",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 0.5,
+      "hits": 3,
+      "sourced_hits": 3
+    },
+    {
+      "case": 20,
+      "target": "backup",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 21,
+      "target": "calendar",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 22,
+      "target": "calendar",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 23,
+      "target": "calendar",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 3,
+      "sourced_hits": 3
+    },
+    {
+      "case": 24,
+      "target": "calendar",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 25,
+      "target": "preference",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 26,
+      "target": "preference",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 27,
+      "target": "preference",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 28,
+      "target": "preference",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 1,
+      "sourced_hits": 1
+    },
+    {
+      "case": 29,
+      "target": "decision",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 2,
+      "sourced_hits": 2
+    },
+    {
+      "case": 30,
+      "target": "decision",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 2,
+      "sourced_hits": 2
+    },
+    {
+      "case": 31,
+      "target": "decision",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 2,
+      "sourced_hits": 2
+    },
+    {
+      "case": 32,
+      "target": "decision",
+      "recall_at_5": 1,
+      "precision_at_5": 0.2,
+      "reciprocal_rank": 1.0,
+      "hits": 2,
+      "sourced_hits": 2
+    }
+  ],
+  "metrics": {
+    "recall_at_5": 1,
+    "precision_at_5": 0.2,
+    "mrr": 0.953125,
+    "source_attribution": 1.0,
+    "explicit_save_success": 1.0,
+    "new_chat_context_recall": 1.0,
+    "negative_evidence_abstention": 1.0
+  },
+  "retrieval": {
+    "p50_ms": 5.332,
+    "p95_ms": 7.207
+  },
+  "fast_context_assembly": {
+    "p50_ms": 9.671,
+    "p95_ms": 11.23
+  },
+  "normal_context_assembly": {
+    "p50_ms": 11.847,
+    "p95_ms": 15.866
+  },
+  "process_maxrss_bytes": 54476800,
+  "live_model_faithfulness": null,
+  "live_model_hallucination_rate": null,
+  "gpu_ram_swap_under_load": null
+}

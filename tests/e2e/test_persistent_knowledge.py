@@ -87,6 +87,40 @@ def test_knowledge_browser_edit_pin_history_delete(browser,knowledge_web,lang,la
     finally:page.close()
 
 
+@pytest.mark.parametrize('lang,button',[('de','Alle Speicherbereiche diagnostizieren'),('en','Diagnose all memory stores')])
+@pytest.mark.parametrize('width',[390,1100])
+def test_memory3_diagnosis_sources_pause_and_safe_rendering(browser,knowledge_web,lang,button,width):
+    from agent import memory_commands
+    statement='Mein Browserspiel heißt Nebula Bastion. <img src=x onerror="window.fixtureInjected=true">'
+    memory_commands.execute([{'role':'user','content':'Merk dir: '+statement}],chat_id='fictional-diagnosis')
+    page=browser.new_page(viewport={'width':width,'height':900})
+    requests=[]
+    page.on('request',lambda r:requests.append((r.method,r.url)))
+    try:
+        page.goto(knowledge_web+'/?lang='+lang)
+        page.evaluate("document.querySelector('main').insertAdjacentHTML('beforeend','<div id=memoryManagerSummary></div>')")
+        page.add_script_tag(url=knowledge_web+'/assets/chat/memory-context-inspector.js')
+        page.get_by_role('button',name=button,exact=True).wait_for()
+        page.locator('#memoryContextInspectorQuery').fill('Wie heißt mein Strategiespiel?')
+        page.get_by_role('button',name=button,exact=True).click()
+        page.wait_for_function('window.MLXMemoryInspector.getLastResult()?.diagnosis != null')
+        page.locator('#memoryContextInspectorResults').get_by_text(statement,exact=True).wait_for()
+        assert page.locator('#memoryContextInspectorDiagnosis').is_visible()
+        assert page.locator('#memoryContextInspectorResults a').first.get_attribute('href').startswith('/chat?memory_chat=fictional-diagnosis')
+        assert page.evaluate('window.fixtureInjected') is None
+        assert not page.locator('#memoryContextInspectorResults img').count()
+        assert any(method=='POST' and url.endswith('/knowledge/diagnose') for method,url in requests)
+        assert all('Strategiespiel' not in url for _,url in requests)
+        # The displayed context is the actual fast-path output, not legacy-only
+        # scoring. Pause has the same effect in this preview and in chat.
+        assert 'Nebula Bastion' in page.locator('#memoryContextInspectorContextText').text_content()
+        memory_dashboard.set_paused(True)
+        page.get_by_role('button',name=button,exact=True).click()
+        page.wait_for_function("window.MLXMemoryInspector.getLastResult()?.diagnosis?.reason === 'paused'")
+        assert not page.locator('#memoryContextInspectorContext').is_visible()
+    finally:page.close()
+
+
 def test_knowledge_browser_merge_pagination_export_and_pause(browser,knowledge_web):
     page=browser.new_page()
     try:

@@ -97,12 +97,12 @@ def _model_key(payload: dict) -> str | None:
     return value or None
 
 
-def embedding_health(*, force=False):
+def embedding_health(*, force=False, timeout=None):
     now = time.monotonic()
     if not force and now < _health_cache["expires"]:
         return _health_cache["value"]
     try:
-        health = _request("/health", timeout=min(EMBEDDINGS_TIMEOUT, 5.0))
+        health = _request("/health", timeout=min(EMBEDDINGS_TIMEOUT, 5.0 if timeout is None else timeout))
         if not isinstance(health, dict) or health.get("ok") is not True:
             health = None
         elif not _model_key(health) or not int(health.get("dimensions") or 0):
