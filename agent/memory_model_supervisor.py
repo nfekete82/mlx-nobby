@@ -63,7 +63,7 @@ def should_load(snapshot, media_kind=None):
     if media_kind or not isinstance(snapshot, dict):
         return False
     if ctl.on_demand_enabled() and not (
-        ctl.router_demand_active() or ctl.pending_extraction_work()
+        ctl.router_demand_active() or ctl.memory_demand_active()
     ):
         return False
     free = snapshot.get("free_percent")
@@ -81,7 +81,7 @@ def should_unload(snapshot, media_kind=None, *, idle_expired=False):
     if not media_kind:
         return bool(ctl.on_demand_enabled() and idle_expired
                     and not ctl.router_demand_active()
-                    and not ctl.pending_extraction_work())
+                    and not ctl.memory_demand_active())
     # Explicit heavy image generation must have exclusive unified-memory
     # headroom even when the previous light-weight memory probe looked safe.
     if ctl.exclusive_media_requested(media_kind):
@@ -212,7 +212,7 @@ class Supervisor:
         snap = rc.memory_budget_snapshot()
         kind = ctl.active_media_kind()
         if self.child:
-            demand = ctl.router_demand_active() or ctl.pending_extraction_work()
+            demand = ctl.router_demand_active() or ctl.memory_demand_active()
             if demand or not ctl.on_demand_enabled():
                 self.idle_since = None
             elif self.idle_since is None:
