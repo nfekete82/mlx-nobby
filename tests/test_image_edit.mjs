@@ -2287,6 +2287,11 @@ for (const quality of ['ultra', 'ultra_plus']) {
         }
         assert.equal(modalElements.get('imageSamplingSteps').value, '40');
         assert.equal(Number(modalElements.get('imageSamplingCfg').value), 4);
+        const formatOptions = modalElements.get('mediaFormat').children;
+        assert.match(formatOptions.find(item => item.value === 'portrait').textContent,
+                     /9:16 · Ultra: 864 × 1536 px/);
+        assert.match(formatOptions.find(item => item.value === 'portrait_3_4').textContent,
+                     /3:4 · Ultra: 1152 × 1536 px/);
         modalElements.get('mediaFormat').value = 'portrait_3_4';
         modalElements.get('mediaFormat').listeners.get('change')?.();
         callback();
@@ -2302,6 +2307,37 @@ for (const quality of ['ultra', 'ultra_plus']) {
     assert.equal(payload.image_options.guidance, 4);
     assert.equal(payload.image_options.width * 4, payload.image_options.height * 3);
 }
+// Switching the same picker to 9:16 must send the 9:16 ratio intact.
+// The visible Ultra label distinguishes it from the previously selected 3:4.
+selectedAttachments = [];
+session.messages = [];
+session.workspace = {};
+sessionQuality = 'standard';
+const portraitPrompt = 'Create an Ultra portrait with a 9:16 aspect ratio';
+routeTargets.set(portraitPrompt, 'image');
+context.requestAnimationFrame = callback => {
+    const select = modalElements.get('imageModel');
+    select.value = 'juggernaut-xl';
+    select.listeners.get('change')?.();
+    qualityButtons.find(button => button.dataset.mediaQuality === 'ultra').click();
+    const formats = modalElements.get('mediaFormat');
+    assert.match(formats.children.find(option => option.value === 'portrait').textContent,
+                 /Ultra: 864 × 1536 px/);
+    formats.value = 'portrait';
+    formats.listeners.get('change')?.();
+    callback();
+    modalElements.get('mediaQualityModalConfirm').click();
+};
+input.value = portraitPrompt;
+await window.MLXChatGeneration.sendMessage();
+const portraitPayload = routedActionPayloads.at(-1);
+assert.equal(portraitPayload.quality, 'ultra');
+assert.equal(portraitPayload.image_options.model, 'juggernaut-xl');
+assert.equal(portraitPayload.image_options.auto_size, true);
+assert.deepEqual(
+    [portraitPayload.image_options.width, portraitPayload.image_options.height],
+    [432, 768],
+);
 context.requestAnimationFrame = originalAnimationFrame;
 
 // Reference routing uses the current upload or explicit workspace selection.

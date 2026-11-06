@@ -258,6 +258,30 @@ function mediaFormatLabel(format) {
     ) || fallback;
 }
 
+// Show the actual SDXL Ultra target in the format picker. A previously
+// remembered 9:16 format renders 864 × 1536, not the 3:4 1152 × 1536 canvas.
+// Mirror quality_profiles.dimensions_for_long_edge (native /16 alignment).
+// This is a UI preview only: the backend still owns dimension validation.
+function ultraImageResolutionForFormat(format, model, quality) {
+    if (model !== 'juggernaut-xl' || quality !== 'ultra') return null;
+    const size = IMAGE_SIZES_BY_FORMAT[format];
+    if (!size) return null;
+    const longEdge = 1536;
+    const width = size.width >= size.height
+        ? longEdge
+        : Math.max(256, Math.round(longEdge * size.width / size.height / 16) * 16);
+    const height = size.width >= size.height
+        ? Math.max(256, Math.round(longEdge * size.height / size.width / 16) * 16)
+        : longEdge;
+    return {width, height};
+}
+
+function imageFormatChoiceLabel(format, model, quality) {
+    const label = mediaFormatLabel(format);
+    const size = ultraImageResolutionForFormat(format, model, quality);
+    return size ? `${label} · Ultra: ${size.width} × ${size.height} px` : label;
+}
+
 function videoAspectRatioForFormat(format) {
     return format === 'portrait'
         ? '9:16'
@@ -3631,7 +3655,12 @@ const imageFiles =
 
                                 option.value = format;
                                 option.textContent =
-                                    mediaFormatLabel(format);
+                                    imageFormatChoiceLabel(
+                                        format,
+                                        mediaQualityKind === 'image'
+                                            ? selectedImageModel : null,
+                                        choice
+                                    );
 
                                 return option;
                             });
