@@ -43,6 +43,26 @@ def test_native_plus_canvas_and_exact_ratio(juggernaut, ratio, expected):
     assert service._resolve_generation(replay)['params'] == {**params, 'auto_size': False}
 
 
+@pytest.mark.parametrize('input_size,expected', [
+    ((432, 768), (864, 1536)),   # Portrait 9:16
+    ((432, 576), (1152, 1536)),  # Portrait 3:4
+    ((768, 432), (1536, 864)),   # Landscape 16:9
+    ((576, 432), (1536, 1152)),  # Landscape 4:3
+    ((512, 512), (1536, 1536)),  # Square
+    ((832, 1216), (1056, 1536)), # Ragnarok portrait
+])
+def test_ultra_format_dimensions_match_picker_labels(juggernaut, input_size, expected):
+    request = service.Generate(
+        prompt='Synthetic format preview', model='juggernaut-xl',
+        quality='ultra', width=input_size[0], height=input_size[1],
+        auto_size=True, seed=7,
+    )
+    params = service._resolve_generation(request)['params']
+    assert (params['width'], params['height']) == expected
+    assert params['steps'] == 40
+    assert params['width'] % 16 == params['height'] % 16 == 0
+
+
 @pytest.mark.parametrize('quality,width,height', [('ultra', 1152, 1536), ('ultra_plus', 1248, 1664)])
 def test_agent_transport_and_saved_metadata(juggernaut, monkeypatch, tmp_path, quality, width, height):
     monkeypatch.setattr(service, 'OUTPUT', tmp_path)
