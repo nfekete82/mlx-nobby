@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import urllib.error
 import urllib.request
 
@@ -140,6 +141,25 @@ def complete(messages):
         and isinstance(m.get("content"), str) for m in messages
     ):
         raise ValueError("Invalid memory extraction messages")
+    if coordination.on_demand_enabled():
+        # The saved SQLite queue remains authoritative. An individual worker
+        # request wakes 4B, rather than keeping it loaded for every pending
+        # checkpoint or while a chat tab is merely open.
+        coordination.request_memory_demand()
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            if coordination.active_media_kind():
+                raise coordination.DeferredMemoryInference(
+                    "Memory extraction yielded to media"
+                )
+            state = coordination.supervisor_state()
+            if state.get("owned") and state.get("state") == "running":
+                break
+            time.sleep(0.25)
+        else:
+            raise coordination.DeferredMemoryInference(
+                "Memory model not ready; durable extraction deferred"
+            )
     with coordination.inference_lease():
         result = _request(
             config["port"], "/v1/chat/completions",
