@@ -21,6 +21,7 @@ test('Ragnarok quality presets expose exact steps and CFG', () => {
     assert.deepEqual(preset('standard'), {steps: 35, guidance: 4});
     assert.deepEqual(preset('quality'), {steps: 30, guidance: 4});
     assert.deepEqual(preset('ultra'), {steps: 40, guidance: 4});
+    assert.deepEqual(preset('ultra_plus'), {steps: 40, guidance: 4});
     assert.deepEqual(preset('invalid'), preset('standard'));
 });
 
@@ -52,12 +53,12 @@ test('sampling UI is explicit for Juggernaut image generation and validated', ()
     assert.match(source, /samplingSteps\?\.removeEventListener\?\.\('input', onSamplingInput\)/);
     assert.match(source, /merged\.steps = samplingOverride\.steps/);
     assert.match(source, /merged\.guidance = samplingOverride\.guidance/);
-    assert.match(source, /mediaQualityKind !== 'image' \|\| hasRagnarokSampling\(\)/);
+    assert.match(source, /button.dataset.mediaQuality === 'ultra_plus' && !hasRagnarokSampling\(\)/);
 });
 
 test('sampling controls have paired German and English translations', () => {
     for (const key of [
-        'ragnarok_sampling_heading',
+        'ragnarok_sampling_heading', 'quality_ultra_plus_hint',
         'image_steps', 'image_cfg', 'ragnarok_sampling_summary',
         'ragnarok_sampling_invalid'
     ]) {

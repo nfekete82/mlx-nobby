@@ -193,7 +193,9 @@ function imageT(key, fallback = '', variables = {}) {
     const IMAGE_QUALITIES = new Set([
         'fast',
         'standard',
-        'quality'
+        'quality',
+        'ultra',
+        'ultra_plus'
     ]);
 
     function finiteNumber(value, minimum, maximum) {
@@ -229,8 +231,10 @@ function imageT(key, fallback = '', variables = {}) {
             auto_size: false
         };
 
-        const width = finiteNumber(artifact?.width, 256, 1216);
-        const height = finiteNumber(artifact?.height, 256, 1216);
+        const maximumEdge = artifact?.quality === 'ultra_plus' && artifact?.model === 'juggernaut-xl'
+            ? 1824 : artifact?.quality === 'ultra' ? 1536 : 1216;
+        const width = finiteNumber(artifact?.width, 256, maximumEdge);
+        const height = finiteNumber(artifact?.height, 256, maximumEdge);
         const steps = finiteNumber(artifact?.steps, 1, 50);
         const guidance = finiteNumber(artifact?.guidance, 0, 10);
 

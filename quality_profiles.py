@@ -4,6 +4,25 @@ Profiles describe only settings supported by the installed runtimes.  Explicit
 request parameters are applied by the services after profile resolution.
 """
 
+# Exact /16 canvases for the existing format picker only. No arbitrary large
+# canvases; square is the largest pixel budget (2,768,896 pixels).
+ULTRA_PLUS_DIMENSIONS = {
+    (3, 4): (1248, 1664), (4, 3): (1664, 1248),
+    (1, 1): (1664, 1664),
+    (16, 9): (1792, 1008), (9, 16): (1008, 1792),
+    (13, 19): (1248, 1824),
+}
+
+
+def ultra_plus_dimensions(width, height):
+    from math import gcd
+    divisor = gcd(width, height)
+    try:
+        return ULTRA_PLUS_DIMENSIONS[(width // divisor, height // divisor)]
+    except KeyError:
+        raise ValueError("Ultra+ unterstützt nur 1:1, 3:4, 4:3, 16:9, 9:16 und 13:19") from None
+
+
 IMAGE_PROFILES = {
     "qwen-image21-edit": {
         "fast": {"steps": 10, "guidance": 1.0, "long_edge": 512},
@@ -118,6 +137,11 @@ def image_profile_key(model):
 
 def resolve_image_profile(model, quality):
     profiles = IMAGE_PROFILES.get(image_profile_key(model))
+    if quality == "ultra_plus":
+        if model.get("id") != "juggernaut-xl" or model.get("provider") != "sdxl":
+            raise ValueError("Ultra+ ist nur für Juggernaut XL / SDXL verfügbar")
+        return {"steps": 40, "guidance": 4.0,
+                "dimension_policy": "ultra_plus_exact_aspect", "max_pixels": 1664 ** 2}
     if quality == "ultra":
         # Native generation; reuse model-specific Quality guidance and steps.
         base = dict(profiles["quality"]) if profiles and "quality" in profiles else {

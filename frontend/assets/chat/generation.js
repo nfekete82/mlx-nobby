@@ -119,7 +119,7 @@ const IMAGE_FORMATS = Object.freeze([
 
 const IMAGE_MODEL_STORAGE_KEY = 'mlx-nobby-image-model';
 const IMAGE_CREATION_PREFERENCES_KEY = 'mlx-nobby-image-creation-preferences-v1';
-const IMAGE_CREATION_QUALITIES = Object.freeze(['fast', 'standard', 'quality', 'ultra']);
+const IMAGE_CREATION_QUALITIES = Object.freeze(['fast', 'standard', 'quality', 'ultra', 'ultra_plus']);
 
 // Only confirmed Generate choices are stored; never store media prompts.
 function normalizeImageCreationPreferences(value) {
@@ -173,7 +173,8 @@ const RAGNAROK_SAMPLING_PRESETS = Object.freeze({
     fast: Object.freeze({steps: 20, guidance: 4.0}),
     standard: Object.freeze({steps: 35, guidance: 4.0}),
     quality: Object.freeze({steps: 30, guidance: 4.0}),
-    ultra: Object.freeze({steps: 40, guidance: 4.0})
+    ultra: Object.freeze({steps: 40, guidance: 4.0}),
+    ultra_plus: Object.freeze({steps: 40, guidance: 4.0})
 });
 
 function ragnarokSamplingForQuality(quality) {
@@ -3685,10 +3686,8 @@ const imageFiles =
                     };
 
                     const renderChoice = () => {
-                        // The native SDXL worker cannot accept Ultra's 1536 px:
-                        // its hard bound is 1216. Avoid presenting a broken mode.
-                        if (hasRagnarokSampling() && choice === 'ultra') {
-                            choice = 'quality';
+                        if (choice === 'ultra_plus' && !hasRagnarokSampling()) {
+                            choice = 'standard';
                         }
                         for (const button of qualityButtons) {
                             const isPreview =
@@ -3699,7 +3698,8 @@ const imageFiles =
                                  !CURATED_VIDEO_QUALITIES.includes(button.dataset.mediaQuality)) ||
                                 (isPreview && !previewAvailable) ||
                                 (button.dataset.mediaQuality === 'ultra' &&
-                                 (mediaQualityKind !== 'image' || hasRagnarokSampling()));
+                                 mediaQualityKind !== 'image') ||
+                                (button.dataset.mediaQuality === 'ultra_plus' && !hasRagnarokSampling());
 
                             // Video labels describe exact native output and validated duration.
                             // Restore the image labels each time the modal is used for images.

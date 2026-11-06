@@ -64,7 +64,12 @@ def render(page, width=1248, height=1664, restoring=False):
             image_job: restoring ? {status: 'saving', phase: 'restoring_chat'} : undefined};
         document.querySelector('#result').append(renderImageArtifactCard(message));
     }''', dict(width=width, height=height, restoring=restoring))
-    page.locator('.image-artifact-preview').last.evaluate('(img) => img.decode()')
+    image = page.locator('.image-artifact-preview').last
+    image.evaluate('(img) => img.decode()')
+    assert image.evaluate('(img) => [img.naturalWidth, img.naturalHeight]') == [width, height]
+    assert image.evaluate('(img) => getComputedStyle(img).objectFit') == 'contain'
+    box = image.bounding_box()
+    assert abs(box['width'] / box['height'] - width / height) < 0.01
 
 
 def bounds(page):

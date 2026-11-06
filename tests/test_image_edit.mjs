@@ -85,6 +85,8 @@ const qualityButtons = [
     new ModalTestElement({ quality: 'standard' }),
     new ModalTestElement({ quality: 'quality' }),
     new ModalTestElement({ quality: 'preview' }),
+    new ModalTestElement({ quality: 'ultra' }),
+    new ModalTestElement({ quality: 'ultra_plus' }),
 ];
 const modalBackdrop = new ModalTestElement();
 const quickStepButtons = [30, 35, 40].map(steps => {
@@ -2253,6 +2255,48 @@ for (const steps of [30, 35, 40]) {
     assert.equal(payload.image_options.model, 'juggernaut-xl');
     assert.equal(payload.image_options.steps, steps);
     assert.equal(payload.image_options.guidance, 4);
+}
+context.requestAnimationFrame = originalAnimationFrame;
+
+// Ultra and Ultra+ are explicit Juggernaut choices with native auto-sizing.
+for (const quality of ['ultra', 'ultra_plus']) {
+    selectedAttachments = [];
+    session.messages = [];
+    session.workspace = {};
+    sessionQuality = 'standard';
+    const prompt = 'Create an image of a native ' + quality + ' photograph';
+    routeTargets.set(prompt, 'image');
+    context.requestAnimationFrame = callback => {
+        const select = modalElements.get('imageModel');
+        select.value = 'juggernaut-xl';
+        select.listeners.get('change')?.();
+        const button = qualityButtons.find(button => button.dataset.mediaQuality === quality);
+        assert.equal(button.hidden, false);
+        if (quality === 'ultra_plus') {
+            select.value = 'auto';
+            select.listeners.get('change')?.();
+            assert.equal(button.hidden, true);
+            select.value = 'juggernaut-xl';
+            select.listeners.get('change')?.();
+            assert.equal(button.hidden, false);
+        }
+        button.click();
+        assert.equal(modalElements.get('imageSamplingSteps').value, '40');
+        assert.equal(Number(modalElements.get('imageSamplingCfg').value), 4);
+        modalElements.get('mediaFormat').value = 'portrait_3_4';
+        modalElements.get('mediaFormat').listeners.get('change')?.();
+        callback();
+        modalElements.get('mediaQualityModalConfirm').click();
+    };
+    input.value = prompt;
+    await window.MLXChatGeneration.sendMessage();
+    const payload = routedActionPayloads.at(-1);
+    assert.equal(payload.quality, quality);
+    assert.equal(payload.image_options.model, 'juggernaut-xl');
+    assert.equal(payload.image_options.auto_size, true);
+    assert.equal(payload.image_options.steps, 40);
+    assert.equal(payload.image_options.guidance, 4);
+    assert.equal(payload.image_options.width * 4, payload.image_options.height * 3);
 }
 context.requestAnimationFrame = originalAnimationFrame;
 

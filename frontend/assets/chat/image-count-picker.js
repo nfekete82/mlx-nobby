@@ -11,7 +11,8 @@
         'fast',
         'standard',
         'quality',
-        'ultra'
+        'ultra',
+        'ultra_plus'
     ]);
     const IMAGE_SIZES_BY_FORMAT = Object.freeze({
         landscape: Object.freeze({ width: 768, height: 432 }),

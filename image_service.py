@@ -19,7 +19,10 @@ import image_registry as registry
 from image_job_timings import ImageJobTimings
 from image_output_format import finalize_image
 from image_upscale_finish import finish_photo_upscale
-from quality_profiles import dimensions_for_long_edge, resolve_image_profile
+from quality_profiles import (
+    ULTRA_PLUS_DIMENSIONS, dimensions_for_long_edge, resolve_image_profile,
+    ultra_plus_dimensions,
+)
 from image_edit_precision import infer_auto_mask_target, comparison_image_id, image_change_advisory
 from image_region_edit import prepare_region, composite_region
 from image_img2img import prepare_sdxl_img2img_source, DEFAULT_STRENGTH
@@ -60,12 +63,12 @@ class Generate(BaseModel):
     prompt: str = Field(min_length=3, max_length=2000)
     negative_prompt: str | None = Field(default=None, max_length=2000)
     model: str = "auto"
-    width: int = Field(default=512, ge=256, le=1216)
-    height: int = Field(default=512, ge=256, le=1216)
+    width: int = Field(default=512, ge=256, le=1824)
+    height: int = Field(default=512, ge=256, le=1824)
     steps: int | None = Field(default=None, ge=1, le=50)
     guidance: float | None = Field(default=None, ge=0, le=10)
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
-    quality: Literal["fast", "standard", "quality", "ultra"] | None = None
+    quality: Literal["fast", "standard", "quality", "ultra", "ultra_plus"] | None = None
     auto_size: bool = False
     original_prompt: str | None = None
     # Diagnostic only. Defaults preserve the current safe SDXL VAE pipeline.
@@ -486,6 +489,8 @@ def unload():
 
 
 def _provider_failure(exc):
+    if isinstance(exc, MemoryError):
+        return "Nicht genug Arbeitsspeicher; Bildauftrag beendet. Bitte Ultra oder eine kleinere Auflösung wählen."
     return (
         str(exc)
         if isinstance(exc, RuntimeError)
@@ -701,7 +706,18 @@ def _resolve_generation(request):
     model = _generation_model(request.model, request.prompt)
     if request.sdxl_vae_mode is not None and model["provider"] != "sdxl":
         raise HTTPException(422, "Der VAE-Diagnosemodus ist nur für SDXL verfügbar")
+    try:
+        profile = resolve_image_profile(model, request.quality) if request.quality else None
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
     maximum_edge = 1216 if model["model_family"] == "sdxl" else 1024
+    if request.quality == "ultra":
+        # Replay native auto-sized Ultra results without dropping dimensions.
+        maximum_edge = 1536
+    elif request.quality == "ultra_plus":
+        maximum_edge = 1824
+        if not request.auto_size and (request.width, request.height) not in ULTRA_PLUS_DIMENSIONS.values():
+            raise HTTPException(422, "Ultra+ benötigt eine unterstützte native Profilauflösung")
     if request.width > maximum_edge or request.height > maximum_edge:
         raise HTTPException(
             422,
@@ -715,7 +731,6 @@ def _resolve_generation(request):
         params["negative_prompt"] = negative_prompt
     else:
         params.pop("negative_prompt", None)
-    profile = resolve_image_profile(model, request.quality) if request.quality else None
     params["steps"] = (
         request.steps if request.steps is not None
         else profile["steps"] if profile else _resolved_steps(model, None)
@@ -725,7 +740,12 @@ def _resolve_generation(request):
         if request.guidance is not None
         else profile["guidance"] if profile else model["default_guidance"]
     )
-    if request.auto_size and profile and profile.get("long_edge"):
+    if request.quality == "ultra_plus" and request.auto_size:
+        try:
+            params["width"], params["height"] = ultra_plus_dimensions(request.width, request.height)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+    elif request.auto_size and profile and profile.get("long_edge"):
         params["width"], params["height"] = dimensions_for_long_edge(
             request.width, request.height, profile["long_edge"],
         )

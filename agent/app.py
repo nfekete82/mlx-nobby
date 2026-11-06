@@ -4368,7 +4368,7 @@ class ChatActionRequest(BaseModel):
     video_options: dict | None = None
     multi_image_mode: Literal["keyframes", "scenes"] | None = None
     multi_images: list[dict] | None = Field(default=None, min_length=2, max_length=5)
-    quality: Literal["preview", "fast", "standard", "quality", "ultra"] | None = None
+    quality: Literal["preview", "fast", "standard", "quality", "ultra", "ultra_plus"] | None = None
     resolved_target: Literal[
         "chat", "image", "image_edit", "video", "shorts_generate",
     ] | None = None

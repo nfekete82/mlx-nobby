@@ -27,3 +27,46 @@ resolution, steps, CFG and scheduler, once per model with a fresh worker.
 It establishes successful integration, not a repeatable speed ranking or broad
 quality acceptance. Registry/profile/migration and SDXL safety regressions also
 passed; CPU-only tests never promote a model to `tested`.
+
+## 2026-11-06 — native Ultra+ integration (CPU/browser only)
+
+Exact checkpoint: Juggernaut XL Ragnarok, Civitai model version `1759168`,
+`juggernautXL_ragnarok.safetensors`, SHA256
+`dd08fa32f98d05a2443ca1419e46df1575a0811f6e3b246d9dd47ff20f5eb66a`.
+Architecture: SDXL; provider: existing `sdxl` / Diffusers MPS worker.
+Installation: unchanged, not inspected or downloaded this run; the historical
+2026-10-27 installed/rendered record above remains separate evidence.
+
+Ultra+ integration status: **configured**. GPU/model load: **not attempted**;
+real render time, peak RAM, swap and observed image quality: **not measured**.
+No inference ran on the production Mac. Synthetic PNGs verify API/provider
+canvases and artifact metadata, not model quality or GPU stability.
+
+Settings: 40 steps, CFG 4.0, DPM++ 2M SDE Karras; resolution tests use seed 42,
+metadata replay lets the service select a fresh seed. Exact supported canvases:
+1248×1664, 1664×1248, 1664×1664, 1792×1008, 1008×1792, 1248×1824.
+Existing Ultra remains 1536 long edge, including 1152×1536 for 3:4.
+
+Test attempts and regressions: the initial 265-case CPU contract/runtime run
+passed; the expanded combined run had 355 passes and two middleware-import
+ordering failures after a shared FastAPI app had started. Final isolated groups
+pass 349 core cases plus 67 subtests, 8 served-middleware cases and 26
+additional img2img/region safety cases. The image
+JS group initially exposed an obsolete Ultra-hidden assertion and a synthetic
+CFG text-format assertion; final expanded group passes 44 cases after contract/fixture updates.
+Browser startup initially hit macOS sandbox permissions; the authorized
+isolated Chromium run then exposed a blur-transition timing assertion, now
+waiting for the final computed style. Final 6 browser cases pass. None of
+these attempts loaded a checkpoint or produced a real model image.
+
+Known issues: real MPS memory/performance/quality and successful production
+chat restore are unverified for Ultra+. Exact wide and Ragnarok ratios need
+larger relative pixel increments than 3:4. Ultra+ editing/reference generation
+is deliberately rejected; their existing smaller working canvases are retained.
+Decision: **retain configured opt-in for review; retest on GPU only after
+explicit approval**, keep Ultra as the selectable fallback. Do not promote
+Ultra+ to `tested` from CPU/browser results.
+
+Evidence: [implementation, exact dimensions, test commands, estimates and safe
+manual acceptance](ultra-plus.md), [Chromium layout acceptance](image-card-layout.md),
+`tests/test_ultra_plus.py`, `tests/e2e/test_image_card_layout.py`.
