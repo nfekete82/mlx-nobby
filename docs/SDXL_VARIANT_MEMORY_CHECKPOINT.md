@@ -39,3 +39,15 @@ This fix does not allow a render to proceed past the pre-existing 20% free-RAM,
 
 The code change alone cannot prove macOS Metal reclaim behavior. Slow
 reclaim or external memory pressure can still cause a safe abort.
+
+## Private memory checkpoints
+
+For SDXL batches, the existing private `images/.variants/group-*.json`
+record now includes up to 24 content-free memory checkpoints. Each carries
+only a stage (`image_complete`, `image_failed`, `worker_released`, or
+`batch_worker_released`), gallery index, and available numeric measurements
+(`free_percent`, `headroom_gb`, `swap_used_gb`, `pressure`). There are
+no new prompt, file-path, model-output, or personal-data fields in the
+checkpoint entries. A failed probe cannot stop a render; it simply omits
+that checkpoint. These measurements help distinguish progressive warm-worker
+RAM accumulation from unrelated macOS background pressure during real tests.
