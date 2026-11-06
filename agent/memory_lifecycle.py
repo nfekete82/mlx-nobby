@@ -224,6 +224,15 @@ def fast_personal_context(messages):
         ))
 
     if parts:
+        # One index may correctly have no match even if another contains the
+        # requested fact. Avoid contradictory no-evidence guidance next to a
+        # source-backed answer from the personal facts, archive or legacy DB.
+        if any(not part.startswith(
+            'LOCAL STRUCTURED KNOWLEDGE: No matching stored evidence for this question.'
+        ) for part in parts):
+            parts = [part for part in parts if not part.startswith(
+                'LOCAL STRUCTURED KNOWLEDGE: No matching stored evidence for this question.'
+            )]
         if explicit:
             # Response guidance applies to evidence from every source; it is
             # separate from untrusted archived user messages and quotes.
