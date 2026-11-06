@@ -1278,8 +1278,12 @@ def _upscale_result(
 def upscale(request: Upscale):
     with exclusive():
         try:
-            with runtime_coordinator.image_runtime(None, exclusive_models=True):
-                _release_unused_image_models()
+            with runtime_coordinator.image_runtime(None, exclusive_models=True) as preflight:
+                try:
+                    _release_unused_image_models()
+                except Exception:
+                    preflight["suppress_chat_restore"] = True
+                    raise
                 return _upscale_result(request)
         except Exception as exc:
             if isinstance(exc, HTTPException):
@@ -1302,7 +1306,11 @@ def generate(request: Generate):
                 None, force_chat_unload=sdxl_job, exclusive_models=True,
             ) as preflight:
                 try:
-                    _release_unused_image_models(resolved["model"])
+                    try:
+                        _release_unused_image_models(resolved["model"])
+                    except Exception:
+                        preflight["suppress_chat_restore"] = True
+                        raise
                     return _generate_result(request, resolved=resolved)
                 finally:
                     if sdxl_job:
@@ -1330,7 +1338,11 @@ def edit(request: Edit):
                 try:
                     # The edit resolver runs inside the provider. Conservatively
                     # drop all idle weights before loading the selected one.
-                    _release_unused_image_models()
+                    try:
+                        _release_unused_image_models()
+                    except Exception:
+                        preflight["suppress_chat_restore"] = True
+                        raise
                     return _edit_result(request)
                 finally:
                     # SDXL img2img can warm a worker too. Never restore a
