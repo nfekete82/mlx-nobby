@@ -51,6 +51,14 @@ nicht in einen einzelnen Modellprompt.
   eigentliche Nutzernachricht umzuschreiben.
 - Bei langsamen Embeddings bleibt ein leichtgewichtiger, rein lokaler
   persönlicher Kontext als Fallback.
+- Explizite Fragen nach konkreten früheren Angaben (z. B. `Wie heißt mein Sohn?`)
+  lesen im schnellen Pfad nun **auch** die aktuelle persönliche Faktentabelle,
+  nicht nur Knowledge-FTS, Chatarchiv und ältere Langzeitnotizen. Verfügbare
+  Werte und Chatquellen haben Vorrang vor allgemeinen Hinweisen.
+- Die Quellen werden unabhängig abgefragt. Ein ausgefallener Knowledge-Index
+  darf vorhandene persönliche Fakten nicht mit einer allgemeinen
+  Fehlermeldung verdecken; ein leeres Suchergebnis einer Quelle gilt nicht
+  als Nachweis, dass alle anderen Quellen ebenfalls leer sind.
 - Der Chat darf alte Antworten und gespeicherte Erfolgsstatus nicht als
   aktuelle Realwelt-Verifikation darstellen.
 
@@ -107,3 +115,22 @@ python3 scripts/i18n-audit.py
 Danach Gesamttests, Browser-Abnahme und ein isolierter lokaler Funktionstest.
 Kein produktiver Agent/Container wird durch das Prüfen des GitHub-Branches
 automatisch verändert.
+
+## 2026-11-06 — expliziter Live-Recall-Fix
+
+Die Änderung betrifft ausschließlich die Konstruktion des Chat-Kontexts im
+nativen Agent. Es gibt keine Migration, keinen Vollscan, keine Änderung an
+Original-Chats oder den gespeicherten Fakten, keine neue Cloud-Abhängigkeit
+und keine Änderung der Lösch-/Pause-Regeln. Die Prüffälle verwenden nur
+fiktive Namen/Projekte in temporären SQLite-Dateien.
+
+Die Tests prüfen konkreten Faktabruf über den echten Streaming-Middleware-Pfad,
+Wiederherstellung aus der persönlichen Faktentabelle bei leerem Knowledge-Index,
+Ausfallisolierung einschließlich fehlschlagender Diagnostik sowie
+Datensparsamkeit bei themenfremden Fragen und globaler Pause.
+
+Vor der lokalen Aktivierung: privaten Backup-Status prüfen, laufende
+Chat-/Media-Jobs beenden lassen und nur den nativen Agent neu starten.
+Docker-Web, GPU-Runtime und Memory-Modell müssen hierfür nicht neu gestartet
+werden. CI-Erfolg ersetzt keinen Antwortqualitätstest mit den tatsächlich
+vorhandenen (privaten) lokalen Erinnerungen.
