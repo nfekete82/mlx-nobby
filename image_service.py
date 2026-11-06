@@ -379,13 +379,18 @@ def health():
     data = registry_call(registry.load_registry)
     model = registry_call(registry.get_model)
     sdxl_loaded = sdxl_worker_running()
+    mlxserve_ids = _loaded_mlxserve_repository_ids()
     mlxserve_loaded = _loaded_mlxserve_models()
-    loaded = bool(_running) or sdxl_loaded or bool(mlxserve_loaded)
+    # Unknown resident MLX-Serve weights must not be invisible to the video
+    # handoff; otherwise /unload can appear successful while GPU RAM remains.
+    loaded = bool(_running) or sdxl_loaded or bool(mlxserve_ids)
     running_model = _running
     if running_model is None and sdxl_loaded:
         running_model = registry.JUGGERNAUT_XL_ID
     if running_model is None and mlxserve_loaded:
         running_model = mlxserve_loaded[0]["id"]
+    if running_model is None and mlxserve_ids:
+        running_model = "unmanaged-mlxserve"
 
     with _jobs_lock:
         active_job = _jobs.get(_active_job_id)
@@ -509,7 +514,12 @@ def unload():
         try:
             shutdown_sdxl_worker()
             for model in _loaded_mlxserve_models():
-                _unload_mlxserve_model(model)
+                _unload_mlxserve_model_and_wait(model)
+            if sdxl_worker_running() or _loaded_mlxserve_repository_ids():
+                raise RuntimeError(
+                    "Mindestens ein Image-Modell ist weiterhin geladen "
+                    "(gegebenenfalls unbekanntes MLX-Serve-Modell)"
+                )
         except RuntimeError as exc:
             raise HTTPException(
                 500,
