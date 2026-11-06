@@ -146,6 +146,23 @@ for template in "${TEMPLATE_DIR}"/*.plist.template; do
         continue
     fi
 
+    # A deliberately enabled lightweight port-8040 gateway reuses the
+    # supervisor-owned port-8011 model. Keep regular reinstalls/restarts from
+    # silently restoring the old second 4B server. Legacy stays the default.
+    if [ "${filename}" = "de.nobby.mlx-router.plist" ] && \
+       "${RUNTIME_PYTHON}" - "${CONFIG_DIR}/memory-model-control/on-demand.json" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1], encoding='utf-8') as stream:
+        enabled = json.load(stream).get('enabled') is True
+except (OSError, ValueError, TypeError, AttributeError):
+    enabled = False
+sys.exit(0 if enabled else 1)
+PY
+    then
+        template="${PROJECT_DIR}/launchd/optional/de.nobby.mlx-router.plist.template"
+    fi
+
     render_template "${template}" "${target}"
 done
 
