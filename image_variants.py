@@ -176,6 +176,8 @@ def install(service):
                 snapshot = service.runtime_coordinator.memory_budget_snapshot()
             except Exception:
                 return
+            if not isinstance(snapshot, dict):
+                return
             record = {"stage": stage, "variant_index": variant_index}
             for key in ("free_percent", "headroom_gb", "swap_used_gb"):
                 value = snapshot.get(key)
