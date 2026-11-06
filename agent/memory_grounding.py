@@ -55,12 +55,45 @@ def mentions_person(text, person_slug):
     ))
 
 
-def person_claim_supported(subject, value, evidence):
-    """Require a person and their claimed attribute in one attributed clause.
+# Conservative split of independently attributed experiences. The main
+# purpose is to prevent a model from borrowing a verb/action from the next
+# named person's clause or from a pronoun-only continuation.
+_ATTRIBUTION_BOUNDARIES = re.compile(
+    r'(?<=[.!?;])\s+|\n+'
+    r'|(?:\s+\b(?i:und|aber|während)\s+|,\s*)(?=(?i:mit|bei|von|für)\s+\w+)'
+    r'|,\s*(?=[A-ZÄÖÜ][\wÄÖÜäöüß-]+\s+\w+)'
+    r'|,\s*(?=(?i:danach|später|anschließend|dann)\b)'
+    r'|\s+\b(?i:und|aber)\s+(?=(?i:sie|er|wir)\s+(?i:war|ist|hat|ging|fuhr|schwamm|machte)\b)'
+    r'|\s+\b(?i:und|aber)\s+(?=[A-ZÄÖÜ][\wÄÖÜäöüß-]+\s+(?i:war|ist|hat|ging|fuhr|schwamm|machte|arbeitete|wohnt)\b)'
+)
 
-    A model may quote an entire paragraph mentioning A and C, assigning C's
-    activity to A while satisfying global name/value substring checks.
-    Ambiguous/pronoun-only claims remain in the original source instead.
+
+def attributed_clauses(evidence):
+    """Literal local spans. Do not assign pronouns to earlier named people.
+
+    This is intentionally not an NLP coreference engine. If an action only
+    occurs in a different span, the named person's evidence is insufficient.
+    """
+    return [part.strip() for part in _ATTRIBUTION_BOUNDARIES.split(
+        str(evidence or '')
+    ) if part.strip()]
+
+
+def person_scoped_excerpt(evidence, person_slug, *, limit=1000):
+    """Read-only verbatim evidence spans visibly naming the requested person."""
+    spans = [
+        part for part in attributed_clauses(evidence)
+        if mentions_person(part, person_slug)
+    ]
+    return ' … '.join(spans)[:limit]
+
+
+def person_claim_supported(subject, value, evidence):
+    """Require named actor and claimed attribute in the same evidence span.
+
+    Both names and the activity existing somewhere in the same paragraph is
+    insufficient. A pronoun-only continuation cannot silently become a new
+    fact about the previously named person.
     """
     if not str(subject).startswith('personen.'):
         return True
@@ -68,16 +101,7 @@ def person_claim_supported(subject, value, evidence):
     value = str(value).strip()
     if not name or not value:
         return False
-    # Sentence boundaries and a new explicit person/action subject start a
-    # new attribution scope. Avoid transferring actions to another person.
-    scopes = re.split(
-        r'(?<=[.!?;])\s+|\n+|'
-        r'\s+\b(?:und|aber)\s+(?=(?:mit|bei|von|für|mein\w*)\b)|'
-        r'\s+\b(?:und|aber)\s+(?=[A-ZÄÖÜ][\wÄÖÜäöüß-]+\s+'
-        r'(?:war|ist|hat|ging|fuhr|arbeitete|wohnt)\b)',
-        str(evidence),
-    )
     return any(
         mentions_person(scope, name) and value.casefold() in scope.casefold()
-        for scope in scopes
+        for scope in attributed_clauses(evidence)
     )
