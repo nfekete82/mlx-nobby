@@ -173,11 +173,11 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory
 
 
 def fast_personal_context(messages):
-    """Read-only, local fallback when legacy semantic recall misses its deadline.
+    """Source-aware, bounded-latency fallback for explicit and normal recall.
 
-    This does not run embeddings, observe user messages, resolve conflicts,
-    or mutate stored memories. It keeps the core personal context available
-    for ordinary chat even during slow legacy-memory indexing.
+    Each existing store is read independently: a failed structured/legacy
+    lookup must never erase already available, user-confirmed personal facts.
+    No embeddings, extraction or model inference runs in this fallback.
     """
     copied = [dict(message) for message in (messages or [])]
     if memory_dashboard.paused():
@@ -185,34 +185,60 @@ def fast_personal_context(messages):
     query = memory.recall_query(copied)
     if not query:
         return copied
-    try:
-        from agent import knowledge_memory
-        # Include the old durable-memory inventory for explicit user overviews.
-        # Unlike ordinary lexical recall, this does not require embeddings.
-        explicit = personal_memory.recall_requested(query)
-        parts = ([knowledge_memory.context(query, budget=18000)] if explicit else [
-            personal_memory.context(query, limit=6),
-            knowledge_memory.context(query, budget=3000),
-        ])
+
+    from agent import knowledge_memory, chat_archive
+    explicit = personal_memory.recall_requested(query)
+    parts = []
+    failed = False
+
+    def include(reader):
+        nonlocal failed
+        try:
+            value = reader()
+        except Exception as error:
+            failed = True
+            knowledge_memory.diagnose('recall', error)
+            return
+        if value:
+            parts.append(value)
+
+    # The personal fact inventory is an independent store. Explicit requests
+    # previously skipped it entirely and could yield generic/no-evidence text
+    # even when a relevant current fact had been saved in SQLite.
+    include(lambda: personal_memory.context(query, limit=12 if explicit else 6))
+    include(lambda: knowledge_memory.context(
+        query, budget=18000 if explicit else 3000,
+    ))
+
+    if explicit:
+        include(lambda: chat_archive.context(query, limit=8))
+        include(lambda: memory.explicit_context(query))
+    elif memory.MEMORY_DB.exists():
+        # Keep only relevant lexical legacy matches and global communication
+        # preferences. Never dump unrelated pinned notes into ordinary chat.
+        include(lambda: memory.explicit_context(
+            query, include_global_preferences=True,
+        ))
+
+    if parts:
         if explicit:
-            from agent import chat_archive
-            parts.append(chat_archive.context(query, limit=8))
-            parts.append(memory.explicit_context(query))
-        elif memory.MEMORY_DB.exists():
-            # Reuse read-only lexical recall. Pinned addressing/style applies
-            # across topics; unrelated pinned projects do not become a dump.
-            parts.append(memory.explicit_context(query, include_global_preferences=True))
-        private_context = "\n\n".join(filter(None, parts))
-        if private_context:
-            return memory.attach_system_context(copied, private_context)
-    except Exception as error:
-        from agent import knowledge_memory
-        knowledge_memory.diagnose('recall', error)
-        if personal_memory.recall_requested(query):
-            return memory.attach_system_context(copied,
-                'LOCAL MEMORY RETRIEVAL UNAVAILABLE. Explain the temporary retrieval failure. '
-                'Do not claim there are no stored memories or invent personal facts.')
-        return copied
+            # Response guidance applies to evidence from every source; it is
+            # separate from untrusted archived user messages and quotes.
+            parts.insert(0,
+                'EXPLICIT LOCAL RECALL REQUEST. Answer the user\'s specific '
+                'question with the matching stored facts and their sources '
+                'rather than generic examples or a memory-feature overview. '
+                'The stores are independent; a no-match in one does not '
+                'negate evidence in another. Do not invent missing dates, '
+                'names or completion claims. Current user corrections '
+                'override older or unresolved records.')
+        return memory.attach_system_context(copied, "\\n\\n".join(parts))
+
+    if explicit and failed:
+        return memory.attach_system_context(copied,
+            'LOCAL MEMORY RETRIEVAL UNAVAILABLE. Explain the temporary '
+            'retrieval failure. Do not claim there are no stored memories '
+            'or invent personal facts.')
     return copied
 
 
