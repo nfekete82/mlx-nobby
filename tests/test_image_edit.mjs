@@ -85,6 +85,8 @@ const qualityButtons = [
     new ModalTestElement({ quality: 'standard' }),
     new ModalTestElement({ quality: 'quality' }),
     new ModalTestElement({ quality: 'preview' }),
+    new ModalTestElement({ quality: 'ultra' }),
+    new ModalTestElement({ quality: 'ultra_plus' }),
 ];
 const modalBackdrop = new ModalTestElement();
 const quickStepButtons = [30, 35, 40].map(steps => {
@@ -1638,7 +1640,7 @@ assert.equal(
     imageArtifactC.artifact_id,
 );
 const editCard = renderImageArtifactCard(editMessage);
-const editPreview = editCard.children.find(
+const editPreview = descendants(editCard).find(
     child => child.tagName === 'IMG',
 );
 assert.equal(
@@ -1660,7 +1662,7 @@ const generatedCard = renderImageArtifactCard({
 });
 assert.ok(generatedCard);
 assert.equal(
-    generatedCard.children.find(child => child.tagName === 'IMG').src,
+    descendants(generatedCard).find(child => child.tagName === 'IMG').src,
     '/api/mlx/images/' + encodeURIComponent(imageArtifact.image_id),
 );
 assert.equal(
@@ -1685,7 +1687,7 @@ const earlyPreviewCard = renderImageArtifactCard({
 });
 assert.ok(earlyPreviewCard);
 assert.equal(
-    earlyPreviewCard.children.find(child => child.tagName === 'IMG').src,
+    descendants(earlyPreviewCard).find(child => child.tagName === 'IMG').src,
     '/api/mlx/images/' + encodeURIComponent(imageArtifact.image_id),
 );
 assert.ok(descendants(earlyPreviewCard).some(
@@ -1715,7 +1717,7 @@ const upscaledCard = renderImageArtifactCard({
 });
 assert.ok(upscaledCard);
 assert.equal(
-    upscaledCard.children.find(child => child.tagName === 'IMG').src,
+    descendants(upscaledCard).find(child => child.tagName === 'IMG').src,
     '/api/mlx/images/' + encodeURIComponent(upscaledArtifact.image_id),
 );
 assert.equal(
@@ -2256,6 +2258,48 @@ for (const steps of [30, 35, 40]) {
 }
 context.requestAnimationFrame = originalAnimationFrame;
 
+// Ultra and Ultra+ are explicit Juggernaut choices with native auto-sizing.
+for (const quality of ['ultra', 'ultra_plus']) {
+    selectedAttachments = [];
+    session.messages = [];
+    session.workspace = {};
+    sessionQuality = 'standard';
+    const prompt = 'Create an image of a native ' + quality + ' photograph';
+    routeTargets.set(prompt, 'image');
+    context.requestAnimationFrame = callback => {
+        const select = modalElements.get('imageModel');
+        select.value = 'juggernaut-xl';
+        select.listeners.get('change')?.();
+        const button = qualityButtons.find(button => button.dataset.mediaQuality === quality);
+        assert.equal(button.hidden, false);
+        if (quality === 'ultra_plus') {
+            select.value = 'auto';
+            select.listeners.get('change')?.();
+            assert.equal(button.hidden, true);
+            select.value = 'juggernaut-xl';
+            select.listeners.get('change')?.();
+            assert.equal(button.hidden, false);
+        }
+        button.click();
+        assert.equal(modalElements.get('imageSamplingSteps').value, '40');
+        assert.equal(Number(modalElements.get('imageSamplingCfg').value), 4);
+        modalElements.get('mediaFormat').value = 'portrait_3_4';
+        modalElements.get('mediaFormat').listeners.get('change')?.();
+        callback();
+        modalElements.get('mediaQualityModalConfirm').click();
+    };
+    input.value = prompt;
+    await window.MLXChatGeneration.sendMessage();
+    const payload = routedActionPayloads.at(-1);
+    assert.equal(payload.quality, quality);
+    assert.equal(payload.image_options.model, 'juggernaut-xl');
+    assert.equal(payload.image_options.auto_size, true);
+    assert.equal(payload.image_options.steps, 40);
+    assert.equal(payload.image_options.guidance, 4);
+    assert.equal(payload.image_options.width * 4, payload.image_options.height * 3);
+}
+context.requestAnimationFrame = originalAnimationFrame;
+
 // Reference routing uses the current upload or explicit workspace selection.
 // An old historical image and ambiguous attachments cannot authorize a source.
 for (const kind of ['upload', 'selected', 'historical', 'multiple', 'composition', 'followup']) {
@@ -2350,7 +2394,7 @@ renderingWindow.MLXChatGeneration.createImageUpscaleMenu = () => {
 for (const message of [realMessage, JSON.parse(JSON.stringify(realMessage))]) {
     const card = renderImageArtifactCard(message);
     assert.ok(card, 'completed image renders even when optional actions throw, including reload');
-    assert.equal(card.children.find(child => child.tagName === 'IMG').src,
+    assert.equal(descendants(card).find(child => child.tagName === 'IMG').src,
         '/api/mlx/images/' + realImageSequence.native_completed.result.id);
     assert.equal(renderImageJobCard(message), null);
 }

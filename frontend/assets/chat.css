@@ -1214,15 +1214,75 @@ button {
     background: #1a202b;
 }
 
-/* Compact generated-image result in the chat. Full size is available by
-   clicking the image; never resize the stored image or download. */
+/* Widen only image-result messages. Ordinary chat keeps its 900px measure. */
+.messages-inner:has(.image-artifact-card) {
+    width: min(1200px, calc(100% - 48px));
+}
+.messages-inner:has(.image-artifact-card) > .message {
+    width: min(900px, 100%);
+    margin-inline: auto;
+}
+.messages-inner:has(.image-artifact-card) > .message:has(.image-artifact-card) {
+    width: 100%;
+}
 .image-artifact-card {
     box-sizing: border-box;
-    width: min(100%, 380px);
-    max-width: 100%;
+    width: 100%;
+    max-width: 1200px;
+    min-width: 0;
+    container-type: inline-size;
+    container-name: image-result;
+    border-color: var(--border, #334155);
+    background: var(--panel, #111827);
+}
+.image-artifact-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 16px;
+}
+.image-artifact-media,
+.image-artifact-details {
+    min-width: 0;
+}
+.image-artifact-media {
+    display: flex;
+    justify-content: center;
+}
+.image-artifact-resolution {
+    display: block;
+    color: var(--text, #e5edf6);
+    font-size: 18px;
+    line-height: 1.4;
 }
 .image-artifact-card .batch-chat-details {
+    margin-top: 6px;
+    color: var(--muted, #b9c3d0);
     overflow-wrap: anywhere;
+}
+.image-artifact-card .batch-chat-controls {
+    align-items: center;
+}
+.image-artifact-card .message-action-btn {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.image-artifact-card .image-artifact-info,
+.image-artifact-card .image-artifact-prompt {
+    min-width: 0;
+    border-color: var(--border, #334155);
+    background: var(--panel2, #0f1724);
+    color: var(--text, #e5edf6);
+    overflow-wrap: anywhere;
+}
+.image-artifact-card .image-artifact-info summary,
+.image-artifact-card .image-artifact-info strong {
+    color: var(--text, #d7dee7);
+}
+@container image-result (min-width: 660px) {
+    .image-artifact-layout {
+        grid-template-columns: minmax(0, 11fr) minmax(0, 9fr);
+    }
 }
 
 .video-artifact-card {
@@ -1244,9 +1304,10 @@ button {
     width: auto;
     height: auto;
     max-width: 100%;
-    max-height: min(32vh, 300px);
-    max-height: min(32dvh, 300px);
-    margin-top: 12px;
+    box-sizing: border-box;
+    max-height: 68vh;
+    max-height: 68dvh;
+    margin-top: 0;
     border: 1px solid #334155;
     border-radius: 8px;
     object-fit: contain;
@@ -1994,7 +2055,8 @@ button {
         left: 0;
     }
 
-    .messages-inner {
+    .messages-inner,
+    .messages-inner:has(.image-artifact-card) {
         width: calc(100% - 28px);
     }
 

@@ -730,6 +730,7 @@
     "ragnarok_sampling_invalid": "Bitte gültige Steps (1–50) und CFG (0–10) eingeben.",
     "quality_fast": "Schnell",
     "quality_standard": "Standard",
+    "quality_ultra_plus_hint": "Juggernaut XL · nativ 1248 × 1664 (3:4) · mehr Speicher und Zeit",
     "quality_quality": "Qualität",
     "global_settings_description": "Globale Einstellungen für Chat-Verhalten, Darstellung und lokale Datensicherung.",
     "chat_behavior": "Chat-Verhalten",

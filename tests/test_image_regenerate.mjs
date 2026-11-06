@@ -615,3 +615,17 @@ assert.equal(oldEditControls.children.length, 2);
 assert.equal(oldEditControls.children[0].disabled, true);
 assert.match(oldEditControls.children[0].title, /Variants are unavailable/);
 console.log('Edit reroll buttons preserve owned original-image jobs.');
+
+for (const [quality, width, height] of [
+    ['ultra', 1152, 1536], ['ultra_plus', 1248, 1664],
+    ['ultra_plus', 1792, 1008], ['ultra_plus', 1664, 1664],
+    ['ultra_plus', 1248, 1824]
+]) {
+    const prepared = api.regenerationOptions({...artifact, model: 'juggernaut-xl', quality, width, height});
+    assert.equal(prepared.quality, quality);
+    assert.equal(prepared.imageOptions.width, width);
+    assert.equal(prepared.imageOptions.height, height);
+    assert.equal(prepared.imageOptions.auto_size, false);
+    assert.equal(prepared.imageOptions.seed, undefined);
+}
+console.log('Native Ultra and Ultra+ regeneration preserves quality and full canvas.');

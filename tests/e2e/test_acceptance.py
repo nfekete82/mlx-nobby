@@ -216,7 +216,7 @@ def test_image_job_preview_download(ui):
     image.evaluate('(img) => img.decode()')
     assert image.evaluate('(img) => img.naturalWidth > 0 && img.naturalHeight > 0')
     expect(page.locator('.image-artifact-card a[href*="download=1"]')).to_be_visible()
-    # Chat thumbnails stay compact; original image is untouched and clickable.
+    # Responsive image card keeps the original image intact and clickable.
     dimensions = page.evaluate("""() => {
         const card = document.querySelector('.image-artifact-card');
         const img = document.querySelector('.image-artifact-preview');
@@ -227,8 +227,8 @@ def test_image_job_preview_download(ui):
             viewportHeight: window.innerHeight,
         };
     }""")
-    assert dimensions["cardWidth"] <= min(381, dimensions["viewportWidth"])
-    assert dimensions["thumbHeight"] <= min(301, 0.32 * dimensions["viewportHeight"] + 2)
+    assert dimensions["cardWidth"] <= min(1201, dimensions["viewportWidth"])
+    assert dimensions["thumbHeight"] <= 0.68 * dimensions["viewportHeight"] + 2
 
     image.click()
     expect(page.locator('.image-preview-dialog')).to_be_visible()

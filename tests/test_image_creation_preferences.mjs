@@ -227,3 +227,13 @@ test('Auto label reflects configured image role or registry default without prom
     ), 'juggernaut-xl');
     assert.equal(select.value, 'juggernaut-xl');
 });
+
+
+test('Ultra+ survives preferences with its explicit supported model', () => {
+    let raw = null;
+    const storage = {getItem: () => raw, setItem: (_key, value) => {raw = value;}};
+    preferenceContext(storage).storeImageCreationPreferences({
+        model: 'juggernaut-xl', quality: 'ultra_plus', format: 'portrait_3_4'
+    });
+    assert.equal(preferenceContext(storage).storedImageCreationPreferences().quality, 'ultra_plus');
+});
