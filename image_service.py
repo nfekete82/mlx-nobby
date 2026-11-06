@@ -1607,7 +1607,11 @@ def _run_image_job(
             finally:
                 # Do not restart chat on top of a still-resident SDXL pipeline.
                 # This runs before the image_runtime context restores chat.
-                if not batched_sdxl and sdxl_worker_running():
+                # SDXL generations must always perform the worker unload,
+                # even when a status probe says no worker is resident. The
+                # early artifact and variant contracts rely on this barrier.
+                # Other operations release a warm SDXL worker if present.
+                if not batched_sdxl and (sdxl_job or sdxl_worker_running()):
                     try:
                         shutdown_sdxl_worker()
                         if sdxl_worker_running():
