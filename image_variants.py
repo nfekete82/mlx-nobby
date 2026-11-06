@@ -1,6 +1,7 @@
 """Sequential Generate/reference Edit jobs from a private frozen configuration."""
 import copy
 import json
+import math
 import os
 import re
 import secrets
@@ -145,11 +146,14 @@ def install(service):
         return "cancelled" if "cancelled" in statuses else "failed"
 
     def run(group):
-        # A true multi-image Juggernaut batch does not need to bounce the
-        # heavyweight chat model between successive, identical SDXL jobs.
-        # Keep one *exclusive* coordinator lease and one SDXL worker until
-        # the last pending variant finishes. Other providers and single
-        # variants continue to use the old per-job lifetime.
+        # Keep one exclusive *coordinator lease* across the entire SDXL
+        # gallery, so chat cannot restart between variants. PyTorch MPS can
+        # retain device/host allocations inside a warm SDXL worker, however:
+        # recycle that owned child after two successful variants, while the
+        # same lease is held, before the next variant loads. This limits
+        # cumulative MPS residency in 48-GB unified RAM without altering
+        # per-image output parameters, model guards or existing artifacts.
+        # Other providers and single variants keep their prior lifetime.
         canonical_model = group.get("canonical", {}).get("model", {})
         pending = [job for job in group["jobs"] if not reusable(job)]
         batch_sdxl = (
@@ -165,6 +169,27 @@ def install(service):
             )
             if batch_sdxl else nullcontext()
         )
+        def sample_memory(stage, variant_index):
+            # Only bounded numeric data in local group metadata, never prompts.
+            # Probe errors are observational, not a second admission policy.
+            try:
+                snapshot = service.runtime_coordinator.memory_budget_snapshot()
+            except Exception:
+                return
+            if not isinstance(snapshot, dict):
+                return
+            record = {"stage": stage, "variant_index": variant_index}
+            for key in ("free_percent", "headroom_gb", "swap_used_gb"):
+                value = snapshot.get(key)
+                if type(value) in (int, float) and math.isfinite(value):
+                    record[key] = round(value, 3)
+            if snapshot.get("pressure") in {"normal", "elevated", "critical"}:
+                record["pressure"] = snapshot["pressure"]
+            if len(record) > 2:
+                group.setdefault("memory_checkpoints", []).append(record)
+                group["memory_checkpoints"] = group["memory_checkpoints"][-24:]
+
+        rendered_since_recycle = 0
         try:
             with context as preflight:
                 try:
@@ -192,8 +217,15 @@ def install(service):
                             batched_sdxl=batch_sdxl,
                             runtime_preflight=preflight,
                         )
+                        if batch_sdxl:
+                            sample_memory(
+                                "image_complete" if job["status"] == "completed" else "image_failed",
+                                job.get("variant_index"),
+                            )
                         persist(group)
                         if job["status"] != "completed":
+                            if job["status"] == "failed":
+                                group["batch_failed"] = True
                             for missing in group["jobs"]:
                                 if missing["status"] == "queued":
                                     service._update_job(
@@ -203,6 +235,31 @@ def install(service):
                                         finished_at=time.time(),
                                     )
                             break
+                        if batch_sdxl:
+                            rendered_since_recycle += 1
+                            remaining = any(
+                                member["status"] not in _TERMINAL
+                                for member in group["jobs"]
+                            )
+                            if rendered_since_recycle >= 2 and remaining:
+                                # We still own the image service lock AND the
+                                # cross-service runtime lease: no chat, video
+                                # or other SDXL job can enter during recycle.
+                                # Never silently proceed if unloading fails.
+                                try:
+                                    service.shutdown_sdxl_worker()
+                                    if service.sdxl_worker_running():
+                                        raise RuntimeError(
+                                            "SDXL worker still resident at variant checkpoint"
+                                        )
+                                except Exception:
+                                    group["batch_failed"] = True
+                                    if isinstance(preflight, dict):
+                                        preflight["suppress_chat_restore"] = True
+                                    raise
+                                sample_memory("worker_released", job.get("variant_index"))
+                                persist(group)
+                                rendered_since_recycle = 0
                 finally:
                     if batch_sdxl:
                         # Must finish *before* image_runtime exits and tries
@@ -211,6 +268,7 @@ def install(service):
                             service.shutdown_sdxl_worker()
                             if service.sdxl_worker_running():
                                 raise RuntimeError("SDXL worker still resident after batch")
+                            sample_memory("batch_worker_released", None)
                         except Exception:
                             group["batch_failed"] = True
                             if isinstance(preflight, dict):
@@ -224,6 +282,7 @@ def install(service):
                         error=None, finished_at=time.time(),
                     )
         except Exception:
+            group["batch_failed"] = True
             for job in group["jobs"]:
                 if job["status"] not in _TERMINAL:
                     service._update_job(job["id"], status="failed",

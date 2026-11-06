@@ -665,14 +665,92 @@ def test_sdxl_multi_variant_reuses_worker_under_one_runtime_lease(runtime, monke
     monkeypatch.setattr(service, 'run_provider', render)
     monkeypatch.setattr(service, 'shutdown_sdxl_worker', unload)
     monkeypatch.setattr(service, 'sdxl_worker_running', lambda: False)
+    monkeypatch.setattr(service.runtime_coordinator, 'memory_budget_snapshot',
+                        lambda: {'free_percent': 68.0, 'headroom_gb': 26.6,
+                                 'swap_used_gb': 1.2, 'pressure': 'normal'})
 
     gallery = batch(runtime, first)
     assert gallery['status'] in {'running', 'completed'}
     images = [entry for entry in events if isinstance(entry, tuple)]
     assert len(images) == 5
-    assert events == ['handoff_start', *images, 'sdxl_unloaded', 'handoff_end']
+    assert events == [
+        'handoff_start', *images[:2], 'sdxl_unloaded',
+        *images[2:4], 'sdxl_unloaded', *images[4:],
+        'sdxl_unloaded', 'handoff_end',
+    ]
     for member in gallery['jobs']:
         assert runtime.get('/jobs/' + member['id']).json()['status'] == 'completed'
+    from image_variants import load_record
+    record = load_record(service.OUTPUT, 'group-' + gallery['variant_group_id'])
+    checkpoints = record['memory_checkpoints']
+    assert [entry['stage'] for entry in checkpoints] == [
+        'image_complete', 'image_complete', 'worker_released',
+        'image_complete', 'image_complete', 'worker_released',
+        'image_complete', 'batch_worker_released',
+    ]
+    assert all(entry['free_percent'] == 68.0 for entry in checkpoints)
+    assert 'An optimized studio photograph' not in repr(checkpoints)
+
+
+def test_sdxl_checkpoint_unload_failure_keeps_completed_images_and_suppresses_restore(runtime, monkeypatch):
+    from contextlib import contextmanager
+    events = []
+    monkeypatch.setattr(service, '_generation_model', lambda *_: model('sdxl', 'juggernaut-xl'))
+    monkeypatch.setattr(service, 'run_provider',
+                        lambda m, p, out, **kw: out.write_bytes(b'photo'))
+
+    first, _ = base(runtime)
+
+    @contextmanager
+    def guarded_lease(*_a, **kwargs):
+        preflight = {}
+        try:
+            yield preflight
+        finally:
+            events.append(('suppress_restore', preflight.get('suppress_chat_restore')))
+
+    monkeypatch.setattr(service.runtime_coordinator, 'image_runtime', guarded_lease)
+
+    def failed_unload():
+        raise RuntimeError('SDXL worker still resident during checkpoint')
+
+    monkeypatch.setattr(service, 'shutdown_sdxl_worker', failed_unload)
+    result = batch(runtime, first)
+    final = runtime.get(
+        '/variant-groups/' + result['variant_group_id'],
+        params={'chat_id': 'variants-test', 'chat_revision': 0},
+    ).json()
+    assert final['status'] == 'failed'
+    assert final['jobs'][0]['status'] == 'completed'
+    assert final['jobs'][1]['status'] == 'completed'
+    assert all(member['status'] == 'failed' for member in final['jobs'][2:])
+    assert events == [('suppress_restore', True)]
+
+
+def test_sdxl_last_variant_memory_guard_preserves_previous_results(runtime, monkeypatch):
+    monkeypatch.setattr(service, '_generation_model', lambda *_: model('sdxl', 'juggernaut-xl'))
+    calls = []
+
+    def render(_model, _params, output, **_kw):
+        calls.append(1)
+        if len(calls) == 6:
+            raise RuntimeError(
+                'RAM-Schutz: nur noch 20.0% Systemspeicher verfügbar; Modell-Worker wird beendet'
+            )
+        output.write_bytes(b'photo')
+
+    monkeypatch.setattr(service, 'run_provider', render)
+    first, _ = base(runtime)
+    result = batch(runtime, first)
+    final = runtime.get(
+        '/variant-groups/' + result['variant_group_id'],
+        params={'chat_id': 'variants-test', 'chat_revision': 0},
+    ).json()
+    assert len(calls) == 6
+    assert final['status'] == 'failed'
+    assert all(member['status'] == 'completed' for member in final['jobs'][:-1])
+    assert final['jobs'][-1]['status'] == 'failed'
+    assert '20.0%' in final['jobs'][-1]['error']
 
 
 def test_single_variant_preserves_original_runtime_handoff(runtime, monkeypatch):
