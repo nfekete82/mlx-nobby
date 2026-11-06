@@ -11,8 +11,7 @@
         'fast',
         'standard',
         'quality',
-        'ultra',
-        'ultra_plus'
+        'ultra'
     ]);
     const IMAGE_SIZES_BY_FORMAT = Object.freeze({
         landscape: Object.freeze({ width: 768, height: 432 }),
@@ -287,7 +286,9 @@
         if (Number.isFinite(width) && width > 0) prepared.width = width;
         if (Number.isFinite(height) && height > 0) prepared.height = height;
 
-        if (IMAGE_QUALITIES.has(settings.quality)) {
+        if (settings.quality === 'ultra_plus') {
+            prepared.quality = 'ultra';
+        } else if (IMAGE_QUALITIES.has(settings.quality)) {
             prepared.quality = settings.quality;
         }
 
