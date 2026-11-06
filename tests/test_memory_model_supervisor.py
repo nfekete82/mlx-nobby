@@ -1,4 +1,4 @@
-"""Six bounded unit checks; no model start, personal SQLite or media dispatch."""
+"""Bounded 4B-supervisor contracts; no real models, SQLite or media dispatch."""
 import time
 from pathlib import Path
 from unittest import mock
@@ -106,3 +106,86 @@ def test_media_with_sufficient_headroom_does_not_block_memory_extraction():
     assert ctl.requested_media_priority() is None
     with ctl.inference_lease():
         pass  # Healthy coexistence: no unnecessary memory starvation.
+
+def test_exclusive_image_preempts_4b_even_when_memory_is_healthy():
+    safe = {"free_percent": 50, "headroom_gb": 20, "pressure": "normal"}
+    assert not sup.should_unload(safe, "image")
+
+    ctl.note_media_demand("image", exclusive=True)
+    assert ctl.requested_media_priority() == "image"
+    assert ctl.exclusive_media_requested("image")
+    assert not ctl.exclusive_media_requested("video")
+    assert sup.should_unload(safe, "image")
+
+    # Once the handoff marker expires, normal pressure policy resumes.
+    ctl._write(ctl.DEMAND, {
+        "kind": "image", "exclusive": True, "until": time.time() - 1,
+    })
+    assert not ctl.exclusive_media_requested("image")
+    assert not sup.should_unload(safe, "image")
+
+
+def test_exclusive_media_handoff_waits_until_supervisor_child_is_gone(monkeypatch):
+    ctl._write(ctl.STATE, {
+        "updated_at": time.time(), "owned": True, "state": "running",
+    })
+    observations = []
+
+    def unload_after_checkpoint(_seconds):
+        observations.append(ctl.exclusive_media_requested("image"))
+        ctl._write(ctl.STATE, {
+            "updated_at": time.time(), "owned": False,
+            "state": "suspended_media",
+        })
+
+    with mock.patch.object(ctl.time, "sleep", side_effect=unload_after_checkpoint):
+        assert ctl.prepare_media_dispatch(
+            "image", timeout_seconds=1, exclusive=True,
+        )
+    assert observations == [True]
+    assert ctl.requested_media_priority() == "image"
+
+
+def test_healthy_nonexclusive_media_stays_compatible_with_4b(monkeypatch):
+    ctl._write(ctl.STATE, {
+        "updated_at": time.time(), "owned": True, "state": "running",
+    })
+    monkeypatch.setattr(sup.rc, "memory_budget_snapshot",
+                        lambda: {"free_percent": 50, "headroom_gb": 20})
+    assert ctl.prepare_media_dispatch("image", timeout_seconds=0.1)
+    assert ctl.requested_media_priority() is None
+    assert not ctl.exclusive_media_requested("image")
+
+
+def test_exclusive_handoff_never_terminates_external_4b(monkeypatch):
+    ctl._write(ctl.STATE, {
+        "updated_at": time.time(), "owned": False, "state": "external",
+    })
+    assert ctl.prepare_media_dispatch(
+        "image", timeout_seconds=0.1, exclusive=True,
+    )
+    assert ctl.requested_media_priority() is None
+    manager = sup.Supervisor()
+    monkeypatch.setattr(sup, "valid_settings", lambda: True)
+    monkeypatch.setattr(sup, "probe_port", lambda: True)
+    with mock.patch.object(manager, "stop") as stop:
+        manager.tick()
+    stop.assert_not_called()
+
+
+def test_owned_4b_resumes_after_media_finishes(monkeypatch):
+    manager = sup.Supervisor()
+    safe = {"free_percent": 50, "headroom_gb": 20, "pressure": "normal"}
+    monkeypatch.setattr(sup, "valid_settings", lambda: True)
+    monkeypatch.setattr(sup, "probe_port", lambda: False)
+    monkeypatch.setattr(sup.rc, "memory_budget_snapshot", lambda: safe)
+    ctl.note_media_demand("image", exclusive=True)
+    with mock.patch.object(manager, "start") as start:
+        manager.tick()
+    start.assert_not_called()
+    # Terminal job + expired handoff allows the existing supervisor to reload.
+    ctl._write(ctl.DEMAND, {"kind": "image", "exclusive": True,
+                            "until": time.time() - 1})
+    with mock.patch.object(manager, "start") as start:
+        manager.tick()
+    start.assert_called_once_with()
