@@ -9,6 +9,7 @@ from contextlib import contextmanager
 import fcntl
 import json
 import os
+import sqlite3
 from pathlib import Path
 import tempfile
 import time
@@ -16,6 +17,9 @@ import time
 ROOT = Path.home() / ".config/mlx-web/memory-model-control"
 STATE = ROOT / "state.json"
 DEMAND = ROOT / "media-demand.json"
+ROUTER_DEMAND = ROOT / "router-demand.json"
+MEMORY_DB = Path.home() / ".config/mlx-web/personal-memory.sqlite3"
+MEMORY_CONTROL = Path.home() / ".config/mlx-web/memory-control.json"
 LOCK = ROOT / "inference.lock"
 MEDIA_JOB_FILE = Path.home() / ".config/mlx-web/media-queue/jobs.json"
 TERMINAL = {"completed", "failed", "cancelled"}
@@ -72,6 +76,52 @@ def note_media_demand(kind, *, exclusive=False):
         "until": time.time() + DEMAND_SECONDS,
         "exclusive": bool(exclusive),
     })
+
+
+def request_router_demand(*, seconds=150):
+    """Request the *same* supervised 4B for a short router inference.
+
+    No messages, private data, or model output enter the owner-only marker.
+    New router requests cannot outrank active/pending image/video jobs.
+    """
+    if active_media_kind():
+        raise DeferredMemoryInference("Router deferred during exclusive media")
+    _write(ROUTER_DEMAND, {
+        "until": time.time() + max(1, min(float(seconds), 300)),
+    })
+
+
+def router_demand_active():
+    marker = _read(ROUTER_DEMAND)
+    until = marker.get("until")
+    return type(until) in (int, float) and time.time() < until <= time.time() + 310
+
+
+def pending_extraction_work():
+    """Read-only durable job check. No schema changes or private text reads.
+
+    SQLite WAL readers see committed work. A temporarily unreadable database
+    causes a retry on the supervisor's next tick, never a job deletion.
+    """
+    if not MEMORY_DB.is_file():
+        return False
+    try:
+        pause = _read(MEMORY_CONTROL)
+        if pause.get("paused") is True:
+            return False
+        uri = MEMORY_DB.resolve().as_uri() + "?mode=ro"
+        with sqlite3.connect(uri, uri=True, timeout=0.3) as conn:
+            row = conn.execute(
+                "SELECT value FROM settings WHERE key='smart_learning'"
+            ).fetchone()
+            if row is None or row[0] != "1":
+                return False
+            return conn.execute(
+                "SELECT EXISTS(SELECT 1 FROM analysis_jobs "
+                "WHERE status='pending' LIMIT 1)"
+            ).fetchone()[0] == 1
+    except (OSError, sqlite3.Error, ValueError, TypeError):
+        return False
 
 
 def requested_media_priority():
