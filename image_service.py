@@ -1301,13 +1301,15 @@ def generate(request: Generate):
             with runtime_coordinator.image_runtime(
                 None, force_chat_unload=sdxl_job, exclusive_models=True,
             ) as preflight:
-                _release_unused_image_models(resolved["model"])
                 try:
+                    _release_unused_image_models(resolved["model"])
                     return _generate_result(request, resolved=resolved)
                 finally:
                     if sdxl_job:
                         try:
                             shutdown_sdxl_worker()
+                            if sdxl_worker_running():
+                                raise RuntimeError("SDXL-Worker nach Generierung weiterhin geladen")
                         except Exception:
                             # Never restore a chat model on top of SDXL if
                             # the image worker could not be terminated.
@@ -1325,10 +1327,10 @@ def edit(request: Edit):
     with exclusive():
         try:
             with runtime_coordinator.image_runtime(None, exclusive_models=True) as preflight:
-                # The edit resolver runs inside the provider. Conservatively
-                # drop all idle image weights before loading the selected one.
-                _release_unused_image_models()
                 try:
+                    # The edit resolver runs inside the provider. Conservatively
+                    # drop all idle weights before loading the selected one.
+                    _release_unused_image_models()
                     return _edit_result(request)
                 finally:
                     # SDXL img2img can warm a worker too. Never restore a
@@ -1336,6 +1338,8 @@ def edit(request: Edit):
                     try:
                         if sdxl_worker_running():
                             shutdown_sdxl_worker()
+                            if sdxl_worker_running():
+                                raise RuntimeError("SDXL-Worker nach Bearbeitung weiterhin geladen")
                     except Exception:
                         preflight["suppress_chat_restore"] = True
                         raise
@@ -1522,7 +1526,14 @@ def _run_image_job(
             # requests. It must not remain resident alongside a new Qwen,
             # FLUX, video-derived edit or upscaler provider within this same
             # service. Release it under the coordinator lease first.
-            _release_unused_image_models(selected)
+            try:
+                _release_unused_image_models(selected)
+            except Exception:
+                # Unload failure means model residency is uncertain. Never
+                # restart the large chat model until verified safe.
+                if preflight is not None:
+                    preflight["suppress_chat_restore"] = True
+                raise
             timings.mark("resources_acquired")
             handoff = (
                 _image_handoff_measurement(preflight)
@@ -1559,6 +1570,8 @@ def _run_image_job(
                 if not batched_sdxl and sdxl_worker_running():
                     try:
                         shutdown_sdxl_worker()
+                        if sdxl_worker_running():
+                            raise RuntimeError("SDXL-Worker nach Bildauftrag weiterhin geladen")
                         timings.mark("sdxl_released")
                         # The image is encoded and its MPS worker is safely
                         # gone. Let the UI display it while chat starts,
