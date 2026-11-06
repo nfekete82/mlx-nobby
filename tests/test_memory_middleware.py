@@ -297,6 +297,31 @@ def test_explicit_overview_uses_real_facts_and_skips_slow_legacy_recall(client, 
     assert messages[-1]["content"] == "Was weißt du alles über mich?"
 
 
+def test_explicit_specific_recall_injects_personal_fact_when_index_is_empty(
+    client, monkeypatch,
+):
+    """Actual streaming middleware must use the direct fact-store fallback."""
+    from agent import knowledge_memory
+
+    pm.set_enabled(True)
+    pm.create_fact("familie.sohn", "name", "Milan", sensitive=True)
+    pm.create_fact("partner", "gesundheit", "Privater Testfall", sensitive=True)
+    monkeypatch.setattr(knowledge_memory, "context", lambda *_a, **_kw: "")
+
+    messages = [{"role": "user", "content": "Wie heißt mein Sohn?"}]
+    response = client.post("/api/runtime/chat/stream", json={
+        "chat_id": "synthetic-memory-question", "messages": messages,
+    })
+
+    assert response.status_code == 200
+    enriched = response.json()["messages"]
+    context = "\n".join(x.get("content", "") for x in enriched if x.get("role") == "system")
+    assert "PRIVATE PERSONAL MEMORY" in context
+    assert "Milan" in context
+    assert "Privater Testfall" not in context
+    assert enriched[-1] == messages[-1]
+
+
 def test_non_overview_uses_normal_enrichment_route(client, monkeypatch):
     calls = []
     def regular(messages, **kwargs):
