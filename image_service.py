@@ -1389,7 +1389,7 @@ def _image_handoff_measurement(preflight):
         return None
     timing = preflight["handoff_timings_ms"]
     keys = (
-        "lease_wait", "video_wait", "speech_release",
+        "lease_wait", "memory_model_release", "video_wait", "speech_release",
         "musetalk_release", "chat_stop", "chat_restore", "total",
     )
     safe = {
