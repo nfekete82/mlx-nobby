@@ -352,7 +352,7 @@ def _release_unused_image_models(selected=None):
     if provider != "sdxl" and sdxl_worker_running():
         shutdown_sdxl_worker()
         if sdxl_worker_running():
-            raise RuntimeError("SDXL konnte vor dem Medienmodellwechsel nicht entladen werden")
+            raise RuntimeError("SDXL-Worker konnte vor dem Medienmodellwechsel nicht entladen werden")
     loaded = set(_loaded_mlxserve_repository_ids())
     known = {
         model.get("repository"): model
