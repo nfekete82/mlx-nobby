@@ -105,6 +105,11 @@ def enable(backup):
     from agent import memory_model_coordination as ctl
     from agent import memory_model_supervisor as sup
     import runtime_coordinator as rc
+    if ROOT.resolve() != (Path.home() / "mlx-web").resolve():
+        raise RuntimeError(
+            "Activate only from the deployed ~/mlx-web checkout; "
+            "the review worktree must never become a live LaunchAgent source"
+        )
     _check_backup(backup)
     if not sup.valid_settings():
         raise RuntimeError("Dedicated memory 4B must be configured and installed")
@@ -119,8 +124,8 @@ def enable(backup):
         raise RuntimeError("Unexpected router LaunchAgent")
     if ctl.on_demand_enabled():
         raise RuntimeError("Already enabled; no router process was changed")
-    if LEGACY.exists():
-        raise RuntimeError("Previous router backup exists; review before enabling")
+    if LEGACY.exists() and LEGACY.read_bytes() != before:
+        raise RuntimeError("Previous router backup differs; review before enabling")
 
     # Both cross-process locks protect the handoff; no active inference is
     # terminated and the manager has no authority over other model PIDs.
