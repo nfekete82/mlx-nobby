@@ -444,6 +444,12 @@ def parse_facts(output: str, original: str, *, context_text='') -> list[dict]:
             available = set(km.normalized(original + ' ' + context_text).split())
             if not name_words or not set(name_words) <= available:
                 continue
+        # Literal evidence containing both names somewhere is insufficient:
+        # the value must belong to the same person's local clause.
+        if subject.startswith('personen.') and not memory_grounding.person_claim_supported(
+            subject, value, evidence,
+        ):
+            continue
         # Reject a specifically negated value even inside explicit
         # corrections ("nicht Architektin, sondern Lehrerin").
         if re.search(
