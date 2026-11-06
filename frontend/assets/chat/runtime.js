@@ -1527,7 +1527,8 @@ function normalizeMaxTokens(value) {
 
 
 function normalizeMediaQuality(value) {
-    return ['fast', 'standard', 'quality', 'ultra', 'ultra_plus'].includes(value)
+    if (value === 'ultra_plus') return 'ultra';
+    return ['fast', 'standard', 'quality', 'ultra'].includes(value)
         ? value
         : DEFAULT_MEDIA_QUALITY;
 }

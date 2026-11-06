@@ -119,15 +119,17 @@ const IMAGE_FORMATS = Object.freeze([
 
 const IMAGE_MODEL_STORAGE_KEY = 'mlx-nobby-image-model';
 const IMAGE_CREATION_PREFERENCES_KEY = 'mlx-nobby-image-creation-preferences-v1';
-const IMAGE_CREATION_QUALITIES = Object.freeze(['fast', 'standard', 'quality', 'ultra', 'ultra_plus']);
+// Ultra+ remains available only through the experimental native API; not the chat picker.
+const IMAGE_CREATION_QUALITIES = Object.freeze(['fast', 'standard', 'quality', 'ultra']);
 
 // Only confirmed Generate choices are stored; never store media prompts.
 function normalizeImageCreationPreferences(value) {
     const data = value && typeof value === 'object' && !Array.isArray(value)
         ? value : {};
     return {
-        quality: IMAGE_CREATION_QUALITIES.includes(data.quality)
-            ? data.quality : 'standard',
+        quality: data.quality === 'ultra_plus' ? 'ultra'
+            : IMAGE_CREATION_QUALITIES.includes(data.quality)
+                ? data.quality : 'standard',
         format: IMAGE_FORMATS.includes(data.format)
             ? data.format : 'square',
         model: typeof data.model === 'string' && data.model.trim().length <= 160
@@ -3382,7 +3384,9 @@ const imageFiles =
                     MLXChatRuntime.handleMediaQualityChange?.();
                 }
             }
-            selectedMediaQuality = normalizedMediaQuality;
+            // Never replay a former Ultra+ session choice as a new chat image job.
+            selectedMediaQuality = mediaQualityKind === 'image' && normalizedMediaQuality === 'ultra_plus'
+                ? 'ultra' : normalizedMediaQuality;
             let selectedVideoProfile = 'standard';
             let multiVideoSelection = null;
             let selectedVideoDuration = VIDEO_DURATIONS.has(
@@ -3686,8 +3690,8 @@ const imageFiles =
                     };
 
                     const renderChoice = () => {
-                        if (choice === 'ultra_plus' && !hasRagnarokSampling()) {
-                            choice = 'standard';
+                        if (choice === 'ultra_plus') {
+                            choice = 'ultra';
                         }
                         for (const button of qualityButtons) {
                             const isPreview =
@@ -3699,7 +3703,8 @@ const imageFiles =
                                 (isPreview && !previewAvailable) ||
                                 (button.dataset.mediaQuality === 'ultra' &&
                                  mediaQualityKind !== 'image') ||
-                                (button.dataset.mediaQuality === 'ultra_plus' && !hasRagnarokSampling());
+                                // Keep the native Ultra+ code for later research, but hide it for every model.
+                                (button.dataset.mediaQuality === 'ultra_plus');
 
                             // Video labels describe exact native output and validated duration.
                             // Restore the image labels each time the modal is used for images.
@@ -3856,6 +3861,8 @@ const imageFiles =
                         };
 
                         const onQuality = event => {
+                            // Ignore legacy/hidden experimental buttons even if clicked programmatically.
+                            if (event.currentTarget.hidden) return;
                             captureImageSelections();
                             const requestedQuality = event.currentTarget
                                 .dataset.mediaQuality || 'standard';

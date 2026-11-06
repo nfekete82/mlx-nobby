@@ -70,3 +70,18 @@ Ultra+ to `tested` from CPU/browser results.
 Evidence: [implementation, exact dimensions, test commands, estimates and safe
 manual acceptance](ultra-plus.md), [Chromium layout acceptance](image-card-layout.md),
 `tests/test_ultra_plus.py`, `tests/e2e/test_image_card_layout.py`.
+
+## 2026-11-06 — Follow-up: Ultra retained, Ultra+ deferred
+
+Actual local Juggernaut XL / SDXL **Ultra** jobs completed at 1152×1536,
+40 steps, with and without automatic chat-model release. Attempts associated
+with the larger experimental profile triggered the active swap-growth
+protection; one observed failure reported +2.03 GB. The failed-job display
+does not itself prove what the requested quality/dimensions were, and no
+successful ultra_plus job at 1248×1664 was verified.
+
+**Decision:** Ultra is the highest regular chat quality. Ultra+ is hidden
+in the generation UI, stale quality preferences are normalized to Ultra,
+and the bounded experimental native API/implementation remains available
+for future isolated validation. RAM limits, abort thresholds and automatic
+model coordination remain unchanged. [Policy and limits](ultra-plus.md).

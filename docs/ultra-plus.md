@@ -165,3 +165,28 @@ git switch -c rollback/image-card-ultra-plus origin/main
 git revert <ultra-plus-commit> <horizontal-card-commit>
 # Review/test, then push this rollback branch and open its PR; no auto-merge.
 ```
+
+## Runtime decision — 2026-11-06: Ultra+ hidden from regular chat
+
+After the original CPU/browser-only integration, local SDXL Ultra jobs
+completed at **1152 × 1536** (3:4, 40 steps) on a 48 GB Apple Silicon
+machine. Experimental attempts at the larger size encountered the active
+swap-growth safeguard; one reported failure showed **+2.03 GB** of swap
+during model execution. This does **not** establish an absolute 48 GB
+hardware limit; it does establish that Ultra+ is not sufficiently reliable
+for normal chat selection in this configuration.
+
+The regular chat image-quality modal now offers **Ultra** as its highest
+level and always hides Ultra+, including when Juggernaut XL is selected.
+Previously saved Ultra+ creation preferences and session quality fall back
+to Ultra, and hidden quality controls cannot select it. Batch creation also
+does not offer Ultra+. Existing artifact display, original downloads and
+historical regeneration handling are preserved.
+
+The finite-canvas native Ultra+ provider/API implementation and its CPU
+contracts remain for explicit future development/testing; they are **not**
+a production recommendation or a generally exposed UI feature. There is
+no change to GPU memory guards, model unload/restore, RAM reserves,
+model weights or image-enhancement tools. Real Ultra+ success and safe
+automatic 27B/4B handoff have not been validated. Re-enable only after a
+separate GPU test and review.

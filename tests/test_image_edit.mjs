@@ -2258,7 +2258,7 @@ for (const steps of [30, 35, 40]) {
 }
 context.requestAnimationFrame = originalAnimationFrame;
 
-// Ultra and Ultra+ are explicit Juggernaut choices with native auto-sizing.
+// Native Ultra is selectable; the retained experimental Ultra+ control stays hidden.
 for (const quality of ['ultra', 'ultra_plus']) {
     selectedAttachments = [];
     session.messages = [];
@@ -2271,16 +2271,20 @@ for (const quality of ['ultra', 'ultra_plus']) {
         select.value = 'juggernaut-xl';
         select.listeners.get('change')?.();
         const button = qualityButtons.find(button => button.dataset.mediaQuality === quality);
-        assert.equal(button.hidden, false);
         if (quality === 'ultra_plus') {
-            select.value = 'auto';
-            select.listeners.get('change')?.();
             assert.equal(button.hidden, true);
-            select.value = 'juggernaut-xl';
-            select.listeners.get('change')?.();
+            const standard = qualityButtons.find(item => item.dataset.mediaQuality === 'standard');
+            standard.click();
+            const stepsBefore = modalElements.get('imageSamplingSteps').value;
+            button.click(); // hidden legacy control must not select Ultra+
+            assert.equal(modalElements.get('imageSamplingSteps').value, stepsBefore);
+            const ultra = qualityButtons.find(item => item.dataset.mediaQuality === 'ultra');
+            assert.equal(ultra.hidden, false);
+            ultra.click();
+        } else {
             assert.equal(button.hidden, false);
+            button.click();
         }
-        button.click();
         assert.equal(modalElements.get('imageSamplingSteps').value, '40');
         assert.equal(Number(modalElements.get('imageSamplingCfg').value), 4);
         modalElements.get('mediaFormat').value = 'portrait_3_4';
@@ -2291,7 +2295,7 @@ for (const quality of ['ultra', 'ultra_plus']) {
     input.value = prompt;
     await window.MLXChatGeneration.sendMessage();
     const payload = routedActionPayloads.at(-1);
-    assert.equal(payload.quality, quality);
+    assert.equal(payload.quality, 'ultra');
     assert.equal(payload.image_options.model, 'juggernaut-xl');
     assert.equal(payload.image_options.auto_size, true);
     assert.equal(payload.image_options.steps, 40);

@@ -229,11 +229,19 @@ test('Auto label reflects configured image role or registry default without prom
 });
 
 
-test('Ultra+ survives preferences with its explicit supported model', () => {
-    let raw = null;
-    const storage = {getItem: () => raw, setItem: (_key, value) => {raw = value;}};
-    preferenceContext(storage).storeImageCreationPreferences({
+test('experimental Ultra+ saved choices become safe Ultra without clearing model or format', () => {
+    let raw = JSON.stringify({
         model: 'juggernaut-xl', quality: 'ultra_plus', format: 'portrait_3_4'
     });
-    assert.equal(preferenceContext(storage).storedImageCreationPreferences().quality, 'ultra_plus');
+    const storage = {getItem: () => raw, setItem: (_key, value) => {raw = value;}};
+    const preferences = preferenceContext(storage);
+    assert.equal(preferences.storedImageCreationPreferences().quality, 'ultra');
+    const saved = preferences.storeImageCreationPreferences({
+        model: 'juggernaut-xl', quality: 'ultra_plus', format: 'portrait_3_4'
+    });
+    assert.equal(saved.quality, 'ultra');
+    assert.deepEqual(JSON.parse(raw), {
+        quality: 'ultra', format: 'portrait_3_4', model: 'juggernaut-xl',
+        negative_prompt: ''
+    });
 });

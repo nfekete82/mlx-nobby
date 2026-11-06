@@ -53,7 +53,8 @@ test('sampling UI is explicit for Juggernaut image generation and validated', ()
     assert.match(source, /samplingSteps\?\.removeEventListener\?\.\('input', onSamplingInput\)/);
     assert.match(source, /merged\.steps = samplingOverride\.steps/);
     assert.match(source, /merged\.guidance = samplingOverride\.guidance/);
-    assert.match(source, /button.dataset.mediaQuality === 'ultra_plus' && !hasRagnarokSampling\(\)/);
+    assert.match(source, /button.dataset.mediaQuality === 'ultra_plus'\);/);
+    assert.match(source, /if \(choice === 'ultra_plus'\) \{\s*choice = 'ultra';/);
 });
 
 test('sampling controls have paired German and English translations', () => {
