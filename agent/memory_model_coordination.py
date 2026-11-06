@@ -113,6 +113,16 @@ def memory_demand_active():
     return type(until) in (int, float) and time.time() < until <= time.time() + 310
 
 
+def release_router_demand():
+    """Drop warm-start demand after router use; running inference keeps its lock."""
+    _write(ROUTER_DEMAND, {"until": 0})
+
+
+def release_memory_demand():
+    """Start the 120-second idle grace after a completed extraction request."""
+    _write(INFERENCE_DEMAND, {"until": 0})
+
+
 def router_demand_active():
     marker = _read(ROUTER_DEMAND)
     until = marker.get("until")
