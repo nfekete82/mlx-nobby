@@ -708,7 +708,10 @@ def _generate_result(
 
         _running = None
 
-        if cleanup_error is not None and active_error is None:
+        # A failed provider call does not make a second failed unload safe.
+        # Surface the residency error even when generation also failed so the
+        # exclusive caller can suppress an unsafe chat-model restart.
+        if cleanup_error is not None:
             raise ImageModelReleaseError(
                 "MLX-Serve-Image-Modell konnte nicht vollständig entladen "
                 "werden; Chat-Neustart wurde zum Speicherschutz übersprungen"
