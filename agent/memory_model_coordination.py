@@ -18,6 +18,7 @@ ROOT = Path.home() / ".config/mlx-web/memory-model-control"
 STATE = ROOT / "state.json"
 DEMAND = ROOT / "media-demand.json"
 ROUTER_DEMAND = ROOT / "router-demand.json"
+INFERENCE_DEMAND = ROOT / "inference-demand.json"
 ON_DEMAND = ROOT / "on-demand.json"
 MEMORY_DB = Path.home() / ".config/mlx-web/personal-memory.sqlite3"
 MEMORY_CONTROL = Path.home() / ".config/mlx-web/memory-control.json"
@@ -95,6 +96,21 @@ def request_router_demand(*, seconds=150):
     _write(ROUTER_DEMAND, {
         "until": time.time() + max(1, min(float(seconds), 300)),
     })
+
+
+def request_memory_demand(*, seconds=240):
+    """Wake the shared 4B for an actual extraction, not an idle chat tab."""
+    if active_media_kind():
+        raise DeferredMemoryInference("Memory extraction deferred for media")
+    _write(INFERENCE_DEMAND, {
+        "until": time.time() + max(1, min(float(seconds), 300)),
+    })
+
+
+def memory_demand_active():
+    marker = _read(INFERENCE_DEMAND)
+    until = marker.get("until")
+    return type(until) in (int, float) and time.time() < until <= time.time() + 310
 
 
 def router_demand_active():
