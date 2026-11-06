@@ -336,3 +336,66 @@ def test_image_model_cache_releases_other_models_and_rejects_unknown(monkeypatch
         assert "unbekanntes MLX-Serve-Modell" in str(exc)
     else:
         raise AssertionError("Unknown weights must not coexist with SDXL")
+
+def test_mlxserve_release_error_suppresses_chat_restore_for_direct_edit(monkeypatch):
+    """A failed provider unload must never restart 27B over resident weights."""
+    import image_service as image
+    from contextlib import contextmanager
+    observed = {}
+
+    @contextmanager
+    def guarded(_cancel, **kwargs):
+        assert kwargs.get("exclusive_models") is True
+        yield observed
+
+    def cannot_unload(_request):
+        raise image.ImageModelReleaseError("MLX-Serve edit weights still loaded")
+
+    monkeypatch.setattr(image.runtime_coordinator, "image_runtime", guarded)
+    monkeypatch.setattr(image, "_release_unused_image_models", lambda selected=None: None)
+    monkeypatch.setattr(image, "sdxl_worker_running", lambda: False)
+    monkeypatch.setattr(image, "_edit_result", cannot_unload)
+
+    try:
+        image.edit(image.Edit(prompt="Synthetic local edit", source_path="/tmp/test.png"))
+    except Exception as exc:
+        assert "MLX-Serve" in str(exc)
+    else:
+        raise AssertionError("Edit with failed model unload must not succeed")
+    assert observed.get("suppress_chat_restore") is True
+
+
+def test_mlxserve_release_error_suppresses_chat_restore_for_queued_edit(monkeypatch):
+    import image_service as image
+    from contextlib import contextmanager
+
+    seen = {}
+    job_id = "exclusive-model-release-error-queued"
+
+    @contextmanager
+    def guarded(_cancel, **kwargs):
+        assert kwargs.get("exclusive_models") is True
+        yield seen
+
+    def cannot_unload(*args, **kwargs):
+        raise image.ImageModelReleaseError("MLX-Serve edit weights still loaded")
+
+    monkeypatch.setattr(image.runtime_coordinator, "image_runtime", guarded)
+    monkeypatch.setattr(image, "_release_unused_image_models", lambda selected=None: None)
+    monkeypatch.setattr(image, "sdxl_worker_running", lambda: False)
+    monkeypatch.setattr(image, "_edit_result", cannot_unload)
+    image._jobs[job_id] = {
+        "id": job_id, "status": "queued", "phase": "queued",
+        "operation": "edit", "_cancel_event": threading.Event(),
+        "created_at": 1.0, "total_steps": 20,
+    }
+    try:
+        image._run_image_job(
+            job_id, "edit",
+            image.Edit(prompt="Synthetic local edit", source_path="/tmp/test.png"),
+            release_lock=False,
+        )
+        assert image._jobs[job_id]["status"] == "failed"
+        assert seen.get("suppress_chat_restore") is True
+    finally:
+        image._jobs.pop(job_id, None)
