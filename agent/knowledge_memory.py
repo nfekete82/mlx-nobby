@@ -386,7 +386,11 @@ def apply_episodes(conn, output, original, sid):
         # Dates and people must literally occur in the grounded extract.
         period = str(item.get('period') or '')[:100]
         if period and period not in evidence: period = ''
-        people = [p for p in (item.get('people') or [])[:20] if isinstance(p, str) and p in evidence]
+        # A name elsewhere in a multi-person evidence paragraph does not
+        # establish participation in this particular event description.
+        people = [p for p in (item.get('people') or [])[:20]
+                  if isinstance(p, str) and p in evidence
+                  and memory_grounding.mentions_person(desc, p)]
         eid = digest(theme + '\0' + normalized(desc))
         conn.execute('INSERT OR IGNORE INTO episodes VALUES(?,?,?,?,?,?,?,?,?)',
             (eid, title, theme, desc, period, json.dumps(people), kind, 0.0, time.time()))
@@ -618,6 +622,16 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
         selected = []
         lexical_scores = {}
         requested_subjects = named_subjects(conn, scope_query)
+        # When a question names a known person, source-backed facts about
+        # OTHER named people are not interchangeable even when the activity
+        # vocabulary overlaps. Never infer that "we" denotes this person.
+        requested_people = {subj for subj in requested_subjects
+                            if subj.startswith('personen.')}
+        requested_names = [subj.split('.', 1)[1] for subj in requested_people]
+        # Directly asking about a known named person authorizes only that
+        # person's matching private history, not unrelated private episodes.
+        if explicit and requested_people:
+            personal = True
         if not explicit:
             requested_subjects = {s for s in requested_subjects if s.startswith('projekte.')}
         if overview:
@@ -650,6 +664,12 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
             if kind == 'fact':
                 r = conn.execute("SELECT f.*,COALESCE(m.pinned,0) AS pinned,COALESCE(m.kind,'statement') AS kind,COALESCE(m.confidence,1) AS confidence FROM facts f LEFT JOIN fact_metadata m ON m.fact_id=f.id WHERE f.id=? AND f.status='active'", (oid,)).fetchone()
                 if r is None: continue
+                if requested_people and r['subject'].startswith('personen.') and r['subject'] not in requested_people:
+                    continue
+                if requested_names and r['subject'] == 'ich' and r['field'].split('.')[0] in ('notiz', 'erlebnis', 'beziehung'):
+                    from agent import memory_grounding
+                    if not any(memory_grounding.mentions_person(r['value'], name) for name in requested_names):
+                        continue  # No person-specific attribution in this note.
                 projects = {s for s in requested_subjects if s.startswith('projekte.')}
                 if projects and r['subject'].startswith('projekte.') and r['subject'] not in projects: continue
                 private = r['subject'].startswith(('partner', 'familie', 'personen.')) or r['field'].startswith('status.gesundheitlich') or r['field'].split('.')[0] in ('gesundheit', 'beziehung', 'kindheit', 'erlebnis') or bool(_PRIVATE.search(r['value']))
@@ -664,6 +684,10 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
             else:
                 r = conn.execute('SELECT * FROM episodes WHERE id=?', (oid,)).fetchone()
                 if r is None: continue
+                if requested_names:
+                    from agent import memory_grounding
+                    if not any(memory_grounding.mentions_person(r['description'], name) for name in requested_names):
+                        continue  # An event about someone else is not this person's event.
                 if not personal and (r['theme'] not in ('work', 'goal') or _PRIVATE.search(r['description'])): continue
                 body, label, priority = r['description'], r['title'] + (' (plan; not completed)' if r['status'] == 'plan' else ' (reported experience)'), 0
                 if r['period']:

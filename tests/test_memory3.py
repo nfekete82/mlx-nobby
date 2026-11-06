@@ -101,6 +101,94 @@ def test_mixed_quotes_do_not_hide_real_assertion():
     assert [f['value'] for f in pm.list_facts()]==['Musterhafen']
 
 
+def test_two_people_do_not_inherit_each_others_actions_from_one_source():
+    """Global substring checks used to accept the wrong person's real action."""
+    text = 'Mit Anna war ich wandern. Mit Clara war ich schwimmen.'
+
+    def extract(person, action, source=text):
+        return json.dumps({'facts': [dict(
+            subject='personen.' + person, field='erlebnis', value=action,
+            evidence=source, confidence=.99, correction=False,
+        )], 'episodes': []}, ensure_ascii=False)
+
+    # The value is real and both names appear in the quoted evidence, but
+    # swimming belongs to Clara, not Anna.
+    assert smart.parse_facts(extract('anna', 'schwimmen'), text) == []
+    accepted = smart.parse_facts(extract('clara', 'schwimmen'), text)
+    assert len(accepted) == 1
+    assert accepted[0]['subject'] == 'personen.clara'
+    assert accepted[0]['value'] == 'schwimmen'
+    assert len(smart.parse_facts(
+        extract('anna', 'wandern', 'Mit Anna war ich wandern.'),
+        text,
+    )) == 1
+
+
+def test_two_people_in_coordinated_clauses_remain_distinct():
+    text = 'Mit Anna war ich wandern und mit Clara schwimmen.'
+
+    def extract(person, action):
+        return json.dumps({'facts': [dict(
+            subject='personen.' + person, field='erlebnis',
+            value=action, evidence=text, confidence=.99,
+        )], 'episodes': []}, ensure_ascii=False)
+
+    assert smart.parse_facts(extract('anna', 'schwimmen'), text) == []
+    assert len(smart.parse_facts(extract('clara', 'schwimmen'), text)) == 1
+    assert len(smart.parse_facts(extract('anna', 'wandern'), text)) == 1
+
+
+def test_episode_participants_require_event_local_evidence():
+    """A name elsewhere in the evidence may not become this event's guest."""
+    text = 'Mit Anna war ich wandern. Mit Clara war ich schwimmen.'
+    output = json.dumps({'facts': [], 'episodes': [dict(
+        title='Wanderausflug',
+        theme='experience',
+        description='Mit Anna war ich wandern.',
+        evidence=text,
+        period='',
+        people=['Anna', 'Clara'],
+        status='statement',
+    )]}, ensure_ascii=False)
+    with pm._connect() as conn:
+        pm._schema(conn)
+        sid = km.source(conn, 'fictional-episode', 0, text)
+        assert km.apply_episodes(conn, output, text, sid) == 1
+        people = json.loads(conn.execute('SELECT people FROM episodes').fetchone()[0])
+    assert people == ['Anna']
+
+
+def test_named_person_recall_does_not_mix_other_person_episodes_or_facts():
+    """The fast personal and structured stores agree on person ownership."""
+    pm.create_fact('personen.anna', 'hobby', 'Wandern', sensitive=True)
+    pm.create_fact('personen.clara', 'hobby', 'Wandern', sensitive=True)
+    for name, cid in [('Anna', 'fictional-anna'), ('Clara', 'fictional-clara')]:
+        sentence = 'Mit ' + name + ' war ich wandern.'
+        output = json.dumps({'facts': [], 'episodes': [dict(
+            title='Wandern', theme='experience', description=sentence,
+            evidence=sentence, period='', people=[name], status='statement',
+        )]}, ensure_ascii=False)
+        with pm._connect() as conn:
+            pm._schema(conn)
+            sid = km.source(conn, cid, 0, sentence)
+            assert km.apply_episodes(conn, output, sentence, sid) == 1
+
+    question = 'Was habe ich mit Anna beim Wandern erlebt?'
+    assert pm.recall_requested(question)
+    personal = pm.context(question)
+    knowledge = km.context(question)
+    assert 'personen.anna' in personal
+    assert 'personen.clara' not in personal
+    assert 'Mit Anna war ich wandern.' in knowledge
+    assert 'Mit Clara war ich wandern.' not in knowledge
+    assert 'chat fictional-anna message 0' in knowledge
+
+    # A comparison naming both persons should be allowed to include both.
+    both = km.context('Was habe ich mit Anna und Clara beim Wandern erlebt?')
+    assert 'Mit Anna war ich wandern.' in both
+    assert 'Mit Clara war ich wandern.' in both
+
+
 def test_equal_values_in_distinct_entities_preserve_both_sources():
     for subject,cid in [('projekte.silber','fictional-a'),('projekte.kupfer','fictional-b')]:
         with pm._connect() as conn:

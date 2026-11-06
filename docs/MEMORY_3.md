@@ -108,6 +108,30 @@ existing intent tiers remain: normal added personal/knowledge context up to
 9,000 characters and fast explicit assembly up to 26,000. These are character
 budgets, not adaptive tokenizer-exact windows or a claim that all history fits.
 
+## Person/event attribution guard (follow-up)
+
+Source quotation and literal values alone cannot establish who took an action.
+For example, `Mit Anna war ich wandern. Mit Clara war ich schwimmen.`
+contains both names and both actions; a proposed `personen.anna.erlebnis =
+schwimmen` is **not** a supported fact merely because every string occurs
+somewhere in the same source. The new guard requires the claimed person's
+literal name and the value to occur in the same attributed sentence/clause.
+It also prevents a participant named only in an event's wider evidence
+paragraph from being attached to a different event description.
+
+When a query explicitly names an already known person, scoped recall does
+not inject different named people's facts or episodes just because they share
+an activity word. Both may be retrieved when both people are requested.
+This is a conservative precision safeguard: pronouns across turns, aliases,
+multiple people performing a joint action and complicated compound sentences
+still need explicit source inspection. Claims without unambiguous attribution
+are better omitted than assigned to the wrong person.
+
+**Existing bad facts are not automatically repaired.** Review wrong historical
+assignments in the local Memory Dashboard; never rewrite private history
+based solely on a synthetic test. This guard changes future extraction and
+selected context, not existing retention, tombstone or deletion rules.
+
 ## Dashboard and diagnosis
 
 The existing knowledge cards now show saved/updated timestamps. Existing
