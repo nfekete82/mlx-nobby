@@ -628,6 +628,10 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
         requested_people = {subj for subj in requested_subjects
                             if subj.startswith('personen.')}
         requested_names = [subj.split('.', 1)[1] for subj in requested_people]
+        # Directly asking about a known named person authorizes only that
+        # person's matching private history, not unrelated private episodes.
+        if explicit and requested_people:
+            personal = True
         if not explicit:
             requested_subjects = {s for s in requested_subjects if s.startswith('projekte.')}
         if overview:
