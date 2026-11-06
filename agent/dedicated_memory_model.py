@@ -141,38 +141,44 @@ def complete(messages):
         and isinstance(m.get("content"), str) for m in messages
     ):
         raise ValueError("Invalid memory extraction messages")
-    if coordination.on_demand_enabled():
-        # The saved SQLite queue remains authoritative. An individual worker
-        # request wakes 4B, rather than keeping it loaded for every pending
-        # checkpoint or while a chat tab is merely open.
-        coordination.request_memory_demand()
-        deadline = time.monotonic() + 120
-        while time.monotonic() < deadline:
-            if coordination.active_media_kind():
+    on_demand = coordination.on_demand_enabled()
+    try:
+        if on_demand:
+            # A real worker request, rather than a pending backlog, wakes 4B.
+            coordination.request_memory_demand()
+            deadline = time.monotonic() + 120
+            while time.monotonic() < deadline:
+                if coordination.active_media_kind():
+                    raise coordination.DeferredMemoryInference(
+                        "Memory extraction yielded to media"
+                    )
+                state = coordination.supervisor_state()
+                if state.get("owned") and state.get("state") == "running":
+                    break
+                time.sleep(0.25)
+            else:
                 raise coordination.DeferredMemoryInference(
-                    "Memory extraction yielded to media"
+                    "Memory model not ready; durable extraction deferred"
                 )
-            state = coordination.supervisor_state()
-            if state.get("owned") and state.get("state") == "running":
-                break
-            time.sleep(0.25)
-        else:
-            raise coordination.DeferredMemoryInference(
-                "Memory model not ready; durable extraction deferred"
+        with coordination.inference_lease():
+            result = _request(
+                config["port"], "/v1/chat/completions",
+                payload={
+                    "model": config["model"],
+                    "messages": messages,
+                    "temperature": 0,
+                    "max_tokens": 3000,
+                    "stream": False,
+                    "chat_template_kwargs": {"enable_thinking": False},
+                },
+                timeout=MAX_TIMEOUT_SECONDS,
             )
-    with coordination.inference_lease():
-        result = _request(
-            config["port"], "/v1/chat/completions",
-        payload={
-            "model": config["model"],
-            "messages": messages,
-            "temperature": 0,
-            "max_tokens": 3000,
-            "stream": False,
-            "chat_template_kwargs": {"enable_thinking": False},
-        },
-            timeout=MAX_TIMEOUT_SECONDS,
-        )
+    finally:
+        if on_demand:
+            # The shared inference lock prevents a premature model stop even
+            # if another memory/router request is still using the 4B.
+            coordination.release_memory_demand()
+
     try:
         choice = result["choices"][0]
         message = choice["message"]
