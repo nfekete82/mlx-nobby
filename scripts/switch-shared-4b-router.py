@@ -22,6 +22,10 @@ import time
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+# Direct invocation (python3 scripts/...) puts scripts/, not the repository
+# root, on sys.path. Resolve local agent/runtime modules from this checkout.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 CONFIG = Path.home() / ".config/mlx-web"
 ROUTER_PLIST = Path.home() / "Library/LaunchAgents/de.nobby.mlx-router.plist"
 STATE_DIR = CONFIG / "memory-model-control"
