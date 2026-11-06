@@ -173,6 +173,95 @@ def test_live_chat_pipeline_includes_private_context_and_follows_pause(monkeypat
     assert memory_lifecycle.enrich_messages(messages, observe=False) == messages
 
 
+def test_explicit_son_name_uses_saved_fact_even_if_knowledge_index_misses(monkeypatch):
+    """Source-backed fast recall must not skip the separate personal inventory."""
+    from agent import knowledge_memory
+
+    pm.set_enabled(True)
+    _put("familie.sohn", "name", "Milan")
+    _put("partner", "gesundheit", "Vertrauliches Testdetail")
+
+    monkeypatch.setattr(knowledge_memory, "context", lambda *_a, **_kw:
+        "LOCAL STRUCTURED KNOWLEDGE: No matching stored evidence for this question. "
+        "Do not invent facts.")
+
+    messages = [{"role": "user", "content": "Wie heißt mein Sohn?"}]
+    enriched = memory_lifecycle.fast_personal_context(messages)
+    injected = "\n".join(x.get("content", "") for x in enriched if x.get("role") == "system")
+
+    assert "EXPLICIT LOCAL RECALL REQUEST" in injected
+    assert "PRIVATE PERSONAL MEMORY" in injected
+    assert "familie.sohn.name: Milan" in injected
+    assert "No matching stored evidence" not in injected
+    assert "Vertrauliches Testdetail" not in injected
+    assert enriched[-1] == messages[-1]
+
+
+def test_explicit_recall_keeps_personal_evidence_when_other_source_fails(monkeypatch):
+    """One failed SQLite/knowledge read must not drop a valid saved answer."""
+    from agent import knowledge_memory
+
+    pm.set_enabled(True)
+    _put("projekte.orion", "ziel", "Fiktive 3D-Höhenkarte")
+
+    def unavailable(*_args, **_kwargs):
+        raise RuntimeError("Synthetic structured index unavailable")
+
+    monkeypatch.setattr(knowledge_memory, "context", unavailable)
+    # Even failed diagnostic logging must not discard successfully fetched data.
+    monkeypatch.setattr(knowledge_memory, "diagnose", unavailable)
+    history = [{"role": "user", "content": "Was weißt du über mein Projekt Orion?"}]
+    enriched = memory_lifecycle.fast_personal_context(history)
+    injected = "\n".join(x.get("content", "") for x in enriched if x.get("role") == "system")
+
+    assert "Fiktive 3D-Höhenkarte" in injected
+    assert "EXPLICIT LOCAL RECALL REQUEST" in injected
+    assert "LOCAL MEMORY RETRIEVAL UNAVAILABLE" not in injected
+    assert enriched[-1] == history[-1]
+
+
+def test_explicit_recall_with_only_failed_store_reports_uncertainty(monkeypatch):
+    """Never assert an empty history based on a broken source index."""
+    from agent import knowledge_memory
+
+    pm.set_enabled(True)
+
+    def unavailable(*_args, **_kwargs):
+        raise RuntimeError("Synthetic index failure")
+
+    monkeypatch.setattr(knowledge_memory, "context", unavailable)
+    monkeypatch.setattr(knowledge_memory, "diagnose", lambda *_a, **_kw: None)
+    messages = [{"role": "user", "content": "Welche Projekte habe ich erwähnt?"}]
+    enriched = memory_lifecycle.fast_personal_context(messages)
+    injected = "\n".join(x.get("content", "") for x in enriched if x.get("role") == "system")
+
+    assert "LOCAL MEMORY RETRIEVAL UNAVAILABLE" in injected
+    assert "Do not claim there are no stored memories" in injected
+
+
+def test_fast_recall_does_not_expose_unrelated_personal_data(monkeypatch):
+    from agent import knowledge_memory
+
+    pm.set_enabled(True)
+    _put("partner", "gesundheit", "Fiktiver privater medizinischer Hinweis")
+    _put("projekte.orion", "ziel", "Fiktiver Höhenkarten-Prototyp")
+    monkeypatch.setattr(knowledge_memory, "context", lambda *_a, **_kw: "")
+
+    messages = [{"role": "user", "content": "Was weißt du über Orion?"}]
+    enriched = memory_lifecycle.fast_personal_context(messages)
+    injected = "\n".join(x.get("content", "") for x in enriched if x.get("role") == "system")
+    assert "Fiktiver Höhenkarten-Prototyp" in injected
+    assert "medizinischer Hinweis" not in injected
+
+    unrelated = [{"role": "user", "content": "Wie geht CSS Grid?"}]
+    neutral = memory_lifecycle.fast_personal_context(unrelated)
+    assert "medizinischer Hinweis" not in str(neutral)
+    assert "Höhenkarten-Prototyp" not in str(neutral)
+
+    memory_dashboard.set_paused(True)
+    assert memory_lifecycle.fast_personal_context(messages) == messages
+
+
 def test_bounded_overview_and_no_injection_of_removed_fact():
     pm.set_enabled(True)
     for i in range(75):
