@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>de.nobby.mlx-router</string>
+  <key>ProgramArguments</key><array>
+    <string>__RUNTIME_PYTHON__</string>
+    <string>-m</string>
+    <string>agent.router_gateway</string>
+  </array>
+  <key>WorkingDirectory</key><string>__PROJECT_DIR__</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+  <key>StandardOutPath</key><string>__CONFIG_DIR__/router.log</string>
+  <key>StandardErrorPath</key><string>__CONFIG_DIR__/router-error.log</string>
+</dict></plist>

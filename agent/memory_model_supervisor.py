@@ -30,6 +30,7 @@ MIN_FREE_KEEP_PERCENT = 16
 LOAD_RESERVE_GB = 5.0
 STARTUP_SECONDS = 120
 BACKOFF_SECONDS = 20
+IDLE_UNLOAD_SECONDS = 120
 
 
 def probe_port():
@@ -61,20 +62,26 @@ def valid_settings():
 def should_load(snapshot, media_kind=None):
     if media_kind or not isinstance(snapshot, dict):
         return False
+    if ctl.on_demand_enabled() and not (
+        ctl.router_demand_active() or ctl.memory_demand_active()
+    ):
+        return False
     free = snapshot.get("free_percent")
     if type(free) not in (float, int) or free < MIN_FREE_START_PERCENT:
         return False
     return not rc.projected_memory_hard_limit_reached(snapshot, LOAD_RESERVE_GB)
 
 
-def should_unload(snapshot, media_kind=None):
+def should_unload(snapshot, media_kind=None, *, idle_expired=False):
     if not isinstance(snapshot, dict):
         return True
     free = snapshot.get("free_percent")
     if type(free) not in (float, int) or free < MIN_FREE_KEEP_PERCENT:
         return True
     if not media_kind:
-        return False
+        return bool(ctl.on_demand_enabled() and idle_expired
+                    and not ctl.router_demand_active()
+                    and not ctl.memory_demand_active())
     # Explicit heavy image generation must have exclusive unified-memory
     # headroom even when the previous light-weight memory probe looked safe.
     if ctl.exclusive_media_requested(media_kind):
@@ -94,6 +101,7 @@ class Supervisor:
         self.stopping = False
         self.ready_reported = False
         self.media_pause_started = None
+        self.idle_since = None
         # Session-only bounded numeric metrics. No checkpoint paths or prompts.
         self.samples = {
             key: deque(maxlen=32)
@@ -178,6 +186,7 @@ class Supervisor:
                             (time.monotonic() - unload_started) * 1000)
             self.child = None
             self.ready_reported = False
+            self.idle_since = None
             self.retry_at = time.monotonic() + BACKOFF_SECONDS
             return True
         finally:
@@ -203,7 +212,14 @@ class Supervisor:
         snap = rc.memory_budget_snapshot()
         kind = ctl.active_media_kind()
         if self.child:
-            if should_unload(snap, kind):
+            demand = ctl.router_demand_active() or ctl.memory_demand_active()
+            if demand or not ctl.on_demand_enabled():
+                self.idle_since = None
+            elif self.idle_since is None:
+                self.idle_since = time.monotonic()
+            expired = (self.idle_since is not None
+                       and time.monotonic() - self.idle_since >= IDLE_UNLOAD_SECONDS)
+            if should_unload(snap, kind, idle_expired=expired):
                 self.publish("draining", pause=True)
                 if self.stop():
                     self.media_pause_started = time.monotonic() if kind else None

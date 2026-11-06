@@ -11936,9 +11936,14 @@ def router_llm(messages, max_tokens=220, temperature=0.0):
 
     try:
         connect_started = time.monotonic()
+        # In shared on-demand mode the supervised 4B may need a cold start.
+        # The gateway's startup wait is bounded to 120 seconds. Keep the
+        # legacy router's 30-second timeout unchanged when opt-in is off.
+        from agent import memory_model_coordination as memory_coordination
+        router_timeout = 180 if memory_coordination.on_demand_enabled() else 30
         with urllib.request.urlopen(
             request,
-            timeout=30,
+            timeout=router_timeout,
         ) as response:
             call_metrics.set_upstream_connect(
                 (time.monotonic() - connect_started) * 1000
