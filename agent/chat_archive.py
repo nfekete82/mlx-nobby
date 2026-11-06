@@ -510,12 +510,25 @@ def search(query, *, limit=4, personal_scope=True):
     results = []
     seen = set()
     named = False
+    requested_people = []
     if personal_scope:
         from agent import knowledge_memory as km, personal_memory
         if personal_memory.DB_PATH.exists():
             with personal_memory.LOCK, personal_memory._connect() as conn:
                 personal_memory._schema(conn)
-                named = bool(km.named_subjects(conn, query))
+                subjects = km.named_subjects(conn, query)
+                named = bool(subjects)
+                requested_people = [
+                    subject.split('.', 1)[1] for subject in sorted(subjects)
+                    if subject.startswith('personen.')
+                ]
+                if 'partner' in subjects:
+                    requested_people.extend(
+                        r[0] for r in conn.execute(
+                            "SELECT value FROM facts WHERE subject='partner' "
+                            "AND field='name' AND status='active'"
+                        )
+                    )
     for row in rows:
         from agent import knowledge_memory as km, personal_memory
         if km.extraction_skip_reason(row['content']) == 'restricted_source': continue
@@ -525,7 +538,20 @@ def search(query, *, limit=4, personal_scope=True):
                 previous = source_conn.execute("SELECT ordinal FROM archive_messages WHERE chat_id=? AND ordinal<? AND role='user' ORDER BY ordinal DESC LIMIT 1", (row['chat_id'], row['ordinal'])).fetchone()
             if previous and km.source_excluded(row['chat_id'], previous[0]): continue
         if re.search(r'(?:password|passwort|api[ _-]?key|access[ _-]?token|bearer|private[ _-]?key)\s*[:=]|\bsk-[A-Za-z0-9_-]{12,}', row['content'], re.I): continue
-        if km._PRIVATE.search(row['matched_excerpt']) and not (named or personal_memory.overview_requested(query) or km._PRIVATE.search(query)):
+        excerpt = row['matched_excerpt']
+        if requested_people:
+            from agent import memory_grounding
+            # FTS uses OR; activity words alone can retrieve another person's
+            # story. Include ONLY verbatim spans naming the requested person.
+            # Pronoun-only continuations are not grounds for attribution.
+            spans = [
+                memory_grounding.person_scoped_excerpt(row['content'], name)
+                for name in requested_people
+            ]
+            excerpt = ' … '.join(dict.fromkeys(span for span in spans if span))[:1000]
+            if not excerpt:
+                continue
+        if km._PRIVATE.search(excerpt) and not (named or personal_memory.overview_requested(query) or km._PRIVATE.search(query)):
             continue
         key = (row["chat_id"], row["ordinal"])
         if key in seen:
@@ -533,7 +559,7 @@ def search(query, *, limit=4, personal_scope=True):
         seen.add(key)
         results.append({
             "chat_id": row["chat_id"], "message_index": row["ordinal"],
-            "role": row["role"], "excerpt": row["matched_excerpt"][:1000],
+            "role": row["role"], "excerpt": excerpt[:1000],
         })
         if len(results) >= bounded:
             break
