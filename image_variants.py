@@ -1,6 +1,7 @@
 """Sequential Generate/reference Edit jobs from a private frozen configuration."""
 import copy
 import json
+import math
 import os
 import re
 import secrets
@@ -168,6 +169,24 @@ def install(service):
             )
             if batch_sdxl else nullcontext()
         )
+        def sample_memory(stage, variant_index):
+            # Only bounded numeric data in local group metadata, never prompts.
+            # Probe errors are observational, not a second admission policy.
+            try:
+                snapshot = service.runtime_coordinator.memory_budget_snapshot()
+            except Exception:
+                return
+            record = {"stage": stage, "variant_index": variant_index}
+            for key in ("free_percent", "headroom_gb", "swap_used_gb"):
+                value = snapshot.get(key)
+                if type(value) in (int, float) and math.isfinite(value):
+                    record[key] = round(value, 3)
+            if snapshot.get("pressure") in {"normal", "elevated", "critical"}:
+                record["pressure"] = snapshot["pressure"]
+            if len(record) > 2:
+                group.setdefault("memory_checkpoints", []).append(record)
+                group["memory_checkpoints"] = group["memory_checkpoints"][-24:]
+
         rendered_since_recycle = 0
         try:
             with context as preflight:
@@ -196,6 +215,11 @@ def install(service):
                             batched_sdxl=batch_sdxl,
                             runtime_preflight=preflight,
                         )
+                        if batch_sdxl:
+                            sample_memory(
+                                "image_complete" if job["status"] == "completed" else "image_failed",
+                                job.get("variant_index"),
+                            )
                         persist(group)
                         if job["status"] != "completed":
                             if job["status"] == "failed":
@@ -231,6 +255,8 @@ def install(service):
                                     if isinstance(preflight, dict):
                                         preflight["suppress_chat_restore"] = True
                                     raise
+                                sample_memory("worker_released", job.get("variant_index"))
+                                persist(group)
                                 rendered_since_recycle = 0
                 finally:
                     if batch_sdxl:
@@ -240,6 +266,7 @@ def install(service):
                             service.shutdown_sdxl_worker()
                             if service.sdxl_worker_running():
                                 raise RuntimeError("SDXL worker still resident after batch")
+                            sample_memory("batch_worker_released", None)
                         except Exception:
                             group["batch_failed"] = True
                             if isinstance(preflight, dict):
