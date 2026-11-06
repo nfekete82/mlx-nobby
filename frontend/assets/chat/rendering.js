@@ -1937,9 +1937,8 @@ function renderImageArtifactCard(message) {
         artifact.reference_used ? referenceText('reference_mode_' + artifact.reference_mode, artifact.reference_mode === 'same_identity' ? 'Same person' : 'Similar person') : '',
         artifact.model,
         artifact.provider,
-        artifact.width && artifact.height ? artifact.width + ' × ' + artifact.height : '',
         artifact.scale ? artifact.scale + '×' : '',
-        artifact.quality ? 'Qualität: ' + ({ preview: 'Vorschau', fast: 'Schnell', standard: 'Standard', quality: 'Qualität' }[artifact.quality] || artifact.quality) : '',
+        artifact.quality ? 'Qualität: ' + ({ preview: 'Vorschau', fast: 'Schnell', standard: 'Standard', quality: 'Qualität', ultra: 'Ultra', ultra_plus: 'Ultra+' }[artifact.quality] || artifact.quality) : '',
         artifact.steps ? artifact.steps + ' Steps' : '',
         artifact.strength != null ? 'Strength ' + Number(artifact.strength).toFixed(2) : '',
         artifact.seed != null ? 'Seed ' + artifact.seed : ''
@@ -2028,10 +2027,25 @@ function renderImageArtifactCard(message) {
         }
     }
 
-    card.appendChild(image);
-    card.appendChild(details);
-    card.appendChild(controls);
-    card.appendChild(info);
+    const layout = document.createElement('div');
+    layout.className = 'image-artifact-layout';
+    const media = document.createElement('div');
+    media.className = 'image-artifact-media';
+    media.appendChild(image);
+    const sidebar = document.createElement('div');
+    sidebar.className = 'image-artifact-details';
+    if (artifact.width && artifact.height) {
+        const resolution = document.createElement('strong');
+        resolution.className = 'image-artifact-resolution';
+        resolution.textContent = artifact.width + ' × ' + artifact.height + ' px';
+        sidebar.appendChild(resolution);
+    }
+    sidebar.appendChild(details);
+    sidebar.appendChild(controls);
+    sidebar.appendChild(info);
+    layout.appendChild(media);
+    layout.appendChild(sidebar);
+    card.appendChild(layout);
     return card;
 }
 

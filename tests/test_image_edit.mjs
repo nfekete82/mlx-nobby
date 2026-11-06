@@ -1638,7 +1638,7 @@ assert.equal(
     imageArtifactC.artifact_id,
 );
 const editCard = renderImageArtifactCard(editMessage);
-const editPreview = editCard.children.find(
+const editPreview = descendants(editCard).find(
     child => child.tagName === 'IMG',
 );
 assert.equal(
@@ -1660,7 +1660,7 @@ const generatedCard = renderImageArtifactCard({
 });
 assert.ok(generatedCard);
 assert.equal(
-    generatedCard.children.find(child => child.tagName === 'IMG').src,
+    descendants(generatedCard).find(child => child.tagName === 'IMG').src,
     '/api/mlx/images/' + encodeURIComponent(imageArtifact.image_id),
 );
 assert.equal(
@@ -1685,7 +1685,7 @@ const earlyPreviewCard = renderImageArtifactCard({
 });
 assert.ok(earlyPreviewCard);
 assert.equal(
-    earlyPreviewCard.children.find(child => child.tagName === 'IMG').src,
+    descendants(earlyPreviewCard).find(child => child.tagName === 'IMG').src,
     '/api/mlx/images/' + encodeURIComponent(imageArtifact.image_id),
 );
 assert.ok(descendants(earlyPreviewCard).some(
@@ -1715,7 +1715,7 @@ const upscaledCard = renderImageArtifactCard({
 });
 assert.ok(upscaledCard);
 assert.equal(
-    upscaledCard.children.find(child => child.tagName === 'IMG').src,
+    descendants(upscaledCard).find(child => child.tagName === 'IMG').src,
     '/api/mlx/images/' + encodeURIComponent(upscaledArtifact.image_id),
 );
 assert.equal(
@@ -2350,7 +2350,7 @@ renderingWindow.MLXChatGeneration.createImageUpscaleMenu = () => {
 for (const message of [realMessage, JSON.parse(JSON.stringify(realMessage))]) {
     const card = renderImageArtifactCard(message);
     assert.ok(card, 'completed image renders even when optional actions throw, including reload');
-    assert.equal(card.children.find(child => child.tagName === 'IMG').src,
+    assert.equal(descendants(card).find(child => child.tagName === 'IMG').src,
         '/api/mlx/images/' + realImageSequence.native_completed.result.id);
     assert.equal(renderImageJobCard(message), null);
 }
