@@ -197,7 +197,10 @@ def fast_personal_context(messages):
             value = reader()
         except Exception as error:
             failed = True
-            knowledge_memory.diagnose('recall', error)
+            try:
+                knowledge_memory.diagnose('recall', error)
+            except Exception:
+                pass  # Diagnostics must not erase results from other stores.
             return
         if value:
             parts.append(value)
@@ -232,7 +235,7 @@ def fast_personal_context(messages):
                 'negate evidence in another. Do not invent missing dates, '
                 'names or completion claims. Current user corrections '
                 'override older or unresolved records.')
-        return memory.attach_system_context(copied, "\\n\\n".join(parts))
+        return memory.attach_system_context(copied, "\n\n".join(parts))
 
     if explicit and failed:
         return memory.attach_system_context(copied,
