@@ -19,6 +19,7 @@ import uuid
 from fastapi import HTTPException
 
 from agent import batch_state
+from agent import memory_model_coordination as mem_coord
 import runtime_coordinator
 
 
@@ -371,18 +372,10 @@ def _dispatch_and_poll(job_id):
                 dispatch_attempts=int(job.get("dispatch_attempts") or 0) + 1,
             )
             try:
-                # All text-to-image jobs get an exclusive 4B memory handoff,
-                # including auto-selected SDXL; edits/upscales and video keep
-                # their existing pressure-based 4B coexistence policy.
-                # Only the supervisor-owned optional 4B may be stopped here.
-                from agent import memory_model_coordination as mem_coord
-                exclusive_4b = (
-                    kind == "image"
-                    and job["request"].get("operation") == "generate"
-                )
-                if not mem_coord.prepare_media_dispatch(
-                    kind, exclusive=exclusive_4b
-                ):
+                # Every image/edit/upscale/video job needs the same exclusive
+                # 4B preflight. The native service repeats the verification to
+                # protect direct endpoints which bypass the Agent queue.
+                if not mem_coord.prepare_media_dispatch(kind, exclusive=True):
                     raise ServiceError(503, "Memory model is finishing a local inference")
                 # Cancellation can arrive while waiting on a protected 4B
                 # inference. Never dispatch a newly cancelled native job.
@@ -395,6 +388,12 @@ def _dispatch_and_poll(job_id):
                     job["request"],
                     timeout=30,
                 )
+            except mem_coord.UnmanagedMemoryModel as exc:
+                # A manually started model is NOT ours to kill. Explain the
+                # conflict instead of retrying an unsafe job forever.
+                _update(job_id, status="failed", phase="failed",
+                        error=str(exc), finished_at=time.time())
+                return
             except ServiceError as exc:
                 if exc.status_code in {409, 503}:
                     # Yield to the scheduler so jobs of another healthy kind
