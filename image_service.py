@@ -57,6 +57,10 @@ _active_job_id = None
 _MAX_RETAINED_JOBS = 100
 
 
+class ImageModelReleaseError(RuntimeError):
+    """Model weights could not be verified unloaded; suppress chat restore."""
+
+
 class Generate(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
@@ -338,18 +342,55 @@ def _unload_mlxserve_model_and_wait(model):
         time.sleep(0.25)
 
 
+
+def _release_unused_image_models(selected=None):
+    """Keep only the image model this job will actually need.
+
+    Called INSIDE the existing image runtime lease, before any provider load.
+    Never unload an active worker: the job/direct route owns the image lock.
+    Fail closed for unfamiliar loaded MLX-Serve repositories; otherwise
+    unknown weights could coexist with SDXL, Qwen or FLUX unnoticed.
+    """
+    provider = (selected or {}).get("provider")
+    keep_repository = (selected or {}).get("repository") if provider == "mlxserve" else None
+    if provider != "sdxl" and sdxl_worker_running():
+        shutdown_sdxl_worker()
+        if sdxl_worker_running():
+            raise RuntimeError("SDXL-Worker konnte vor dem Medienmodellwechsel nicht entladen werden")
+    loaded = set(_loaded_mlxserve_repository_ids())
+    known = {
+        model.get("repository"): model
+        for model in registry_call(registry.load_registry)["models"]
+        if model.get("provider") == "mlxserve"
+    }
+    unknown = loaded - set(known)
+    if unknown:
+        raise RuntimeError(
+            "Exklusiver Medienmodus: unbekanntes MLX-Serve-Modell geladen. "
+            "Unbekannte Modellgewichte werden nicht ungeprüft entladen."
+        )
+    for repository in sorted(loaded):
+        if repository != keep_repository:
+            _unload_mlxserve_model_and_wait(known[repository])
+
+
 @app.get("/health")
 def health():
     data = registry_call(registry.load_registry)
     model = registry_call(registry.get_model)
     sdxl_loaded = sdxl_worker_running()
+    mlxserve_ids = _loaded_mlxserve_repository_ids()
     mlxserve_loaded = _loaded_mlxserve_models()
-    loaded = bool(_running) or sdxl_loaded or bool(mlxserve_loaded)
+    # Unknown resident MLX-Serve weights must not be invisible to the video
+    # handoff; otherwise /unload can appear successful while GPU RAM remains.
+    loaded = bool(_running) or sdxl_loaded or bool(mlxserve_ids)
     running_model = _running
     if running_model is None and sdxl_loaded:
         running_model = registry.JUGGERNAUT_XL_ID
     if running_model is None and mlxserve_loaded:
         running_model = mlxserve_loaded[0]["id"]
+    if running_model is None and mlxserve_ids:
+        running_model = "unmanaged-mlxserve"
 
     with _jobs_lock:
         active_job = _jobs.get(_active_job_id)
@@ -473,7 +514,12 @@ def unload():
         try:
             shutdown_sdxl_worker()
             for model in _loaded_mlxserve_models():
-                _unload_mlxserve_model(model)
+                _unload_mlxserve_model_and_wait(model)
+            if sdxl_worker_running() or _loaded_mlxserve_repository_ids():
+                raise RuntimeError(
+                    "Mindestens ein Image-Modell ist weiterhin geladen "
+                    "(gegebenenfalls unbekanntes MLX-Serve-Modell)"
+                )
         except RuntimeError as exc:
             raise HTTPException(
                 500,
@@ -672,8 +718,11 @@ def _generate_result(
 
         _running = None
 
-        if cleanup_error is not None and active_error is None:
-            raise RuntimeError(
+        # A failed provider call does not make a second failed unload safe.
+        # Surface the residency error even when generation also failed so the
+        # exclusive caller can suppress an unsafe chat-model restart.
+        if cleanup_error is not None:
+            raise ImageModelReleaseError(
                 "MLX-Serve-Image-Modell konnte nicht vollständig entladen "
                 "werden; Chat-Neustart wurde zum Speicherschutz übersprungen"
             ) from cleanup_error
@@ -1011,7 +1060,15 @@ def _edit_result_inner(
                              path, region_crop, path,
                              feather_px=request.region_feather_px)
     finally:
-        _running = None
+        try:
+            if model.get("provider") == "mlxserve":
+                _unload_mlxserve_model_and_wait(model)
+        except Exception as exc:
+            raise ImageModelReleaseError(
+                "MLX-Serve-Edit-Modell konnte nicht vollständig entladen werden"
+            ) from exc
+        finally:
+            _running = None
     if saving_callback:
         saving_callback()
 
@@ -1246,7 +1303,13 @@ def _upscale_result(
 def upscale(request: Upscale):
     with exclusive():
         try:
-            return _upscale_result(request)
+            with runtime_coordinator.image_runtime(None, exclusive_models=True) as preflight:
+                try:
+                    _release_unused_image_models()
+                except Exception:
+                    preflight["suppress_chat_restore"] = True
+                    raise
+                return _upscale_result(request)
         except Exception as exc:
             if isinstance(exc, HTTPException):
                 raise
@@ -1265,14 +1328,25 @@ def generate(request: Generate):
             resolved = _resolve_generation(request)
             sdxl_job = resolved["model"].get("provider") == "sdxl"
             with runtime_coordinator.image_runtime(
-                None, force_chat_unload=sdxl_job
+                None, force_chat_unload=sdxl_job, exclusive_models=True,
             ) as preflight:
                 try:
-                    return _generate_result(request, resolved=resolved)
+                    try:
+                        _release_unused_image_models(resolved["model"])
+                    except Exception:
+                        preflight["suppress_chat_restore"] = True
+                        raise
+                    try:
+                        return _generate_result(request, resolved=resolved)
+                    except ImageModelReleaseError:
+                        preflight["suppress_chat_restore"] = True
+                        raise
                 finally:
                     if sdxl_job:
                         try:
                             shutdown_sdxl_worker()
+                            if sdxl_worker_running():
+                                raise RuntimeError("SDXL-Worker nach Generierung weiterhin geladen")
                         except Exception:
                             # Never restore a chat model on top of SDXL if
                             # the image worker could not be terminated.
@@ -1289,7 +1363,31 @@ def generate(request: Generate):
 def edit(request: Edit):
     with exclusive():
         try:
-            return _edit_result(request)
+            with runtime_coordinator.image_runtime(None, exclusive_models=True) as preflight:
+                try:
+                    # The edit resolver runs inside the provider. Conservatively
+                    # drop all idle weights before loading the selected one.
+                    try:
+                        _release_unused_image_models()
+                    except Exception:
+                        preflight["suppress_chat_restore"] = True
+                        raise
+                    try:
+                        return _edit_result(request)
+                    except ImageModelReleaseError:
+                        preflight["suppress_chat_restore"] = True
+                        raise
+                finally:
+                    # SDXL img2img can warm a worker too. Never restore a
+                    # large chat model on top of that resident MPS pipeline.
+                    try:
+                        if sdxl_worker_running():
+                            shutdown_sdxl_worker()
+                            if sdxl_worker_running():
+                                raise RuntimeError("SDXL-Worker nach Bearbeitung weiterhin geladen")
+                    except Exception:
+                        preflight["suppress_chat_restore"] = True
+                        raise
         except Exception as exc:
             if isinstance(exc, HTTPException):
                 raise
@@ -1304,7 +1402,7 @@ def _image_handoff_measurement(preflight):
         return None
     timing = preflight["handoff_timings_ms"]
     keys = (
-        "lease_wait", "video_wait", "speech_release",
+        "lease_wait", "memory_model_release", "video_wait", "speech_release",
         "musetalk_release", "chat_stop", "chat_restore", "total",
     )
     safe = {
@@ -1473,12 +1571,14 @@ def _run_image_job(
             # requests. It must not remain resident alongside a new Qwen,
             # FLUX, video-derived edit or upscaler provider within this same
             # service. Release it under the coordinator lease first.
-            if not sdxl_job and sdxl_worker_running():
-                shutdown_sdxl_worker()
-                if sdxl_worker_running():
-                    raise RuntimeError(
-                        "SDXL-Worker konnte vor dem Modellwechsel nicht entladen werden"
-                    )
+            try:
+                _release_unused_image_models(selected)
+            except Exception:
+                # Unload failure means model residency is uncertain. Never
+                # restart the large chat model until verified safe.
+                if preflight is not None:
+                    preflight["suppress_chat_restore"] = True
+                raise
             timings.mark("resources_acquired")
             handoff = (
                 _image_handoff_measurement(preflight)
@@ -1498,23 +1598,34 @@ def _run_image_job(
             timings.mark("execution_started")
             rendered_result = None
             try:
-                result = execute(
-                    request,
-                    provider_options=provider_options,
-                    prepared_callback=prepared,
-                    saving_callback=saving,
-                    **({"resolved": resolved} if resolved is not None else {}),
-                    **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
-                       if operation in {"generate", "edit"} else {}),
-                )
+                try:
+                    result = execute(
+                        request,
+                        provider_options=provider_options,
+                        prepared_callback=prepared,
+                        saving_callback=saving,
+                        **({"resolved": resolved} if resolved is not None else {}),
+                        **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
+                           if operation in {"generate", "edit"} else {}),
+                    )
+                except ImageModelReleaseError:
+                    if preflight is not None:
+                        preflight["suppress_chat_restore"] = True
+                    raise
                 timings.mark("result_ready")
                 rendered_result = result
             finally:
                 # Do not restart chat on top of a still-resident SDXL pipeline.
                 # This runs before the image_runtime context restores chat.
-                if sdxl_job and not batched_sdxl:
+                # SDXL generations must always perform the worker unload,
+                # even when a status probe says no worker is resident. The
+                # early artifact and variant contracts rely on this barrier.
+                # Other operations release a warm SDXL worker if present.
+                if not batched_sdxl and (sdxl_job or sdxl_worker_running()):
                     try:
                         shutdown_sdxl_worker()
+                        if sdxl_worker_running():
+                            raise RuntimeError("SDXL-Worker nach Bildauftrag weiterhin geladen")
                         timings.mark("sdxl_released")
                         # The image is encoded and its MPS worker is safely
                         # gone. Let the UI display it while chat starts,

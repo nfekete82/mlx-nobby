@@ -950,6 +950,23 @@ def release_idle_speech_runtime(cancel_event=None, *, requester=request_json):
     return health | {"available": True, "released": True}
 
 
+def _exclusive_memory_model_handoff(kind, cancel_event=None):
+    """Release supervisor-owned 4B before allocating exclusive media weights.
+
+    The Agent queue performs this ahead of native dispatch, but direct image
+    endpoints and video jobs also require this fail-closed guarantee. A live
+    manually owned 4B is never terminated; it blocks exclusive admission.
+    """
+    _check_cancelled(cancel_event)
+    from agent import memory_model_coordination as coordination
+    if not coordination.prepare_media_dispatch(kind, exclusive=True):
+        raise ServiceUnavailable(
+            "Exklusiver Medienmodus: Das 4B-Memory-Modell verarbeitet noch "
+            "eine Anfrage. Medienauftrag sicher zurückgestellt."
+        )
+    _check_cancelled(cancel_event)
+
+
 @contextmanager
 def video_runtime(
     cancel_event,
@@ -972,6 +989,12 @@ def video_runtime(
         timings_ms = {
             "lease_wait": round((time.monotonic() - lease_started) * 1000, 2),
         }
+        if exclusive_models:
+            memory_release_started = time.monotonic()
+            _exclusive_memory_model_handoff("video", cancel_event)
+            timings_ms["memory_model_release"] = round(
+                (time.monotonic() - memory_release_started) * 1000, 2
+            )
         image_release_started = time.monotonic()
         # The decision is made after any active image work finishes, while
         # holding the coordinator lease. A missing/unsafe memory estimate
@@ -1185,6 +1208,12 @@ def image_runtime(
         timings_ms = {
             "lease_wait": round((time.monotonic() - lease_started) * 1000, 2),
         }
+        if exclusive_models:
+            memory_release_started = time.monotonic()
+            _exclusive_memory_model_handoff("image", cancel_event)
+            timings_ms["memory_model_release"] = round(
+                (time.monotonic() - memory_release_started) * 1000, 2
+            )
         video_wait_started = time.monotonic()
         wait_for_idle(VIDEO_URL, "Video", cancel_event, requester=requester)
         _check_cancelled(cancel_event)
