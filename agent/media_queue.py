@@ -371,11 +371,23 @@ def _dispatch_and_poll(job_id):
                 dispatch_attempts=int(job.get("dispatch_attempts") or 0) + 1,
             )
             try:
-                # Give the optional 4B model a chance to free unified RAM
-                # before native image/video admission. No other model is killed.
+                # All text-to-image jobs get an exclusive 4B memory handoff,
+                # including auto-selected SDXL; edits/upscales and video keep
+                # their existing pressure-based 4B coexistence policy.
+                # Only the supervisor-owned optional 4B may be stopped here.
                 from agent import memory_model_coordination as mem_coord
-                if not mem_coord.prepare_media_dispatch(kind):
+                exclusive_4b = (
+                    kind == "image"
+                    and job["request"].get("operation") == "generate"
+                )
+                if not mem_coord.prepare_media_dispatch(
+                    kind, exclusive=exclusive_4b
+                ):
                     raise ServiceError(503, "Memory model is finishing a local inference")
+                # Cancellation can arrive while waiting on a protected 4B
+                # inference. Never dispatch a newly cancelled native job.
+                if _cancel_requested(job_id):
+                    return
                 native = _service_request(
                     kind,
                     "POST",

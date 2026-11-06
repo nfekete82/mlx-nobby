@@ -75,6 +75,10 @@ def should_unload(snapshot, media_kind=None):
         return True
     if not media_kind:
         return False
+    # Explicit heavy image generation must have exclusive unified-memory
+    # headroom even when the previous light-weight memory probe looked safe.
+    if ctl.exclusive_media_requested(media_kind):
+        return True
     reserve = rc.model_load_reserve_gb(media_kind)
     min_headroom = (rc.VIDEO_MIN_HEADROOM_GB if media_kind == "video"
                     else rc.MEDIA_MIN_HEADROOM_GB)

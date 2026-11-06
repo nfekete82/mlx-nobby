@@ -54,6 +54,74 @@ class MediaQueueTests(unittest.TestCase):
         with mock.patch.object(media_queue, "ensure_worker"):
             return media_queue.enqueue(kind, payload)
 
+    def test_text_to_image_requests_exclusive_memory_handoff_only_for_generation(self):
+        prepared = []
+        native_id = "e" * 24
+
+        def prepare(kind, *, exclusive=False):
+            prepared.append((kind, exclusive))
+            return True
+
+        def native(kind, method, path, payload=None, timeout=20):
+            if method == "POST":
+                return {"id": native_id, "status": "queued", "phase": "queued"}
+            return {"id": native_id, "status": "completed", "phase": "completed",
+                    "progress": 1.0, "result": {"ok": True}}
+
+        with mock.patch("agent.memory_model_coordination.prepare_media_dispatch",
+                        side_effect=prepare), \
+             mock.patch.object(media_queue, "_service_request", side_effect=native), \
+             mock.patch.object(media_queue, "_wait"):
+            generate = self.enqueue("image")
+            media_queue._dispatch_and_poll(generate["id"])
+            edit = {
+                "operation": "edit", "payload": {"prompt": "edit only"},
+                "chat_id": "chat-1",
+            }
+            with mock.patch.object(media_queue, "ensure_worker"):
+                edited = media_queue.enqueue("image", edit)
+            media_queue._dispatch_and_poll(edited["id"])
+            video = self.enqueue("video")
+            media_queue._dispatch_and_poll(video["id"])
+
+        self.assertEqual(prepared, [
+            ("image", True), ("image", False), ("video", False),
+        ])
+        self.assertEqual(media_queue.get_job("image", generate["id"])["status"],
+                         "completed")
+
+    def test_cancel_while_4b_is_draining_never_dispatches_native_job(self):
+        job = self.enqueue("image")
+
+        def cancel_during_preemption(kind, *, exclusive=False):
+            self.assertEqual((kind, exclusive), ("image", True))
+            media_queue.cancel("image", job["id"])
+            return True
+
+        with mock.patch("agent.memory_model_coordination.prepare_media_dispatch",
+                        side_effect=cancel_during_preemption), \
+             mock.patch.object(media_queue, "_service_request") as native:
+            media_queue._dispatch_and_poll(job["id"])
+
+        native.assert_not_called()
+        self.assertEqual(media_queue.get_job("image", job["id"])["status"],
+                         "cancelled")
+
+    def test_4b_extraction_busy_defers_image_without_job_failure(self):
+        job = self.enqueue("image")
+        with mock.patch("agent.memory_model_coordination.prepare_media_dispatch",
+                        return_value=False) as prepare, \
+             mock.patch.object(media_queue, "_service_request") as native:
+            media_queue._dispatch_and_poll(job["id"])
+
+        prepare.assert_called_once_with("image", exclusive=True)
+        native.assert_not_called()
+        queued = media_queue.get_job("image", job["id"])
+        self.assertEqual(queued["status"], "queued")
+        self.assertEqual(queued["phase"], "waiting_for_service")
+        self.assertIsNone(queued.get("native_job_id"))
+
+
     def test_enqueue_is_persistent_and_returns_compatible_job_shape(self):
         job = self.enqueue()
 

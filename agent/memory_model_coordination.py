@@ -60,10 +60,14 @@ def supervisor_state():
     return result
 
 
-def note_media_demand(kind):
+def note_media_demand(kind, *, exclusive=False):
     if kind not in ("image", "video"):
         raise ValueError("Unsupported media kind")
-    _write(DEMAND, {"kind": kind, "until": time.time() + DEMAND_SECONDS})
+    _write(DEMAND, {
+        "kind": kind,
+        "until": time.time() + DEMAND_SECONDS,
+        "exclusive": bool(exclusive),
+    })
 
 
 def requested_media_priority():
@@ -73,6 +77,16 @@ def requested_media_priority():
             and marker["until"] > time.time()):
         return marker["kind"]
     return None
+
+
+def exclusive_media_requested(kind):
+    """Only a fresh, explicit queue request may preempt a healthy 4B model."""
+    marker = _read(DEMAND)
+    return (kind in ("image", "video")
+            and marker.get("kind") == kind
+            and marker.get("exclusive") is True
+            and type(marker.get("until")) in (float, int)
+            and marker["until"] > time.time())
 
 
 def active_media_kind():
@@ -108,26 +122,29 @@ def inference_lease():
         os.close(fd)
 
 
-def prepare_media_dispatch(kind, timeout_seconds=20):
-    """Request RAM relief before native dispatch, preserving its own guard.
+def prepare_media_dispatch(kind, timeout_seconds=20, *, exclusive=False):
+    """Request bounded 4B RAM relief before native media dispatch.
 
-    A missing supervisor keeps previous service behavior. External manually
-    launched port 8011 is never killed or assumed to be managed.
+    Heavy text-to-image generation preempts the supervisor-owned 4B even with
+    otherwise healthy headroom; smaller jobs retain pressure-based coexistence.
+    In-progress extraction keeps its lease and defers media without job loss.
+    External or manually started port-8011 processes are never terminated.
     """
     state = supervisor_state()
     if not state or state.get("state") in ("external", "disabled") or not state.get("owned"):
         return True
-    import runtime_coordinator as rc
-    try:
-        snapshot = rc.memory_budget_snapshot()
-        reserve = rc.model_load_reserve_gb(kind)
-        target_headroom = rc.VIDEO_MIN_HEADROOM_GB if kind == "video" else rc.MEDIA_MIN_HEADROOM_GB
-    except (OSError, RuntimeError, ValueError):
-        return True  # Native media admission is authoritative if probe fails.
-    if not (rc.memory_relief_needed(snapshot, min_headroom_gb=target_headroom)
-            or rc.projected_memory_hard_limit_reached(snapshot, reserve)):
-        return True
-    note_media_demand(kind)
+    if not exclusive:
+        import runtime_coordinator as rc
+        try:
+            snapshot = rc.memory_budget_snapshot()
+            reserve = rc.model_load_reserve_gb(kind)
+            target_headroom = rc.VIDEO_MIN_HEADROOM_GB if kind == "video" else rc.MEDIA_MIN_HEADROOM_GB
+        except (OSError, RuntimeError, ValueError):
+            return True  # Native media admission remains authoritative on probe errors.
+        if not (rc.memory_relief_needed(snapshot, min_headroom_gb=target_headroom)
+                or rc.projected_memory_hard_limit_reached(snapshot, reserve)):
+            return True
+    note_media_demand(kind, exclusive=exclusive)
     deadline = time.monotonic() + max(0, timeout_seconds)
     while time.monotonic() < deadline:
         state = supervisor_state()
