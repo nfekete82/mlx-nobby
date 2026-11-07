@@ -185,3 +185,80 @@ def test_switcher_check_resolves_agent_when_invoked_as_script_from_other_cwd(tmp
     assert isinstance(info["on_demand"], bool)
     assert isinstance(info["gateway_healthy"], bool)
     assert "supervisor_state" in info
+
+
+def _router_switch_module():
+    """Load the switcher without invoking CLI or launchctl."""
+    import importlib.util
+    script = Path(__file__).resolve().parents[1] / "scripts" / "switch-shared-4b-router.py"
+    spec = importlib.util.spec_from_file_location("router_switch_race_test", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_switcher_waits_for_delayed_gateway_listener(monkeypatch):
+    switch = _router_switch_module()
+    calls = []
+    replies = iter([
+        OSError("Connection refused"),
+        {"router_manager": "legacy", "loaded": True},
+        {"router_manager": "shared-4b", "loaded": False},
+    ])
+
+    def json_get(port):
+        assert port == 8040
+        calls.append("probe")
+        reply = next(replies)
+        if isinstance(reply, BaseException):
+            raise reply
+        return reply
+
+    monkeypatch.setattr(switch, "_json_get", json_get)
+    monkeypatch.setattr(switch.time, "sleep", lambda _delay: None)
+    assert switch._wait_gateway_ready(timeout=5)["loaded"] is False
+    assert calls == ["probe", "probe", "probe"]
+
+
+def test_failed_gateway_readiness_restores_legacy_policy(monkeypatch, tmp_path):
+    switch = _router_switch_module()
+    import plistlib
+
+    original = plistlib.dumps({"Label": switch.LABEL, "ProgramArguments": ["legacy"]})
+    candidate = plistlib.dumps({"Label": switch.LABEL, "ProgramArguments": ["gateway"]})
+    plist = tmp_path / "router.plist"
+    plist.write_bytes(original)
+    monkeypatch.setattr(switch, "ROOT", Path.home() / "mlx-web")
+    monkeypatch.setattr(switch, "ROUTER_PLIST", plist)
+    monkeypatch.setattr(switch, "LEGACY", tmp_path / "router-original.plist")
+    monkeypatch.setattr(switch, "_check_backup", lambda _path: None)
+    monkeypatch.setattr(switch, "_idle", lambda: None)
+    monkeypatch.setattr(switch, "_idle_without_lease", lambda: None)
+    monkeypatch.setattr(switch, "_render_gateway", lambda: candidate)
+    monkeypatch.setattr(sup, "valid_settings", lambda: True)
+    monkeypatch.setattr(ctl, "supervisor_state", lambda: {"owned": True, "state": "running"})
+    monkeypatch.setattr(ctl, "on_demand_enabled", lambda: False)
+
+    events = []
+    monkeypatch.setattr(switch, "_policy", lambda value: events.append(("policy", value)))
+    monkeypatch.setattr(switch, "_reload", lambda data: events.append(("reload", data)))
+
+    @contextmanager
+    def lease(**_kwargs):
+        yield {}
+
+    monkeypatch.setattr(rc, "runtime_lease", lease)
+
+    def not_ready():
+        events.append(("probe", None))
+        raise RuntimeError("Simulated gateway bind failure")
+
+    monkeypatch.setattr(switch, "_wait_gateway_ready", not_ready)
+    with pytest.raises(RuntimeError, match="restored"):
+        switch.enable(tmp_path)
+
+    assert switch.LEGACY.read_bytes() == original
+    assert events == [
+        ("policy", True), ("reload", candidate), ("probe", None),
+        ("reload", original), ("policy", False),
+    ]
