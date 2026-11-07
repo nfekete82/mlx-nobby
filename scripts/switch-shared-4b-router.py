@@ -105,6 +105,32 @@ def _check_backup(path):
         raise RuntimeError("Private backup did not verify")
 
 
+def _wait_gateway_ready(*, timeout=15.0):
+    """Wait for the weightless gateway to bind after launchd bootstrap.
+
+    A loaded LaunchAgent is not necessarily ready to accept HTTP requests.
+    """
+    deadline = time.monotonic() + timeout
+    last_error = "no response"
+    while True:
+        try:
+            result = _json_get(8040)
+            if (isinstance(result, dict)
+                    and result.get("router_manager") == "shared-4b"
+                    and result.get("loaded") is False):
+                return result
+            last_error = "unexpected router identity or loaded model weights"
+        except (OSError, ValueError, TypeError) as exc:
+            last_error = type(exc).__name__
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(0.25, remaining))
+    raise RuntimeError(
+        f"Shared 4B gateway not ready after {timeout:g}s ({last_error})"
+    )
+
+
 def enable(backup):
     from agent import memory_model_coordination as ctl
     from agent import memory_model_supervisor as sup
@@ -143,12 +169,22 @@ def enable(backup):
             try:
                 _policy(True)
                 _reload(_render_gateway())
-            except BaseException:
-                _policy(False)
-                raise
-    result = _json_get(8040)
-    if result.get("router_manager") != "shared-4b":
-        raise RuntimeError("Router gateway not ready; use --rollback")
+                # launchctl confirms service registration, not listener readiness.
+                _wait_gateway_ready()
+            except BaseException as error:
+                try:
+                    # A failure after bootstrap must not leave an enabled
+                    # policy paired with a missing or incorrect gateway.
+                    _reload(before)
+                    _policy(False)
+                except BaseException as restore_error:
+                    raise RuntimeError(
+                        "Router switch failed AND automatic legacy restore failed; "
+                        "inspect launchd/router state before further changes"
+                    ) from restore_error
+                raise RuntimeError(
+                    "Router switch failed; original router and policy restored"
+                ) from error
     return {"enabled": True, "gateway": True, "legacy_saved": str(LEGACY)}
 
 
