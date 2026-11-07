@@ -181,3 +181,29 @@ def test_untrusted_activity_metadata_is_not_copied_to_local_fts():
     assert archive.search("SENTINEL_UNINDEXED_TOKEN") == []
     archive.remove_chat("ignore-payload", exclude=True)
     assert archive.search("coding_agent") == []
+
+
+
+def test_factual_recall_skips_question_only_archive_hits_but_preserves_assertions():
+    archive.set_enabled(True)
+    archive.index_chat(chat('question-only',
+        'Welche konkreten Entscheidungen habe ich zu Sandforge mitgeteilt? '
+        'Nenne nur gespeicherte Informationen.'))
+    archive.index_chat(chat('actual-report',
+        'Ich entwickle Sandforge als Echtzeitstrategiespiel mit WebGL 3D.'))
+
+    facts = archive.search('Was weißt du über Sandforge?', limit=6)
+    assert any(row['chat_id'] == 'actual-report' for row in facts)
+    assert all(row['chat_id'] != 'question-only' for row in facts)
+
+    # When the user really asks about earlier questions, those are relevant.
+    questions = archive.search('Welche Fragen habe ich zu Sandforge gestellt?', limit=6)
+    assert any(row['chat_id'] == 'question-only' for row in questions)
+
+
+def test_archive_preserves_assertion_after_a_question():
+    archive.set_enabled(True)
+    archive.index_chat(chat('mixed',
+        'Was hältst du davon? Ich entwickle Sandforge als Browserspiel.'))
+    rows = archive.search('Was weißt du über Sandforge?', limit=6)
+    assert any(row['chat_id'] == 'mixed' for row in rows)

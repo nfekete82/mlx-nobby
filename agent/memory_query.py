@@ -94,3 +94,31 @@ def relevance(words, text):
     # not independent evidence. Longer anchors outrank generic attribute terms.
     matched = tokens & set(words)
     return sum(1 + min(len(token), 18)/18 for token in matched)
+
+
+# A question about model names must not be answered by a nickname or job
+# description that merely shares a project/name token. Do not use these
+# patterns to claim that a particular model belongs to a particular project:
+# the original stored source must still establish that relationship.
+_AI_MODEL_QUESTION = re.compile(
+    r"(?<!\w)(?:ki[- ]?)?(?:modell\w*|models?|llms?|"
+    r"sprachmodell\w*|bildmodell\w*|videomodell\w*)\b", re.I,
+)
+_AI_MODEL_EVIDENCE = re.compile(
+    r"(?<!\w)(?:ki[- ]?modell\w*|modell\w*|models?|llms?|"
+    r"sprachmodell\w*|bildmodell\w*|videomodell\w*|"
+    r"qwen[\w.-]*|llama[\w.-]*|gpt[\w.-]*|"
+    r"claude[\w.-]*|gemini[\w.-]*|deepseek[\w.-]*|"
+    r"mistral[\w.-]*|gemma[\w.-]*|phi-?[\w.-]*\d|"
+    r"flux[\w.-]*|sdxl[\w.-]*|juggernaut[\w.-]*|"
+    r"ltx[\w.-]*|minimax[\w.-]*|stable diffusion|"
+    r"embedding[- ]?modell\w*)\b", re.I,
+)
+
+
+def asks_about_ai_models(query):
+    return bool(_AI_MODEL_QUESTION.search(str(query)))
+
+
+def has_ai_model_evidence(text):
+    return bool(_AI_MODEL_EVIDENCE.search(str(text)))

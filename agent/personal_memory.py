@@ -941,7 +941,8 @@ def context(query, *, limit=6):
 
     tokens = set(w.casefold() for w in _WORDS.findall(query.replace('-', ' ')))
     tokens -= _CONTEXT_STOPWORDS
-    from agent import memory_grounding
+    from agent import memory_grounding, memory_query
+    model_focus = memory_query.asks_about_ai_models(query)
     named_people = {
         fact['subject'] for fact in facts
         if fact['subject'].startswith('personen.')
@@ -966,12 +967,28 @@ def context(query, *, limit=6):
         _IDENTITY_PRIORITY[fact["field"].split(".", 1)[0]],
         -float(fact["updated_at"]),
     ))
-    identity = [f for f in identity_candidates if tokens & _fact_tokens(f)][:3]
+    identity = [f for f in identity_candidates
+                if tokens & _fact_tokens(f)
+                and (not model_focus or memory_query.has_ai_model_evidence(
+                    f['field'] + ' ' + f['value']))][:3]
     remaining_slots = max(0, bounded - len(identity))
     scored = []
     for fact in facts:
         if fact in identity:
             continue
+        # A project name or nickname is not evidence of which AI models
+        # the user uses. Preserve relevant model facts, even when the model
+        # name is not in the question (e.g. "Welche KI-Modelle nutze ich?").
+        model_fact = memory_query.has_ai_model_evidence(fact['field'] + ' ' + fact['value'])
+        if model_focus and not model_fact:
+            continue
+        if model_focus and not (partner_topic or family_topic or named_people):
+            if fact['subject'].startswith(('partner', 'familie', 'personen.')):
+                continue  # Another person's models are not the user's models.
+        if model_focus and fact['subject'].startswith('projekte.'):
+            project = fact['subject'].split('.', 1)[1]
+            if not memory_grounding.mentions_person(query, project):
+                continue  # Do not attribute another project's models here.
         # A question naming an existing person must not pull in another
         # person's similarly worded notes or the unrelated partner profile.
         if named_people:
@@ -988,7 +1005,7 @@ def context(query, *, limit=6):
         if (km._PRIVATE.search(fact['value']) or fact['field'].split('.')[0] in ('gesundheit', 'beziehung', 'kindheit', 'erlebnis')) and not km._PRIVATE.search(query):
             continue
         overlap = len(tokens & _fact_tokens(fact))
-        relevant = overlap > 0
+        relevant = overlap > 0 or (model_focus and model_fact)
         if partner_topic and fact["subject"] == "partner":
             relevant = True
         if family_topic and (fact["subject"] == "familie" or
