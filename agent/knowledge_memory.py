@@ -684,6 +684,8 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
                         continue  # No person-specific attribution in this note.
                 projects = {s for s in requested_subjects if s.startswith('projekte.')}
                 if projects and r['subject'].startswith('projekte.') and r['subject'] not in projects: continue
+                if model_focus and r['subject'].startswith('projekte.') and r['subject'] not in projects:
+                    continue  # A different project is not evidence about requested AI models.
                 private = r['subject'].startswith(('partner', 'familie', 'personen.')) or r['field'].startswith('status.gesundheitlich') or r['field'].split('.')[0] in ('gesundheit', 'beziehung', 'kindheit', 'erlebnis') or bool(_PRIVATE.search(r['value']))
                 if private and not personal and r['subject'] not in requested_subjects: continue
                 body = r['value']
