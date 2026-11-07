@@ -982,6 +982,13 @@ def context(query, *, limit=6):
         model_fact = memory_query.has_ai_model_evidence(fact['field'] + ' ' + fact['value'])
         if model_focus and not model_fact:
             continue
+        if model_focus and not (partner_topic or family_topic or named_people):
+            if fact['subject'].startswith(('partner', 'familie', 'personen.')):
+                continue  # Another person's models are not the user's models.
+        if model_focus and fact['subject'].startswith('projekte.'):
+            project = fact['subject'].split('.', 1)[1]
+            if not memory_grounding.mentions_person(query, project):
+                continue  # Do not attribute another project's models here.
         # A question naming an existing person must not pull in another
         # person's similarly worded notes or the unrelated partner profile.
         if named_people:
