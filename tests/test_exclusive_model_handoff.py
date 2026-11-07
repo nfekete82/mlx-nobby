@@ -423,3 +423,83 @@ def test_unmanaged_mlxserve_image_weights_stay_visible_and_block_video_handoff(m
         assert "vollständig entladen" in str(exc.detail)
     else:
         raise AssertionError("Unknown image weight must block video handoff")
+
+
+
+def test_embedding_weights_do_not_poison_image_health_or_chat_unload(monkeypatch):
+    """Regression: embedding-only 4B resident in shared 11234 is NOT an image."""
+    import io
+    import json
+    import image_service as image
+
+    embedding = {
+        "id": "mlx-community/Qwen3-Embedding-4B-4bit-DWQ",
+        "loaded": True,
+        # Some mlx-serve versions omit the capabilities field entirely.
+    }
+    other = {
+        "id": "ddalcu/Qwen-Image-2.1-MLX-Serve-4bit",
+        "loaded": False,
+        "capabilities": ["image_generation"],
+    }
+
+    def fake_urlopen(request, timeout):
+        assert str(request).endswith("/v1/models")
+        return io.BytesIO(json.dumps({"data": [embedding, other]}).encode())
+
+    model = {"id": "fixture", "provider": "sdxl", "enabled": True}
+    monkeypatch.setattr(image.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(image.registry, "load_registry",
+                        lambda: {"default_model": "fixture", "models": [model]})
+    monkeypatch.setattr(image.registry, "get_model", lambda: model)
+    monkeypatch.setattr(image, "_running", None)
+    monkeypatch.setattr(image, "_active_job_id", None)
+    monkeypatch.setattr(image, "sdxl_worker_running", lambda: False)
+    monkeypatch.setattr(image, "shutdown_sdxl_worker", lambda: None)
+
+    assert image._loaded_mlxserve_repository_ids() == []
+    assert image.health()["loaded"] is False
+    assert image.health()["running_model"] is None
+    assert image.unload()["loaded"] is False
+
+
+def test_embedding_capability_and_unknown_model_safety_remain_separate(monkeypatch):
+    import io
+    import json
+    import image_service as image
+    from fastapi import HTTPException
+
+    loaded = [
+        {"id": "org/private-vector-model", "capabilities": ["embeddings"], "loaded": True},
+        {"id": "unknown-native-model", "loaded": True},
+        {"id": "org/image-model", "capabilities": ["text_to_image"], "loaded": False},
+    ]
+
+    monkeypatch.setattr(
+        image.urllib.request,
+        "urlopen",
+        lambda request, timeout: io.BytesIO(
+            json.dumps({"data": loaded}).encode()
+        ),
+    )
+    assert image._loaded_mlxserve_repository_ids() == ["unknown-native-model"]
+    monkeypatch.setattr(image, "shutdown_sdxl_worker", lambda: None)
+    monkeypatch.setattr(image, "sdxl_worker_running", lambda: False)
+    monkeypatch.setattr(image.registry, "load_registry",
+                        lambda: {"models": [], "default_model": None})
+    try:
+        image.unload()
+    except HTTPException as exc:
+        assert exc.status_code == 500
+    else:
+        raise AssertionError("Unknown non-embedding weights must block image handoff")
+
+
+def test_embedding_capability_dict_is_recognized():
+    import image_service as image
+    assert image._mlxserve_entry_is_embedding({
+        "id": "org/custom", "capabilities": {"embeddings": True}
+    })
+    assert not image._mlxserve_entry_is_embedding({
+        "id": "org/custom", "capabilities": ["image_generation"]
+    })
