@@ -1,6 +1,7 @@
 """Vision stream timing is independent from text chat telemetry."""
 import io
 import json
+from contextlib import nullcontext
 import time
 from unittest import mock
 
@@ -115,6 +116,13 @@ def test_agent_vision_worker_reports_vision_purpose_and_first_content():
     client = TestClient(agent_app.app, base_url="http://localhost")
     try:
         with (
+            # This test verifies Vision SSE metrics, not model handoff.
+            # Real chat_runtime performs optional native image/speech/MuseTalk
+            # health calls and is sensitive to the host's running services.
+            mock.patch.object(
+                agent_app.runtime_coordinator, "chat_runtime",
+                side_effect=lambda *_args, **_kwargs: nullcontext(),
+            ),
             mock.patch.object(agent_app, "ensure_model_for_role", return_value=runtime) as ensure_role,
             mock.patch.object(agent_app, "load_config", return_value={"PORT": 8000}),
             mock.patch.object(agent_app.urllib.request, "urlopen", return_value=upstream),
