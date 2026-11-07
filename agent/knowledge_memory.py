@@ -604,6 +604,8 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
     overview = pm.overview_requested(query) and pm.overview_requested(scope_query)
     personal = bool(_PRIVATE.search(privacy_query if privacy_query is not None else query)) or pm.overview_requested(privacy_query if privacy_query is not None else query)
     words = query_terms(query)
+    from agent import memory_query
+    model_focus = memory_query.asks_about_ai_models(query)
     if not words and not overview: return ''
     semantic_scores = {}
     if semantic:
@@ -614,7 +616,6 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
             except Exception: pass
     with pm.LOCK, pm._connect() as conn:
         pm._schema(conn)
-        from agent import memory_query
         words = memory_query.vocabulary_terms(conn, words)
         if trace is not None:
             trace.update(terms=words, mode='hybrid' if semantic_scores else 'lexical',
@@ -657,6 +658,17 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
         if project_inventory:
             selected = [('fact', r[0]) for r in conn.execute(
                 "SELECT id FROM facts WHERE status='active' AND subject LIKE 'projekte.%'")]
+        if model_focus and not overview:
+            # A query for *which* models cannot mention unknown model names.
+            # Include existing typed model/technology facts that identify
+            # actual model families, not every biography matching "Nobby".
+            selected.extend(
+                ('fact', row['id'])
+                for row in conn.execute(
+                    "SELECT id,field,value FROM facts WHERE status='active'"
+                )
+                if memory_query.has_ai_model_evidence(row['field'] + ' ' + row['value'])
+            )
         selected = list(dict.fromkeys(selected + list(semantic_scores)))
         if trace is not None: trace['candidates'] = len(selected)
         ranked = []
@@ -692,6 +704,8 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
                 body, label, priority = r['description'], r['title'] + (' (plan; not completed)' if r['status'] == 'plan' else ' (reported experience)'), 0
                 if r['period']:
                     label += ' [period: ' + r['period'] + ']'
+            if model_focus and not overview and not memory_query.has_ai_model_evidence(label + ' ' + body):
+                continue  # Matching "Nobby" or a career term cannot answer a model question.
             sources = _sources(conn, kind, oid)
             if any(blocked(conn, body, s.get('id')) for s in sources): continue
             relevance = len(set(words) & set(_WORD.findall((label + ' ' + body).casefold())))
@@ -715,7 +729,7 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
             if explicit and evidence and evidence != body:
                 line += ' Evidence: ' + evidence
             named_subject = kind=='fact' and r['subject'] in requested_subjects
-            if overview or relevance or named_subject or semantic_scores.get((kind,oid),0):
+            if overview or relevance or named_subject or semantic_scores.get((kind,oid),0) or model_focus:
                 ranked.append((score,line,{'kind':kind, 'id':oid, 'sources':sources,
                     'score':round(score,6), 'lexical':round(relevance,6),
                     'semantic':semantic_scores.get((kind,oid)), 'text':body,
@@ -737,7 +751,9 @@ def context(query, *, budget=5000, semantic=False, privacy_query=None, trace=Non
                             expanded = list(dict.fromkeys(chat_archive.source_quote(q) or q['evidence'] for q in quotes))
                             proposal += ' Proposal evidence: ' + ' | '.join(expanded)[:1000]
                     proposal_relevance = query_relevance(words,proposal)
-                    if overview or proposal_relevance or named_subject:
+                    if overview or proposal_relevance or named_subject or (
+                        model_focus and memory_query.has_ai_model_evidence(issue['proposed_value'])
+                    ):
                         ranked.append((proposal_relevance+priority+lexical_scores.get((kind,oid),0)*3,proposal,
                             {'kind':'conflict','id':issue['id'],'text':issue['proposed_value'],
                              'subject':r['subject'],'field':r['field'],'status':'unresolved',
