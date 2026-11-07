@@ -355,9 +355,9 @@ def test_ai_model_question_with_no_model_facts_returns_no_false_match():
     pm.create_fact('ich', 'arbeitgeber', 'Fiktive Service GmbH')
     assert pm.context(question) == ''
     result = km.context(question)
-    assert 'No matching stored evidence' in result
-    assert 'Fiktiv Meyer' not in result
-    assert 'Fiktive Service GmbH' not in result
+    # This is a normal topical question, not an explicit memory inventory.
+    # With no matching evidence the correct behavior is an empty context.
+    assert result == ''
 
 
 def test_non_model_questions_retain_normal_identity_recall():
