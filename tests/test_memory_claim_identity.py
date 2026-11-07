@@ -75,3 +75,28 @@ def test_model_status_suffixes_cannot_hide_a_true_conflict():
 
 def test_correction_wording_is_not_a_historical_period():
     assert smart.claim_field('geburtstag', 'Mein Geburtstag war falsch, richtig ist der 02.03.1990.', 'statement') == 'geburtstag'
+
+
+
+def test_unresolved_conflict_is_labeled_in_personal_context_and_overview():
+    """The fast personal fallback must not certify a disputed old value."""
+    save('fictional-a', 'Beruflich bin ich selbstständig.', 'selbstständig')
+    save('fictional-b', 'Beruflich bin ich angestellt.', 'angestellt')
+    assert len(pm.list_conflicts()) == 1
+
+    focused = pm.context('Wie ist mein beruflicher Status?')
+    assert 'selbstständig' in focused
+    assert 'UNRESOLVED CONTRADICTION; neither value confirmed' in focused
+    assert 'chat fictional-a message 0' in focused
+
+    overview = pm.context('Was weißt du alles über mich?')
+    assert 'selbstständig' in overview
+    assert 'UNRESOLVED CONTRADICTION; neither value confirmed' in overview
+
+
+def test_uncontested_personal_fact_remains_normal():
+    save('fictional-a', 'Beruflich bin ich selbstständig.', 'selbstständig')
+    context = pm.context('Wie ist mein beruflicher Status?')
+    assert 'selbstständig' in context
+    assert 'status: active)' in context
+    assert 'UNRESOLVED CONTRADICTION' not in context
