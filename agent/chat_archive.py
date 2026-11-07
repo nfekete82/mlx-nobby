@@ -518,6 +518,19 @@ def search(query, *, limit=4, personal_scope=True):
                 named = bool(km.named_subjects(conn, query))
     for row in rows:
         from agent import knowledge_memory as km, personal_memory
+        if row['role'] == 'user' and not re.search(r'\b(?:fragen?|gefragt|asked)\b', query, re.I):
+            # Questions about one's history are not themselves evidence of
+            # the requested facts. Keep mixed messages if a factual first-
+            # person assertion survives the existing source-grounding filter.
+            from agent import memory_grounding
+            assertion = memory_grounding.asserted_text(row['content']).strip()
+            if not assertion or (
+                re.match(r'^\s*(?:wer|was|wie|wann|wo|warum|wieso|welch\w*|kannst)\b',
+                         row['content'], re.I)
+                and re.match(r'^(?:nenne|zeige|liste|erkläre|fasse|beschreibe|sag|bitte)\b',
+                             assertion, re.I)
+            ):
+                continue
         if km.extraction_skip_reason(row['content']) == 'restricted_source': continue
         if km.source_excluded(row['chat_id'], row['ordinal']): continue
         if row['role'] == 'assistant':
