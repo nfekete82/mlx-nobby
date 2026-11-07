@@ -267,8 +267,30 @@ def _unload_mlxserve_model(model):
             )
 
 
+def _mlxserve_entry_is_embedding(item):
+    """Identify embedding-only weights without assuming they belong to Image.
+
+    mlx-serve is shared by the embedding adapter and the image service.
+    Its /v1/models inventory includes both, but an embedding checkpoint must
+    not make /health report a resident *image* or make /unload return HTTP 500.
+    Use the same capability/name compatibility rule as embedding_service.
+    Unknown non-embedding weights remain visible and fail closed.
+    """
+    capabilities = item.get("capabilities")
+    if isinstance(capabilities, list):
+        if {"embedding", "embeddings"} & {
+            str(value).lower() for value in capabilities
+        }:
+            return True
+    elif isinstance(capabilities, dict):
+        if capabilities.get("embedding") or capabilities.get("embeddings"):
+            return True
+    model_id = item.get("id")
+    return isinstance(model_id, str) and "embedding" in model_id.lower()
+
+
 def _loaded_mlxserve_repository_ids(*, strict=False):
-    """Return repository IDs that MLX-Serve reports as resident."""
+    """Return resident *non-embedding* MLX-Serve model IDs for image handoff."""
     try:
         with urllib.request.urlopen(
             MLXSERVE_URL + "/v1/models",
@@ -289,6 +311,7 @@ def _loaded_mlxserve_repository_ids(*, strict=False):
             isinstance(item, dict)
             and item.get("loaded") is True
             and isinstance(item.get("id"), str)
+            and not _mlxserve_entry_is_embedding(item)
         )
     ]
 
