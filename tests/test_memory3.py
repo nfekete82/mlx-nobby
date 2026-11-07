@@ -332,7 +332,7 @@ def test_ai_model_question_does_not_mix_name_and_career_evidence():
     pm.create_fact('ich', 'spitzname', 'Nobby')
     pm.create_fact('ich', 'arbeitgeber', 'Fiktive Service GmbH')
     pm.create_fact('ich', 'technologie', 'Qwen3.8-27B-MLX-4bit')
-    pm.create_fact('ich', 'technologie', 'Python')
+    pm.create_fact('ich', 'notiz.python', 'Python')
 
     personal = pm.context(question)
     structured = km.context(question)
