@@ -320,3 +320,43 @@ def test_context_budget_retains_complete_source_lines_and_does_not_execute_text(
     parts=['HEADER A\n- fact A (source: A)\n'+('X'*5000),'HEADER B\n- fact B (source: B)']
     result=memory_lifecycle._bounded_parts(parts,200)
     assert '(source: A)' in result and '(source: B)' in result and len(result)<=200
+
+
+
+def test_ai_model_question_does_not_mix_name_and_career_evidence():
+    """Real-world style: "Nobby" in a model query is not a model fact."""
+    from agent import memory_query
+    question = "Welche KI-Modelle verwende ich bei MLX-Nobby?"
+    assert memory_query.asks_about_ai_models(question)
+    pm.create_fact('ich', 'name', 'Fiktiv Meyer')
+    pm.create_fact('ich', 'spitzname', 'Nobby')
+    pm.create_fact('ich', 'arbeitgeber', 'Fiktive Service GmbH')
+    pm.create_fact('ich', 'technologie', 'Qwen3.8-27B-MLX-4bit')
+    pm.create_fact('ich', 'technologie', 'Python')
+
+    personal = pm.context(question)
+    structured = km.context(question)
+    for result in (personal, structured):
+        assert 'Qwen3.8-27B-MLX-4bit' in result
+        assert 'Fiktiv Meyer' not in result
+        assert 'Fiktive Service GmbH' not in result
+        assert 'spitzname' not in result
+        assert 'Python' not in result
+
+
+def test_ai_model_question_with_no_model_facts_returns_no_false_match():
+    question = "Welche KI-Modelle verwende ich bei MLX-Nobby?"
+    pm.create_fact('ich', 'spitzname', 'Nobby')
+    pm.create_fact('ich', 'name', 'Fiktiv Meyer')
+    pm.create_fact('ich', 'arbeitgeber', 'Fiktive Service GmbH')
+    assert pm.context(question) == ''
+    result = km.context(question)
+    assert 'No matching stored evidence' in result
+    assert 'Fiktiv Meyer' not in result
+    assert 'Fiktive Service GmbH' not in result
+
+
+def test_non_model_questions_retain_normal_identity_recall():
+    pm.create_fact('ich', 'spitzname', 'Nobby')
+    assert 'Nobby' in pm.context('Wie lautet mein Spitzname?')
+    assert 'Nobby' in km.context('Was weißt du über meinen Spitznamen?')
