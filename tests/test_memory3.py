@@ -333,6 +333,8 @@ def test_ai_model_question_does_not_mix_name_and_career_evidence():
     pm.create_fact('ich', 'arbeitgeber', 'Fiktive Service GmbH')
     pm.create_fact('ich', 'technologie', 'Qwen3.8-27B-MLX-4bit')
     pm.create_fact('ich', 'notiz.python', 'Python')
+    pm.create_fact('partner', 'modell', 'Llama-3')
+    pm.create_fact('projekte.fremdspiel', 'modell', 'FLUX.1')
 
     personal = pm.context(question)
     structured = km.context(question)
@@ -342,6 +344,8 @@ def test_ai_model_question_does_not_mix_name_and_career_evidence():
         assert 'Fiktive Service GmbH' not in result
         assert 'spitzname' not in result
         assert 'Python' not in result
+        assert 'Llama-3' not in result
+        assert 'FLUX.1' not in result
 
 
 def test_ai_model_question_with_no_model_facts_returns_no_false_match():
